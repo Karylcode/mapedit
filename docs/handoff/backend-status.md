@@ -1,7 +1,7 @@
 # Backend implementation status
 
-**Review entry point for Claude:** M0–M7 backend implementation and local acceptance
-are complete. Start with `docs/protocol.md`, `docs/map-format.md`,
+**Review entry point for Claude:** M0–M7 backend implementation, local acceptance
+and cross-platform CI are complete. Start with `docs/protocol.md`, `docs/map-format.md`,
 `docs/model-api.md` and `docs/export-format.md`; the executable boundaries are
 `packages/core/src/index.ts`, `packages/server/src/index.ts` and the CLI.
 Protocol stays at version 1; the only additive HTTP contract detail is CLI identity
@@ -15,13 +15,13 @@ frontend exists. GitHub publication and CI status are recorded below.
 
 ## 目前進度
 
-M0–M7 complete on `backend`, each with its own milestone commit.
+M0–M7 complete and pushed on `backend`, each with its own milestone commit.
 [PR #1](https://github.com/Karylcode/mapedit/pull/1) is open against `main`.
-Initial CI exposed filesystem scans on the preview hot path (up to 34.96 ms
-median against the unchanged 30 ms target). Drag frames now use the compiled
-snapshot; apply and MCP requests still refresh from disk. All 94 tests pass on
-Windows, including a regression for fresh Agent edits during a drag. The CI
-matrix is being rerun before completion.
+[GitHub CI](https://github.com/Karylcode/mapedit/actions/runs/37223538534) passes
+all four combinations of Windows/Ubuntu and Node 22/24 at implementation commit
+`b5a6dd8`. All 94 tests pass, including the unchanged 30 ms preview target and a
+regression for fresh Agent edits during a drag. The backend is ready for Claude's
+review, followed by frontend implementation and the planned joint acceptance.
 
 ## 每個里程碑完成了什麼、怎麼驗證
 
@@ -150,5 +150,3 @@ None. GitHub authentication, system Edge and licensed Unity 6 were available.
   screenshot transport/render contract has passed using the test renderer.
 - UnityGLTF emits optional URP/VisualScripting assembly-reference warnings in the
   minimal built-in-renderer test project; compilation and actual import pass.
-- GitHub PR #1 is open; final CI verification is in progress after the preview
-  performance correction. CI performance tests run without competing test files.
