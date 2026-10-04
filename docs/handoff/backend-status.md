@@ -803,6 +803,12 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
     `test-packed-cli.mjs` so the installed `mapedit dev` serves the editor at
     `/` and MCP `screenshot` returns a PNG (marked `TODO(F33)` there).
     Deviation: none.
+  - Follow-up (reported by the frontend session): `eslint.config.js` ignores
+    `packages/cli/web/**`, because after a local web build the copied, minified
+    bundles made `pnpm lint` fail. The template copy stays linted, since it is
+    the only lint coverage of the templates' `model.ts` files. Test:
+    `cli/test/package-assets.test.ts` asks ESLint which of the two paths it
+    ignores.
 - **F34 complete:** `docs/protocol.md` adds, as optional fields that this
   backend always sends:
   - `HistoryEntry.action` (`HistoryAction`: `move`, `delete`, `agent_change`)
@@ -824,3 +830,24 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   `protocol/test/catalogs.test.ts` compares `HISTORY_ACTIONS` with the
   documented union, and the golden compiler snapshot gained `kind: 'map'`.
   Deviation: none.
+- **F35 complete:** `docs/protocol.md` section 4 adds an optional `mapId` to
+  `notice`: the map that holds its `refs`. It is set for `agent_changed`,
+  `overwritten_by_agent`, `agent_change_overridden` and `edit_rejected`. Flow 2
+  states the order: after an Agent change, the backend sends the new scenes
+  and `history` first, then `agent_changed`, `overwritten_by_agent` and
+  `file_error`. An Agent change that touches several maps sends one notice per
+  map, each with its own `mapId`. A change that touches no object sends one
+  `agent_changed` with empty `refs` and no `mapId`.
+  - `DiskState.refresh` broadcasts before it notifies, and groups refs by map
+    (`noticePerMap`).
+  - `rebuild` no longer sends `file_error` notices itself; `refresh`, `apply`
+    and `travel` send them through `noticeFileErrors` once the build is
+    installed.
+  - The mock state follows the same order and sets `mapId`.
+
+  Tests: `server/test/notice-order.test.ts` opens two maps on a real server,
+  changes each map's structure file, and checks that every editor gets the
+  new scene and history before `agent_changed`, with the right `mapId` (the
+  notice came first and had no `mapId` before). It also covers
+  `overwritten_by_agent` after the scene, `edit_rejected` with its `mapId`,
+  and mock mode. Deviation: none.

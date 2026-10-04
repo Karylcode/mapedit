@@ -8,10 +8,12 @@ export class UnknownMapError extends Error {
   }
 }
 
+/** `mapId` names the map that holds `refs` (protocol section 4). */
 export function noticeMessage(
   code: NoticeCode,
   message: string,
   refs?: ObjectRef[],
+  mapId?: string,
 ): Extract<ServerMessage, { type: 'notice' }> {
   return {
     type: 'notice',
@@ -19,5 +21,6 @@ export function noticeMessage(
     code,
     message,
     ...(refs ? { refs } : {}),
+    ...(mapId !== undefined ? { mapId } : {}),
   };
 }

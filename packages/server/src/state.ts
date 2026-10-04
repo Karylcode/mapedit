@@ -89,8 +89,9 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
     code: Extract<ServerMessage, { type: 'notice' }>['code'],
     message: string,
     refs?: string[],
+    mapId?: string,
   ): void {
-    this.emit('message', noticeMessage(code, message, refs));
+    this.emit('message', noticeMessage(code, message, refs, mapId));
   }
   async preview(edit: Edit, requestId: number): Promise<Preview> {
     const violations: ViolationView[] = [];
@@ -164,7 +165,7 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
     const preview = await this.preview(edit, 0);
     if (!preview.ok) {
       const reason = preview.violations[0]!.message;
-      this.notice('edit_rejected', reason, [edit.ref]);
+      this.notice('edit_rejected', reason, [edit.ref], this.scene.map.id);
       return { reason, failure: preview.failure ?? 'violations' };
     }
     const structure = this.scene.structures.find(
@@ -217,6 +218,7 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
         'agent_change_overridden',
         'Your edit overrides an Agent change made while dragging.',
         [edit.ref],
+        this.scene.map.id,
       );
     this.lastHuman.add(edit.ref);
     return undefined;
@@ -245,17 +247,20 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
       refs,
     });
     for (const ref of refs) this.lastAgent.set(ref, revision);
-    this.notice('agent_changed', 'Agent updated project files.', refs);
     const overwritten = refs.filter((ref) => this.lastHuman.has(ref));
+    for (const ref of refs) this.lastHuman.delete(ref);
+    // As in the real state, the new scene comes before the notices about it.
+    this.broadcast();
+    const mapId = refs.length ? this.scene.map.id : undefined;
+    this.notice('agent_changed', 'Agent updated project files.', refs, mapId);
     if (overwritten.length)
       this.notice(
         'overwritten_by_agent',
         'Agent changes overwrite recent human edits.',
         overwritten,
+        mapId,
       );
-    for (const ref of refs) this.lastHuman.delete(ref);
     for (const error of scene.fileErrors)
       if (!previousErrors.has(JSON.stringify(error))) this.notice('file_error', error.message);
-    this.broadcast();
   }
 }

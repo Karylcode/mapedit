@@ -129,6 +129,8 @@ export type ServerMessage =
       code: NoticeCode;
       message: string;
       refs?: ObjectRef[];
+      /** The map that holds `refs`, for notices about objects on a map. */
+      mapId?: string;
     };
 /** Why a previewEdit, applyEdit, undo or redo did not succeed (protocol section 4). */
 export const EDIT_FAILURES = [
