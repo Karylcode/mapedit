@@ -1,10 +1,18 @@
 #!/usr/bin/env node
-import { createServer, buildProject, connectStdio } from '@mapedit/server';
+import { createServer, buildProject, exportProject, connectStdio } from '@mapedit/server';
 import { spawn } from 'node:child_process';
 import { discoverServer, registerServer } from './discovery.js';
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
   const [command, ...flags] = args;
+  if (command === 'export') {
+    const outIndex = flags.indexOf('--out'), mapIndex = flags.indexOf('--map');
+    const out = flags[outIndex + 1];
+    if (outIndex < 0 || !out || out.startsWith('--')) throw new Error('export requires --out <directory>.');
+    if (mapIndex >= 0 && (!flags[mapIndex + 1] || flags[mapIndex + 1]!.startsWith('--'))) throw new Error('--map requires a map ID.');
+    process.stdout.write(`${await exportProject(process.cwd(), mapIndex >= 0 ? flags[mapIndex + 1] : undefined, out)}\n`);
+    return;
+  }
   if (command === 'mcp') {
     const serverIndex = flags.indexOf('--server');
     let url = serverIndex >= 0 ? flags[serverIndex + 1] : await discoverServer(process.cwd());
@@ -74,7 +82,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     return;
   }
   if (command === '--help' || command === undefined) {
-    process.stdout.write('mapedit dev [--port <port>] [--mock] [--open]\nmapedit check [--map <id>] [--json]\nmapedit mcp\n');
+    process.stdout.write('mapedit dev [--port <port>] [--mock] [--open]\nmapedit check [--map <id>] [--json]\nmapedit export [--map <id>] --out <directory>\nmapedit mcp\n');
     return;
   }
   throw new Error(`Unknown command: ${command}. Run mapedit --help.`);

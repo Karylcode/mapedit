@@ -2,8 +2,8 @@
 
 ## 目前進度
 
-M0–M5 complete on `backend`. Unity and template acceptance has passed.
-Next: commit M6/M7 and finish the GitHub PR/CI verification.
+M0–M6 complete on `backend`. Template/end-to-end acceptance has passed.
+Next: commit M7 and finish the GitHub PR/CI verification.
 
 ## 每個里程碑完成了什麼、怎麼驗證
 
@@ -55,12 +55,21 @@ Next: commit M6/M7 and finish the GitHub PR/CI verification.
   changes, six terrain operations and GLB export/rejection. Installed Edge produced
   the montage PNG. Browser execution also validates core modelling/PNG/GLB/compiler.
   Full Windows suite reached 78 passing tests, with typecheck and lint passing.
-- M6–M7: pending milestone documentation/commits.
+- M6: self-contained glTF 2.0 export with shared module meshes, hierarchy,
+  materials/textures and namespaced collider/marker extras, documented in
+  `docs/export-format.md`. Export rejects violations and missing/oversized models
+  even when called directly on an unchecked compilation, and generates foundation
+  geometry. Unity UPM importer depends on UnityGLTF 2.21.0 and uses a ScriptableObject
+  marker mapping. **Actual Unity 6.0.75f1 batchmode passed** for the end-to-end
+  three-house village: 40 mesh colliders, 2 markers, mapped spawn prefab and trigger.
+  Reproduce with `scripts/test-unity.ps1 -GlbPath <village.glb>`. Local evidence:
+  `.cache/unity/project/mapedit-verification.json` and `mapedit-import.log`.
+- M7: pending milestone documentation/commit.
 
 ## 自行決定的事
 
 - Work is split across independent package owners; milestone commits remain ordered.
-- Node 24 is the CI runtime; the declared minimum is Node 22.13 for permission support.
+- CI covers Node 22 and 24 on Windows and Ubuntu; the minimum is Node 22.13 for permission support.
 - Tests run without `packages/web`; the real frontend is owned by Claude.
 - Socket direction supports up/down plus the four compass directions. Attachments
   infer orientation; structures connect through `structure/instance.socket` paths.
