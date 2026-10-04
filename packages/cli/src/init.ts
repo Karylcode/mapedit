@@ -5,7 +5,7 @@ import { createTerrain, encodeTerrain } from '@mapedit/core';
 
 export async function initProject(directory: string): Promise<string> {
   const root = path.resolve(directory);
-  const template = fileURLToPath(new URL('../../../templates/project/', import.meta.url));
+  const template = fileURLToPath(new URL('../templates/project/', import.meta.url));
   const cli = fileURLToPath(new URL('./index.js', import.meta.url));
   const inputs = new Map<string, Uint8Array>();
   const walk = async (relative: string): Promise<void> => {

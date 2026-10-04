@@ -9,6 +9,13 @@
     "mapedit": "./dist/index.js"
   },
   "private": true,
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "prepack": "node ../../scripts/prepare-cli.mjs"
+  },
   "license": "MIT",
   "type": "module",
   "dependencies": {

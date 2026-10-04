@@ -46,6 +46,26 @@ node ../packages/cli/dist/index.js mcp
 和使用絕對 Node/CLI 路徑的 stdio 備用設定。執行期間不呼叫 AI 或外部服務；
 材質與貼圖均已包含在 repo。初次安裝相依套件和 UnityGLTF 需要網路。
 
+## CLI 封裝驗收
+
+封裝或安裝本機 tarball 前先執行 `pnpm build`，產生四個套件的 `dist` 與
+CLI 自己的範本。CLI 的 `prepack` 會更新範本；core/server/protocol 的
+`pack` 不會自動重新編譯 TypeScript。
+
+```sh
+pnpm build
+pnpm --dir packages/cli pack --pack-destination ../../.cache/packages
+node scripts/test-packed-cli.mjs --keep
+```
+
+最後一行會另行把四個 workspace 套件執行 `pnpm pack`，在 repo 外的暫存目錄
+以本機 tarball overrides 離線安裝，再用封裝 CLI 執行 `init` 與 `check`。
+先前的 `pnpm install` 需已填入相依套件快取；輸出會列出保留的暫存路徑。
+測試驗證套件及相依解析沒有連回 repo，並檢查模型、材質、WASM 與範本都能使用。
+
+目前所有套件仍保留 `private: true`。發佈到 npm 前，需要人決定正式套件名稱、
+`@mapedit` 相依套件的 scope，以及使用的 npm 帳號；這一輪未發佈。
+
 ## 驗證與 Unity
 
 ```sh

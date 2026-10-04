@@ -135,7 +135,10 @@ render page exists only under server test fixtures, as requested.
 
 ## 需要人處理
 
-None. GitHub authentication, system Edge and licensed Unity 6 were available.
+Before npm publication, choose the final CLI/dependency package names and scope,
+and the npm account that will publish them. All packages remain `private: true`;
+this pass validates local tarballs and does not publish. GitHub authentication,
+system Edge and licensed Unity 6 were available for local/GitHub acceptance.
 
 ## 需要前端配合
 
@@ -252,3 +255,17 @@ recorded after all corrections are complete.
   stdio continuations, and mutation counts. All 47 related MCP/server/guide tests,
   typecheck, scoped lint and generated-guide freshness checks pass. The shared
   authoring guide documents continuation and expiry. Deviation: none.
+- **F12 complete:** CLI initialization reads package-local templates. Build,
+  typecheck and CLI prepack generate the shared guides and copy the complete
+  template tree; identical outputs are left untouched for concurrent readers.
+  Explicit package file lists include all four compiled runtimes, core materials
+  and CLI templates. `cli/test/packed-cli.test.ts` executes
+  `scripts/test-packed-cli.mjs`: four actual `pnpm pack` tarballs are installed
+  offline into a temporary consumer outside the repository using local overrides,
+  with package and dependency realpaths checked to exclude repository links.
+  The installed CLI initializes a project and checks its model/terrain/textures
+  with zero errors. The regression first failed because dependency runtimes were
+  absent; tarball inspection also confirmed missing templates. The packed test,
+  preparation nonmutation test, init, guide and end-to-end tests (10 tests),
+  typecheck and lint pass. All packages remain private; npm naming/scope and
+  account selection are recorded under human follow-up. Deviation: none.

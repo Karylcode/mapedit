@@ -18,10 +18,16 @@ const outputs = new Map([
 const check = process.argv.includes('--check');
 for (const [file, expected] of outputs) {
   const url = new URL(file, root);
+  let actual;
+  try {
+    actual = await readFile(url, 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   if (check) {
-    const actual = (await readFile(url, 'utf8')).replaceAll('\r\n', '\n');
-    if (actual !== expected) throw new Error(`${file} is stale. Run pnpm generate:authoring.`);
-  } else {
+    if (actual?.replaceAll('\r\n', '\n') !== expected)
+      throw new Error(`${file} is stale. Run pnpm generate:authoring.`);
+  } else if (actual !== expected) {
     await writeFile(url, expected);
   }
 }

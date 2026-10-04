@@ -7,6 +7,10 @@
     "yaml": "^2.9.1"
   },
   "private": true,
+  "files": [
+    "dist",
+    "materials"
+  ],
   "exports": {
     ".": {
       "default": "./dist/index.js",

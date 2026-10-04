@@ -1,6 +1,9 @@
 {
   "dependencies": {},
   "private": true,
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "default": "./dist/index.js",

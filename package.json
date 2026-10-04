@@ -7,9 +7,10 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "build": "pnpm generate:authoring && tsc -b",
+    "build": "pnpm prepare:cli && tsc -b",
+    "prepare:cli": "node scripts/prepare-cli.mjs",
     "generate:authoring": "node scripts/generate-authoring.mjs",
-    "typecheck": "tsc -b --pretty false",
+    "typecheck": "pnpm prepare:cli && tsc -b --pretty false",
     "test": "vitest run",
     "e2e": "node scripts/e2e.mjs",
     "lint": "eslint packages",

@@ -11,6 +11,9 @@
     "zod": "^4.6.5"
   },
   "private": true,
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "default": "./dist/index.js",
