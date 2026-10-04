@@ -207,6 +207,10 @@ type NoticeCode =
    - 人放下時，如果同一個物件在 `baseRevision` 之後被 Agent 改過，套用人的修改，並送 `notice { code: 'agent_change_overridden' }`。
    - Agent 改檔時，如果蓋掉了人最近對同一個物件的修改，送 `notice { code: 'overwritten_by_agent' }`。
 6. **復原、重做**：`undo`、`redo` 作用在整個專案的修改紀錄上，人和 Agent 的修改都算。後端回 `editResult`，接著送新的 `scene` 和 `history`。
+7. **參照失效**：前端手上的 ref 可能因為 Agent 剛改了檔案而失效。`previewEdit`、`applyEdit` 的 `edit.ref` 格式錯誤（不符合第 2 節的 `ObjectRef` 格式），或指向不存在的物件時，後端**不斷線**：
+   - `previewEdit` 回 `previewResult { ok: false }`，`violations` 只有一筆 `missing_reference`，它的 `refs` 是收到的 ref。
+   - `applyEdit` 回 `editResult { ok: false, reason }`，並送 `notice { code: 'edit_rejected' }`；檔案和修改紀錄都不變。
+8. **斷線**：只有訊息本身的結構不合法時，後端才以 1008 關閉連線，例如不是 JSON、`type` 不認得、欄位型別不對（`ref` 不是字串、`position` 不是三個有限數字、`requestId` 不是整數），或是在 `hello` 之前送其他訊息、在 `openMap` 之前送修改。
 
 ## 5. 前端的責任範圍（給後端參考）
 

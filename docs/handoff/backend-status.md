@@ -457,3 +457,21 @@ by Claude. Each entry records the change, the tests and any deviation.
   rotation as the glTF node rotation around +Y, and the Unity importer places
   the mapped prefab at local identity under that node, so a spawn prefab faces
   glTF forward (+Z) at rotation 0. No code change was needed.
+- **F21 complete:** `docs/protocol.md` section 4 gained two rules (additions
+  only): a `previewEdit` or `applyEdit` whose `edit.ref` is malformed or names a
+  missing object keeps the connection open and gets `previewResult { ok: false }`
+  with exactly one `missing_reference` (its `refs` is the received ref), or
+  `editResult { ok: false, reason }` plus an `edit_rejected` notice, with files and
+  history unchanged; only structurally invalid messages close with 1008 (not JSON,
+  unknown `type`, wrong field types, or messages before `hello`/`openMap`).
+  `validEdit` in `server/src/index.ts` now checks only that `ref` is a string;
+  invalid JSON now closes with 1008 instead of producing a `file_error` notice.
+  Both states answer stale refs: the mock returns one `missing_reference` early,
+  and the real state resolves the edit inside its error handling so nothing
+  escapes to the socket. Tests: `server/test/ws-references.test.ts` runs the same
+  cases against the mock and a real project (six malformed or missing refs for
+  move and delete, four structurally invalid messages, and a ref removed by an
+  Agent rename); the mock and real cases failed first by disconnecting, and
+  invalid JSON failed by staying open. The F15 test in
+  `server/test/protocol.test.ts` that expected 1008 for malformed refs now expects
+  the F21 answer. Deviation: none.

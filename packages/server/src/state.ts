@@ -90,19 +90,26 @@ export class MemoryState extends EventEmitter implements StateStore {
       this.scene.structures.some(
         (s) => s.ref === edit.ref || s.instances.some((i) => i.ref === edit.ref),
       ) || this.scene.markers.some((m) => m.ref === edit.ref);
+    // A stale or malformed ref gets exactly one missing_reference, as in protocol section 4.
     if (!exists || (edit.kind === 'move' && object?.kind === 'module'))
-      violations.push(
-        createViolation({
-          kind: 'missing_reference',
-          message: 'Select an existing structure or marker to move.',
-          params: {},
-          refs: [edit.ref],
-          suggestion: 'Reload the map and select an existing object.',
-          rule: 'mock-preview-reference',
-        }),
-      );
-    if (edit.kind === 'delete')
-      return { type: 'previewResult', requestId, ok: violations.length === 0, violations };
+      return {
+        type: 'previewResult',
+        requestId,
+        ok: false,
+        violations: [
+          createViolation({
+            kind: 'missing_reference',
+            message: exists
+              ? `Move the whole Structure; ${edit.ref} is a Module inside it.`
+              : `Unknown object "${edit.ref}".`,
+            params: { reference: edit.ref },
+            refs: [edit.ref],
+            suggestion: 'Reload the map and select an existing structure or marker.',
+            rule: 'mock-preview-reference',
+          }),
+        ],
+      };
+    if (edit.kind === 'delete') return { type: 'previewResult', requestId, ok: true, violations };
     // The same height rule as the real editor, on the mock's flat terrain at height 0.
     const marker = this.scene.markers.find((item) => item.ref === edit.ref);
     const { position, rotation } = snapMove(

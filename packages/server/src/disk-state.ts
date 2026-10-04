@@ -249,13 +249,14 @@ export class DiskState extends EventEmitter implements StateStore {
   }
   async preview(edit: Edit, requestId: number, mapId = this.scene.map.id): Promise<Preview> {
     const cached = await this.getBuild(mapId);
-    const normalized = normalizeEdit(cached.parsed, mapId, edit, cached.heightAt);
+    // A malformed or stale ref is answered as one missing_reference (protocol section 4).
     try {
       if (edit.kind === 'delete') {
         if (!cached.compilation.sourceRefs[edit.ref])
           throw new Error(`Unknown object "${edit.ref}".`);
         return { type: 'previewResult', requestId, ok: true, violations: [] };
       }
+      const normalized = normalizeEdit(cached.parsed, mapId, edit, cached.heightAt);
       const files = {
         ...cached.parsed.files,
         ...applySourceEdit(cached.parsed, mapId, normalized),
@@ -290,7 +291,7 @@ export class DiskState extends EventEmitter implements StateStore {
           createViolation({
             kind: 'missing_reference',
             message: error instanceof Error ? error.message : String(error),
-            params: {},
+            params: { reference: edit.ref },
             refs: [edit.ref],
             suggestion: 'Reload the map and select an existing object.',
             rule: 'edit-reference',
