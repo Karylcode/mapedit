@@ -1,5 +1,6 @@
 /** Wire contract, version 1. Distances are metres; +Y up, +X east, -Z north. */
 export * from './object-ref.js';
+export * from './violation-params.js';
 export type Vec3 = [number, number, number];
 export type Mat4 = number[];
 export type ObjectRef = string;
@@ -75,7 +76,11 @@ export interface ViolationView {
   id: string;
   kind: ViolationKind;
   message: string;
-  /** File-backed violations include file and line; display metadata does not affect id. */
+  /**
+   * Documented per kind in protocol section 3 (see ViolationParamsByKind and
+   * TypedViolationView); file-backed violations also include file and line.
+   * Display metadata does not affect id.
+   */
   params: Record<string, unknown>;
   refs: ObjectRef[];
   location?: Vec3;

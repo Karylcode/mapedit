@@ -117,6 +117,32 @@ describe('protocol version 1 mock contract', () => {
       await wait('history');
     }
   });
+  it('F19 keeps the bottom clearance of a dragged mock box marker', async () => {
+    const { state, send, wait } = await setup();
+    const box = () => {
+      const marker = state.scene.markers.find((item) => item.ref === 'marker:zone')!;
+      if (marker.shape.kind !== 'box') throw new Error('Expected the mock box marker.');
+      return marker.shape;
+    };
+    // Mock terrain is flat at height 0, so the clearance is the bottom face height.
+    const clearance = () => box().center[1] - box().size[1] / 2;
+    const before = clearance();
+    const edit = {
+      kind: 'move' as const,
+      ref: 'marker:zone',
+      position: [30.2, 0, 29.9] as [number, number, number],
+      rotation: 0,
+    };
+    send({ type: 'previewEdit', requestId: 1, edit });
+    const preview = await wait('previewResult');
+    expect(preview.ok).toBe(true);
+    expect(preview.transform?.slice(12, 15)).toEqual([30, box().center[1], 30]);
+    send({ type: 'applyEdit', requestId: 2, baseRevision: 0, edit });
+    expect((await wait('editResult')).ok).toBe(true);
+    const moved = (await wait('scene')).scene.markers.find((item) => item.ref === 'marker:zone')!;
+    expect(moved.shape).toMatchObject({ kind: 'box', center: [30, 1, 30] });
+    expect(clearance()).toBe(before);
+  });
   it('sends every concurrency and file error notice, and includes Agent history in undo', async () => {
     const { state, send, wait } = await setup();
     const initialErrors = structuredClone(state.scene.fileErrors);
@@ -188,19 +214,15 @@ describe('protocol version 1 mock contract', () => {
     expect(state.scene.revision).toBe(0);
   });
   it.each(['structure:house/extra', 'module:house/base.east', 'not-a-ref'])(
-    'F15 rejects malformed ObjectRef %s at the protocol boundary',
+    'F15/F21 rejects malformed ObjectRef %s without changing memory or disconnecting',
     async (ref) => {
-      const { client, state } = await setup();
-      const closed = new Promise<number>((resolve) => client.once('close', resolve));
-      client.send(
-        JSON.stringify({
-          type: 'applyEdit',
-          requestId: 1,
-          baseRevision: 0,
-          edit: { kind: 'delete', ref },
-        }),
-      );
-      expect(await closed).toBe(1008);
+      const { client, state, send, wait } = await setup();
+      let closed = false;
+      client.once('close', () => (closed = true));
+      send({ type: 'applyEdit', requestId: 1, baseRevision: 0, edit: { kind: 'delete', ref } });
+      expect(await wait('editResult')).toMatchObject({ requestId: 1, ok: false });
+      expect((await wait('notice')).code).toBe('edit_rejected');
+      expect(closed).toBe(false);
       expect(state.scene.revision).toBe(0);
       expect(state.entries).toEqual([]);
     },

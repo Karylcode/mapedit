@@ -30,6 +30,9 @@ async function fixture() {
     async flush() {
       flushes++;
     },
+    projectRevision() {
+      return 0;
+    },
     async getScene() {
       return compiled.scene;
     },

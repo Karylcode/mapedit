@@ -9,7 +9,6 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMessage, Edit, ServerMessage } from '@mapedit/protocol';
-import { parseObjectRef } from '@mapedit/protocol';
 import { MemoryState, type StateStore } from './state.js';
 import { DiskState } from './disk-state.js';
 import { buildProject, buildFromParsed } from './build-project.js';
@@ -44,12 +43,15 @@ export interface MapeditServer {
   close(): Promise<void>;
 }
 
+/**
+ * Structural validation only. A ref that is malformed or names a missing object is a
+ * well-formed request about a stale object: the state answers it without disconnecting.
+ */
 function validEdit(value: unknown): value is Edit {
   if (!value || typeof value !== 'object') return false;
   const edit = value as Record<string, unknown>;
   return (
     typeof edit.ref === 'string' &&
-    parseObjectRef(edit.ref) !== undefined &&
     (edit.kind === 'delete' ||
       (edit.kind === 'move' &&
         typeof edit.rotation === 'number' &&
@@ -249,7 +251,13 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
     client.on('message', (data) => {
       queue = queue
         .then(async () => {
-          const value: unknown = JSON.parse(data.toString());
+          let value: unknown;
+          try {
+            value = JSON.parse(data.toString());
+          } catch {
+            client.close(1008, 'Messages must be JSON.');
+            return;
+          }
           if (!validMessage(value)) {
             client.close(1008, 'Invalid protocol message.');
             return;

@@ -93,6 +93,7 @@ export function createMockServices(
   });
   return {
     flush: () => state.flush(),
+    projectRevision: () => state.scene.revision,
     getScene: (id) => state.getScene(id),
     getScenes: async (id) => [await state.getScene(id)],
     async getCompilation() {

@@ -63,7 +63,7 @@ size: { x: 100, z: 100 }
 sun: { azimuth: 135, elevation: 45 }
 ```
 
-The id defaults to the folder name; name defaults to id; sun defaults to the example values. The map covers x=0…size.x and z=0…size.z. Bounds checks use the whole rotated volume, including trigger boxes, not just the origin. Y is not bounded by map size.
+The id defaults to the folder name; name defaults to id; sun defaults to the example values. `sun.azimuth` is a compass bearing in degrees, measured clockwise from north when viewed from above: 0 is north (−Z), 90 east (+X), 180 south (+Z); the default 135 is southeast. `sun.elevation` is the angle above the horizon in degrees. The map covers x=0…size.x and z=0…size.z. Bounds checks use the whole rotated volume, including trigger boxes, not just the origin. Y is not bounded by map size.
 
 ## Structures and attachments
 
@@ -123,7 +123,7 @@ markers:
     properties: { event: enter_village }
 ```
 
-Marker rotation uses 15-degree increments and defaults to 0. Box size is positive. `properties` is an arbitrary JSON-compatible mapping, defaults to `{}`, and is exported unchanged as game data. Nested arrays and mappings are allowed; cyclic YAML aliases, non-finite numbers, and YAML-only types such as sets are file errors. Only point and box shapes are supported in version 1; routes are deferred.
+Marker rotation uses 15-degree increments and defaults to 0. At rotation 0 a point marker faces south (+Z), which is glTF's forward direction; a positive rotation turns it counterclockwise viewed from above, like every other rotation. A spawn marker with rotation 90 therefore faces east (+X). Box size is positive. `properties` is an arbitrary JSON-compatible mapping, defaults to `{}`, and is exported unchanged as game data. Nested arrays and mappings are allowed; cyclic YAML aliases, non-finite numbers, and YAML-only types such as sets are file errors. Only point and box shapes are supported in version 1; routes are deferred.
 
 ## Terrain files
 

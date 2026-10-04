@@ -24,6 +24,8 @@ import { normalizeStructureRef, terrainCommandSchema } from './mcp-inputs.js';
 
 export interface AgentServices {
   flush(): Promise<void>;
+  /** Grows whenever project files, or the mock scene, change; equal values mean no change. */
+  projectRevision(): number;
   getScene(mapId?: string): Promise<SceneSnapshot>;
   getScenes(mapId?: string): Promise<SceneSnapshot[]>;
   getCompilation(mapId?: string): Promise<Compilation | undefined>;
@@ -39,6 +41,10 @@ const pageSchema = {
   limit: z.number().int().min(1).max(100).default(50),
 };
 const mapSchema = { map: z.string().optional() };
+const cursorSchema = z
+  .string()
+  .max(128)
+  .describe('paging.nextCursor from the previous page. Send it without any other argument.');
 const vector = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
 const textResult = (value: unknown): CallToolResult => {
   return { content: [{ type: 'text', text: JSON.stringify(value) }] };
@@ -143,22 +149,44 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
     handler: (args: z.output<z.ZodObject<S>>) => Promise<CallToolResult>,
   ): void {
     const input = z.object(config.inputSchema).strict();
-    const cursor = z.object({ cursor: z.string().max(128) }).strict();
+    // Agent APIs reject top-level unions, so one object schema advertises both call forms.
+    // Required arguments are enforced by `input` because a continuation sends only cursor.
+    const {
+      $schema: _dialect,
+      required = [],
+      ...inputSchema
+    } = z.toJSONSchema(
+      z.object({ ...config.inputSchema, cursor: cursorSchema.optional() }).strict(),
+      { io: 'input' },
+    );
     tools.set(name, {
       definition: {
         name,
         description:
           config.description +
+          (required.length ? ` Required arguments: ${required.join(', ')}.` : '') +
           ' Oversized text uses paging.fragment and paging.nextCursor. Continue with only {"cursor":"..."} on this same tool; do not repeat the original arguments.',
-        inputSchema: {
-          type: 'object',
-          anyOf: [z.toJSONSchema(input, { io: 'input' }), z.toJSONSchema(cursor, { io: 'input' })],
-        },
+        inputSchema: { ...inputSchema, type: 'object' } as Tool['inputSchema'],
       },
       async run(args) {
-        if (args && typeof args === 'object' && 'cursor' in args)
-          return pager.continue(name, cursor.parse(args).cursor);
-        return handler(input.parse(args ?? {}));
+        const values: unknown = args ?? {};
+        if (values && typeof values === 'object' && 'cursor' in values) {
+          const others = Object.keys(values).filter((key) => key !== 'cursor');
+          if (others.length)
+            throw new Error(
+              `Send only {"cursor":"..."} to continue a paged result. Remove ${others.map((key) => JSON.stringify(key)).join(', ')}, or run the tool again without cursor.`,
+            );
+          // Answer only after the latest file changes, like every other tool call.
+          return pager.continue(
+            name,
+            cursorSchema.parse((values as { cursor: unknown }).cursor),
+            async () => {
+              await services.flush();
+              return services.projectRevision();
+            },
+          );
+        }
+        return handler(input.parse(values));
       },
     });
   }
@@ -171,12 +199,17 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       checkInputSize(request.params.arguments);
       const tool = tools.get(name);
       if (!tool) throw new Error('Unknown tool. Use tools/list to see the fixed tool names.');
-      return pager.bound(name, await tool.run(request.params.arguments));
+      const result = await tool.run(request.params.arguments);
+      return pager.bound(name, result, services.projectRevision());
     } catch (error) {
-      return pager.bound(name, {
-        isError: true,
-        content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }],
-      });
+      return pager.bound(
+        name,
+        {
+          isError: true,
+          content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }],
+        },
+        services.projectRevision(),
+      );
     }
   });
   registerTool(

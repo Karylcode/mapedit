@@ -4,14 +4,23 @@ import type { Bounds, Compilation } from './domain.js';
 import { transformPoint } from './math.js';
 import { geometryMesh, getManifold, meshGeometry, type ModelGeometry } from './model.js';
 import { createViolation } from './violation.js';
+import { createGeometryAdvice, type TerrainContact } from './geometry-suggestions.js';
 import {
-  createGeometryAdvice,
-  type AdviceSolid,
-  type TerrainContact,
-} from './geometry-suggestions.js';
+  fillsBounds,
+  GEOMETRY_TOLERANCE,
+  intersectsBounds,
+  intersectVolume,
+  manifoldOverlap,
+  MIN_VOLUME,
+  overlapLocation,
+  restsOn,
+  type PlacedSolid,
+} from './solid.js';
 
-export const GEOMETRY_TOLERANCE = 0.0001;
-const MIN_VOLUME = 1e-9;
+export { GEOMETRY_TOLERANCE } from './solid.js';
+/** Geometry violations, in report order, that receive a searched suggestion. */
+export const SEARCHED_ADVICE_LIMIT = 50;
+const RECHECK_FOR_ADVICE = `Specific suggestions are searched for the first ${SEARCHED_ADVICE_LIMIT} geometry violations only; fix those, then run check again.`;
 export interface GeometryTerrain {
   heightAt(x: number, z: number): number;
   trianglesInBounds?(bounds: Bounds): Iterable<[Vec3, Vec3, Vec3]>;
@@ -19,31 +28,6 @@ export interface GeometryTerrain {
 export interface GeometryCheck {
   violations: ViolationView[];
   generated: { owner: string; geometry: ModelGeometry }[];
-}
-type SolidInstance = AdviceSolid;
-const boundsCenter = (bounds: Bounds): Vec3 =>
-  bounds.min.map((value, axis) => (value + bounds.max[axis]!) / 2) as Vec3;
-
-function intersectsBounds(a: Bounds, b: Bounds, margin = 0): boolean {
-  return [0, 1, 2].every(
-    (axis) => a.max[axis]! + margin > b.min[axis]! && b.max[axis]! + margin > a.min[axis]!,
-  );
-}
-function intersectVolume(a: Manifold, b: Manifold): number {
-  const intersection = a.intersect(b);
-  try {
-    return intersection.volume();
-  } finally {
-    intersection.delete();
-  }
-}
-function intersectionLocation(a: Manifold, b: Manifold): Vec3 {
-  const intersection = a.intersect(b);
-  try {
-    return boundsCenter(intersection.boundingBox());
-  } finally {
-    intersection.delete();
-  }
 }
 function* sampledTriangles(terrain: GeometryTerrain, bounds: Bounds): Iterable<[Vec3, Vec3, Vec3]> {
   if (terrain.trianglesInBounds) {
@@ -71,7 +55,7 @@ function terrainSolid(
 
 function measureTerrainContact(
   library: ManifoldToplevel,
-  entry: SolidInstance,
+  entry: PlacedSolid,
   triangles: [Vec3, Vec3, Vec3][],
 ): TerrainContact & { location?: Vec3 } {
   let minimum = Infinity,
@@ -104,11 +88,13 @@ function measureTerrainContact(
         if (
           !allowsBurial &&
           !result.overlap &&
-          entry.bounds.min[1] < maximum - GEOMETRY_TOLERANCE &&
-          intersectVolume(entry.solid, ground) > MIN_VOLUME
+          entry.bounds.min[1] < maximum - GEOMETRY_TOLERANCE
         ) {
-          result.overlap = true;
-          result.location = intersectionLocation(entry.solid, ground);
+          const location = manifoldOverlap(entry.solid, ground);
+          if (location) {
+            result.overlap = true;
+            result.location = location;
+          }
         }
       } finally {
         ground.delete();
@@ -124,7 +110,7 @@ function measureTerrainContact(
 /** A footprint skirt, or four square pillars, clipped to the exact terrain surface. */
 function foundationExtension(
   library: ManifoldToplevel,
-  entry: SolidInstance,
+  entry: PlacedSolid,
   triangles: [Vec3, Vec3, Vec3][],
 ): Manifold | undefined {
   const base = entry.bounds.min[1];
@@ -200,18 +186,20 @@ export async function checkGeometry(
     supportLinks.set(from, links);
   };
   try {
-    const bases = new Map<string, Manifold>();
-    const entries: SolidInstance[] = [];
+    const bases = new Map<string, { solid: Manifold; volume: number }>();
+    const entries: PlacedSolid[] = [];
     for (const instance of compilation.instances) {
       const geometry = models.get(instance.moduleType);
       if (!geometry) continue;
       let base = bases.get(instance.moduleType);
       if (!base) {
-        base = keep(new library.Manifold(geometryMesh(library, geometry)));
+        const solid = keep(new library.Manifold(geometryMesh(library, geometry)));
+        base = { solid, volume: solid.volume() };
         bases.set(instance.moduleType, base);
       }
-      const solid = keep(base.transform(instance.transform as ManifoldMat4));
-      entries.push({ instance, solid, bounds: solid.boundingBox() });
+      const solid = keep(base.solid.transform(instance.transform as ManifoldMat4));
+      const bounds = solid.boundingBox();
+      entries.push({ instance, solid, bounds, box: fillsBounds(base.volume, bounds) });
     }
     for (const entry of entries) {
       const { instance, bounds, solid } = entry;
@@ -232,6 +220,7 @@ export async function checkGeometry(
           // The extension participates in physical collision and support too.
           entry.solid = keep(solid.add(extension));
           entry.bounds = entry.solid.boundingBox();
+          entry.box = fillsBounds(entry.solid.volume(), entry.bounds);
         }
       }
       const contact = measureTerrainContact(library, entry, triangles);
@@ -243,8 +232,8 @@ export async function checkGeometry(
             refs: [instance.ref],
             source: instance.source,
             message: `${instance.ref} overlaps the terrain.`,
-            suggestion: 'Raise the Structure or use a Foundation or terrain-following Module.',
-            params: { terrain: true },
+            suggestion: `Raise the Structure or use a Foundation or terrain-following Module. ${RECHECK_FOR_ADVICE}`,
+            params: { target: 'terrain' },
             location: contact.location,
             rule: 'terrain',
           }),
@@ -279,38 +268,30 @@ export async function checkGeometry(
         a = entries[ai!]!,
         b = entries[bi!]!;
       if (!intersectsBounds(a.bounds, b.bounds, GEOMETRY_TOLERANCE * 3)) continue;
-      if (
-        intersectsBounds(a.bounds, b.bounds, -GEOMETRY_TOLERANCE) &&
-        intersectVolume(a.solid, b.solid) > MIN_VOLUME
-      ) {
+      const aOnB = a.bounds.min[1] >= b.bounds.min[1] - GEOMETRY_TOLERANCE,
+        bOnA = b.bounds.min[1] >= a.bounds.min[1] - GEOMETRY_TOLERANCE;
+      const location = overlapLocation(a, b);
+      if (location) {
         result.violations.push(
           createViolation({
             kind: 'overlap',
             refs: [a.instance.ref, b.instance.ref],
             source: a.instance.source,
             message: `${a.instance.ref} overlaps ${b.instance.ref}.`,
-            suggestion: 'Move one Structure by 0.5 metres or change its Module shape.',
-            location: intersectionLocation(a.solid, b.solid),
+            suggestion: `Move one of the overlapping Structures or change a Module shape. ${RECHECK_FOR_ADVICE}`,
+            params: { target: 'module' },
+            location,
           }),
         );
+        // Overlapping Modules also touch, which is what the downward probes below detect,
+        // so link them directly and save two Boolean operations per overlapping pair.
+        if (aOnB) link(b.instance.ref, a.instance.ref);
+        if (bOnA) link(a.instance.ref, b.instance.ref);
+        continue;
       }
       // A tiny downward probe detects physical bottom contact, including sloped surfaces.
-      if (a.bounds.min[1] >= b.bounds.min[1] - GEOMETRY_TOLERANCE) {
-        const probe = a.solid.translate([0, -GEOMETRY_TOLERANCE * 2, 0]);
-        try {
-          if (intersectVolume(probe, b.solid) > MIN_VOLUME) link(b.instance.ref, a.instance.ref);
-        } finally {
-          probe.delete();
-        }
-      }
-      if (b.bounds.min[1] >= a.bounds.min[1] - GEOMETRY_TOLERANCE) {
-        const probe = b.solid.translate([0, -GEOMETRY_TOLERANCE * 2, 0]);
-        try {
-          if (intersectVolume(probe, a.solid) > MIN_VOLUME) link(a.instance.ref, b.instance.ref);
-        } finally {
-          probe.delete();
-        }
-      }
+      if (aOnB && restsOn(a, b)) link(b.instance.ref, a.instance.ref);
+      if (bOnA && restsOn(b, a)) link(a.instance.ref, b.instance.ref);
     }
     for (const connection of compilation.socketConnections) {
       link(connection.a, connection.b);
@@ -339,7 +320,8 @@ export async function checkGeometry(
             refs: [entry.instance.ref],
             source: entry.instance.source,
             message: `${entry.instance.ref} has no Support connected to terrain.`,
-            suggestion: 'Lower the Structure, add a Foundation, or connect to a supported Module.',
+            params: {},
+            suggestion: `Lower it onto terrain or a supported Module, or attach it to a compatible supported Socket. ${RECHECK_FOR_ADVICE}`,
             location: [
               (entry.bounds.min[0] + entry.bounds.max[0]) / 2,
               entry.bounds.min[1],
@@ -372,13 +354,13 @@ export async function checkGeometry(
           }
           return [...indices].map((index) => entries[index]!);
         },
-        overlaps: (a, b) =>
-          intersectsBounds(a.bounds, b.bounds, -GEOMETRY_TOLERANCE) &&
-          intersectVolume(a.solid, b.solid) > MIN_VOLUME,
+        overlaps: (a, b) => overlapLocation(a, b) !== undefined,
         terrainContact: (entry) =>
           measureTerrainContact(library, entry, [...sampledTriangles(terrain, entry.bounds)]),
       });
-      for (const issue of result.violations) {
+      // Searches cost Boolean operations, so only the first violations get them; the rest
+      // keep the brief suggestion set above until the first ones are fixed.
+      for (const issue of result.violations.slice(0, SEARCHED_ADVICE_LIMIT)) {
         const first = entriesByRef.get(issue.refs[0]!)!;
         issue.suggestion =
           issue.kind === 'overlap'

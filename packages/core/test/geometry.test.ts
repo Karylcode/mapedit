@@ -133,6 +133,42 @@ describe('physical geometry rules', () => {
     expect(compiled.instances).toHaveLength(2000);
     expect(performance.now() - start).toBeLessThan(2000);
   });
+  it('F20 compiles and checks 2000 densely overlapping Modules within the two-second budget', async () => {
+    const models = new Map([['test', await buildModel(box([2, 2, 2]))]]);
+    const start = performance.now();
+    const compiled = fixture(
+      Array.from({ length: 2000 }, (_, index): Vec3 => [
+        2 + (index % 50) * 1.5,
+        0,
+        2 + Math.floor(index / 50) * 1.5,
+      ]),
+    );
+    const checked = await checkGeometry(compiled, models);
+    const elapsed = performance.now() - start;
+    // Every Module overlaps its eight neighbours: 49 x 40 + 50 x 39 + 2 x 49 x 39 pairs.
+    expect(checked.violations).toHaveLength(7732);
+    expect(checked.violations.every((violation) => violation.kind === 'overlap')).toBe(true);
+    const brief = /first 50 geometry violations only/;
+    expect(checked.violations.slice(0, 50).some((item) => brief.test(item.suggestion!))).toBe(
+      false,
+    );
+    expect(checked.violations.slice(50).every((item) => brief.test(item.suggestion!))).toBe(true);
+    expect(elapsed).toBeLessThan(2000);
+  });
+  it('F20 compiles and checks 2000 floating, partly overlapping Modules within the two-second budget', async () => {
+    const models = new Map([['test', await buildModel(box([2, 2, 2]))]]);
+    const start = performance.now();
+    const compiled = fixture(
+      Array.from({ length: 2000 }, (_, index): Vec3 => [
+        2 + (index % 50) * 1.5,
+        4 + Math.floor(index / 50) * 2.5,
+        2 + Math.floor(index / 50) * 1.5,
+      ]),
+    );
+    const checked = await checkGeometry(compiled, models);
+    expect(checked.violations.filter((item) => item.kind === 'unsupported')).toHaveLength(2000);
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
   it('reports real overlap, but permits contact and numerical tolerance', async () => {
     const models = new Map([['test', await buildModel(box([2, 2, 2]))]]);
     expect(

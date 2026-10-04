@@ -145,6 +145,15 @@ and the npm account that will publish them. All packages remain `private: true`;
 this pass validates local tarballs and does not publish. GitHub authentication,
 system Edge and licensed Unity 6 were available for local/GitHub acceptance.
 
+F17 real Claude Code check: `claude` 2.1.258 on this machine answers
+`Failed to authenticate: OAuth session expired and could not be refreshed`, so
+the tool list was not sent to the Anthropic API from here. After signing in again
+(`claude` then `/login`), run `mapedit dev` in an initialized project and call:
+`claude -p 'Call mcp__mapedit__overview, then mcp__mapedit__query with {"x":10,"z":10}.' --mcp-config <file> --strict-mcp-config --allowedTools "mcp__mapedit__overview,mcp__mapedit__query"`,
+where `<file>` contains
+`{"mcpServers":{"mapedit":{"type":"http","url":"http://127.0.0.1:4790/mcp"}}}`.
+Both calls should complete without an API 400.
+
 ## 需要前端配合
 
 - Implement protocol v1 and `/render` exactly as documented; rendering waits for
@@ -352,3 +361,156 @@ Unity 6000.0.75f1 import through `scripts/test-unity.ps1`: 40 MeshColliders, two
 markers, spawn prefab and trigger. Independent F1–F16 checklist review found no
 remaining actionable requirement gap. npm publication remains the explicit human
 follow-up above; frontend/joint acceptance remains separately owned.
+
+## 第二輪修正
+
+F17–F26 from `docs/handoff/backend-fixes-2.md`, fixed on the same `backend` branch
+by Claude. Each entry records the change, the tests and any deviation.
+
+- **F17 complete:** every MCP tool now advertises one top-level `type: "object"`
+  schema with its original properties plus an optional `cursor`. There is no
+  top-level `anyOf`, `oneOf`, `allOf`, `not`, `if`, `then` or `else`, and no
+  top-level `required`, because a continuation sends only the cursor. Required
+  arguments are named in each tool description (`Required arguments: x, z.`) and
+  are still enforced at run time by the original strict Zod schema. A cursor sent
+  with other arguments is rejected with an error that names the extra arguments
+  and asks for `{"cursor":"..."}` alone. Tests: `server/test/mcp-schema.test.ts` lists the real mock server's tools over HTTP and
+  stdio and checks the runtime rules (both tests failed before the fix);
+  `server/test/mcp-paging.test.ts` replaces the assertion that locked in `anyOf`.
+  Real Codex: Codex CLI 0.160.0 with `gpt-5.5` over HTTP MCP called `overview` and
+  `query` and received both results. In `codex exec` the server needs
+  `mcp_servers.mapedit.default_tools_approval_mode="approve"`, otherwise tool calls
+  are refused for approval. The newer Codex models use code mode, which needs
+  `codex-code-mode-host.exe`; it is not installed here, so `gpt-5.5` (direct
+  function tools) was used. A control run against the pre-fix server also worked
+  in Codex, which means Codex rewrites MCP schemas before calling its API; the
+  400 failure is on the Anthropic side. The real Claude Code check is listed under
+  需要人處理 because the CLI login on this machine has expired. Deviation: none.
+- **F18 complete:** `unsupported` advice now looks for a supporting position in
+  this order: lower the whole Structure (F5 behavior); attach to the nearest
+  compatible free Socket of a supported Module, including Sockets in the same
+  Structure, choosing a placement that is verified clear; lower only this Module
+  and the Modules attached to it onto terrain or a supported Module; otherwise
+  name the nearest compatible Socket and say that the obstruction must move too.
+  `canFloat: true` is suggested only when no compatible supported free Socket is
+  within 5 m. Same-Structure advice names the YAML to use, for example
+  `Attach roof to wall_n.top (1 m below)` followed by
+  `attach: {socket: bottom, to: wall_n.top}` as the replacement for the roof's
+  `at` and `rotation`; another Structure gets the matching Structure `attach`.
+  The compiler's Socket alignment moved into the shared `socketAttachment`
+  (`core/src/socket-rules.ts`), so the advice computes
+  the attached pose exactly as compilation does; `inverseRigid` moved from export
+  to `core/src/math.ts`. Tests: `core/test/suggestions.test.ts` "F18" (the roof
+  case, preferring a clear supported Socket over a floating one, an obstructed
+  Socket, and lowering one Module onto its Structure); each fix is applied back
+  and rechecked. All four failed first with the reported `canFloat` advice. The
+  F5 cross-Structure test now expects the exact `attach` text. The rewrite already
+  uses the F24 names (`solidsByStructure`, `Placement`, `place`). Deviation: none.
+- **F19 complete:** `snapMove` in `core/src/format.ts` is now the single rule for a
+  human move: grid X/Z, 15-degree rotation, and the height (a Marker keeps its
+  height above terrain, an explicit Structure height stays, anything else sits on
+  terrain). `normalizeEdit` and the mock `MemoryState` preview/apply both call it;
+  the mock passes its flat terrain at height 0. Dragging the mock box marker from
+  center `[10, 1, 5]` to `[30.2, 0, 29.9]` now gives `[30, 1, 30]`, keeping its
+  bottom on the ground. The mock also stores rotations normalized to 0–360 like
+  the real editor. Test: `server/test/protocol.test.ts` "F19 keeps the bottom
+  clearance of a dragged mock box marker" (preview and apply over WebSocket);
+  it failed first with `[30, 0, 30]`. Deviation: none.
+- **Extra (frontend request) – non-metallic terrain:** the 編輯器前端 session
+  reported that terrain chunk materials had no `metallicFactor`, so glTF's
+  default of 1 rendered terrain as metal (black in shadow in three.js, metallic in
+  Unity). `appendTerrainChunk` now sets `metallicFactor` 0 for every Surface
+  material, which covers both the editor chunk GLBs and the exported map GLB.
+  Tests: `core/test/terrain.test.ts` "terrain chunk materials" and an added check
+  in `core/test/export.test.ts`; both failed first with metallicFactor 1. The
+  frontend's temporary override of `surface:*` metalness is no longer needed.
+- **F20 complete:** three changes in the geometry check. (1) Only the first 50
+  geometry violations, in report order, get a searched suggestion
+  (`SEARCHED_ADVICE_LIMIT` in `core/src/geometry.ts`); the others keep a brief
+  suggestion ending with "Specific suggestions are searched for the first 50
+  geometry violations only; fix those, then run check again." (2) An overlapping
+  pair now costs one exact Boolean instead of four: the same intersection gives the
+  location, and overlapping Modules are linked for Support directly instead of
+  running two downward probes; probes are also skipped when the bounds only share
+  a face. (3) A placed solid whose volume equals its axis-aligned bounds is exactly
+  that box (`PlacedSolid.box`), so two such solids use box arithmetic, which gives
+  the same answer as the Boolean. Shapes with openings and Structures rotated off
+  90° still use exact Booleans. The shared solid helpers live in
+  `core/src/solid.ts`. Measured on this machine for 2,000 box Modules spaced
+  1.5 m (7,732 overlaps), compile plus check: 8.2 s before, 0.35 s after; 2,000
+  floating Modules 0.2 s. Without the box shortcut but with (1) and (2): box grid
+  0.9 s, door-model grid 1.35 s, 15°-rotated grid 1.07 s, and 30°-rotated door
+  models spaced 1.0 m (15,286 overlaps) 4.3 s, because every non-box overlap still
+  needs one exact Boolean (about 0.15–0.3 ms each). Tests:
+  `core/test/geometry.test.ts` "F20" (2,000 densely overlapping Modules with brief
+  advice after the first 50, and 2,000 floating, partly overlapping Modules, both
+  under 2 s; the first took 8 s before the fix) and `core/test/solid.test.ts`
+  (box detection, box arithmetic equal to the Boolean result for overlap, contact
+  and separation, and box tracking through moves). Deviation: none.
+- **Extra (frontend request) – sun and point-marker directions:** the frontend
+  defined in `docs/protocol.md` section 2 (frontend branch, commit `5169f13`)
+  that `sun.azimuth` is measured clockwise from north viewed from above (0 north
+  −Z, 90 east +X, 180 south +Z) and that a point marker faces south (+Z, glTF
+  forward) at rotation 0. `docs/map-format.md` and the generated Agent guide
+  (`templates/authoring.md`, `AGENTS.md`, `SKILL.md`) now say the same. The
+  backend already matched: it passes `sun` through unchanged, exports marker
+  rotation as the glTF node rotation around +Y, and the Unity importer places
+  the mapped prefab at local identity under that node, so a spawn prefab faces
+  glTF forward (+Z) at rotation 0. No code change was needed.
+- **F21 complete:** `docs/protocol.md` section 4 gained two rules (additions
+  only): a `previewEdit` or `applyEdit` whose `edit.ref` is malformed or names a
+  missing object keeps the connection open and gets `previewResult { ok: false }`
+  with exactly one `missing_reference` (its `refs` is the received ref), or
+  `editResult { ok: false, reason }` plus an `edit_rejected` notice, with files and
+  history unchanged; only structurally invalid messages close with 1008 (not JSON,
+  unknown `type`, wrong field types, or messages before `hello`/`openMap`).
+  `validEdit` in `server/src/index.ts` now checks only that `ref` is a string;
+  invalid JSON now closes with 1008 instead of producing a `file_error` notice.
+  Both states answer stale refs: the mock returns one `missing_reference` early,
+  and the real state resolves the edit inside its error handling so nothing
+  escapes to the socket. Tests: `server/test/ws-references.test.ts` runs the same
+  cases against the mock and a real project (six malformed or missing refs for
+  move and delete, four structurally invalid messages, and a ref removed by an
+  Agent rename); the mock and real cases failed first by disconnecting, and
+  invalid JSON failed by staying open. The F15 test in
+  `server/test/protocol.test.ts` that expected 1008 for malformed refs now expects
+  the F21 answer. Deviation: none.
+- **F22 complete:** `AgentServices.projectRevision()` reports a counter that grows
+  whenever project files change (`DiskState.projectRevision`) or the mock scene
+  changes (`scene.revision`). Each captured MCP result stores the revision at the
+  time its first page is produced, after any mutation by the tool itself. A
+  continuation first runs `flush()` to process pending file changes, then compares
+  revisions; on a mismatch the capture is discarded and the call returns
+  `Results changed since the first page. Run the tool again without cursor.`
+  Unchanged projects keep continuing from the immutable capture, so F11's
+  no-replay guarantee is unchanged. Tests: `server/test/mcp-paging.test.ts` "F22"
+  (a real project: first page of `check`, edit a structure file, continuation
+  returns the error, which failed first by returning the old page; an unchanged
+  real project pages to the end; a pending Agent edit that only the
+  continuation's flush processes). The F11 paging tests now also assert that
+  every continuation flushed first. Deviation: none.
+- **F23 complete:** `docs/protocol.md` section 3 now has a "違規的 params" table
+  listing each kind's params with names, types and meanings, plus the
+  `OffGridField`, `RotationField` and `MissingReferenceReason` values (additions
+  only; `ViolationView.params` stays `Record<string, unknown>`). Shapes chosen
+  for translation: `off_grid {field, values, nearest, moduleType?}`,
+  `bad_rotation {field, rotation, step, nearest, moduleType?}`,
+  `out_of_bounds {edges: [{edge, distance}], bounds, size}`,
+  `missing_reference {reason, reference, moduleType?}`,
+  `incompatible_socket {reason, socketA, socketB, typeA, typeB}`,
+  `overlap {target: 'module' | 'terrain'}` (replacing the undocumented
+  `terrain: true`) and `unsupported {}`; file-backed violations add `file` and
+  `line`. `packages/protocol` exports `ViolationParamsByKind`,
+  `TypedViolationView` and `violationParamsProblems()`, a strict checker that also
+  reports undocumented keys. `createViolation` in core now requires exactly the
+  documented params for its kind at compile time, so every compiler, geometry,
+  editor-preview and mock producer was updated; `exceededMapEdges` computes the
+  edges for both the compiler and the mock. The mock scene's socket example now
+  uses roof and stair, which really are incompatible. Tests:
+  `core/test/violation-params.test.ts` compiles projects that produce every kind,
+  field and reason and checks each violation with the checker (failed first on
+  missing `field`/`target`); `server/test/violation-params.test.ts` checks the
+  mock scene, mock previews and real editor previews (all three failed against
+  the previous producers). `server/test/build-project.test.ts` now reads
+  `params.target`. Deviation: none; `immovable_object` was added to the reasons for
+  editor previews that try to move a Module or an attached Structure.

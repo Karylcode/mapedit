@@ -1,4 +1,13 @@
-import type { Mat4, SceneSnapshot, TerrainView, Vec3, ViolationView } from '@mapedit/protocol';
+import type {
+  MapEdge,
+  Mat4,
+  OffGridField,
+  RotationField,
+  SceneSnapshot,
+  TerrainView,
+  Vec3,
+  ViolationView,
+} from '@mapedit/protocol';
 import { markerPosition, markerRef, moduleRef, structureRef } from '@mapedit/protocol';
 import type {
   Compilation,
@@ -20,7 +29,6 @@ import {
   EPSILON,
   moduleTransform,
   multiplyMatrices,
-  normalizeRotation,
   onGrid,
   snap,
   transformBounds,
@@ -29,7 +37,7 @@ import {
   yawOf,
 } from './math.js';
 import { createViolation } from './violation.js';
-import { compatibleSocketTypes, socketTypesCompatible } from './socket-rules.js';
+import { compatibleSocketTypes, socketAttachment, socketTypesCompatible } from './socket-rules.js';
 
 function referenceSuggestion(value: string, candidates: string[], fallback: string): string {
   const distance = (candidate: string): number => {
@@ -51,6 +59,21 @@ function referenceSuggestion(value: string, candidates: string[], fallback: stri
   return closest.length
     ? `Closest existing ids to "${value}": ${closest.map(({ id }) => `"${id}"`).join(', ')}. ${fallback}`
     : fallback;
+}
+
+/** Map edges the bounds cross, and how far beyond each edge they reach, in metres. */
+export function exceededMapEdges(
+  bounds: Bounds,
+  size: MapDefinition['size'],
+): { edge: MapEdge; distance: number }[] {
+  const edges: { edge: MapEdge; distance: number }[] = [];
+  if (bounds.min[2] < -EPSILON) edges.push({ edge: 'north', distance: clean(-bounds.min[2]) });
+  if (bounds.max[2] > size.z + EPSILON)
+    edges.push({ edge: 'south', distance: clean(bounds.max[2] - size.z) });
+  if (bounds.max[0] > size.x + EPSILON)
+    edges.push({ edge: 'east', distance: clean(bounds.max[0] - size.x) });
+  if (bounds.min[0] < -EPSILON) edges.push({ edge: 'west', distance: clean(-bounds.min[0]) });
+  return edges;
 }
 
 function boundsSuggestion(ref: string, bounds: Bounds, size: MapDefinition['size']): string {
@@ -124,49 +147,55 @@ export function compileMap(
   const byId = new Map(structures.map((s) => [s.id, s]));
   const terrainHeight = options.terrainHeight ?? (() => 0);
 
-  const checkGridAlignment = (
-    values: number[],
-    ref: string | undefined,
-    source: SourceRef,
-    label: string,
-    positive = false,
-    diagnostic: { params?: Record<string, unknown>; rule?: string } = {},
-  ): void => {
-    if (values.some((n) => !onGrid(n))) {
-      const nearest = values.map((value) => (positive ? Math.max(0.5, snap(value)) : snap(value)));
-      violations.push(
-        createViolation({
-          kind: 'off_grid',
-          message: `${label} must use multiples of 0.5 meters.`,
-          refs: ref ? [ref] : [],
-          source,
-          suggestion: `Set ${label} to ${nearest.length === 1 ? nearest[0] : `[${nearest.join(', ')}]`} m (nearest legal 0.5 m values).`,
-          params: { values, ...diagnostic.params },
-          rule: diagnostic.rule ?? label,
-        }),
-      );
-    }
+  const checkGridAlignment = (check: {
+    values: number[];
+    ref: string | undefined;
+    source: SourceRef;
+    label: string;
+    field: OffGridField;
+    /** Sizes cannot snap below one grid step. */
+    minimum?: number;
+    moduleType?: string;
+    rule?: string;
+  }): void => {
+    const { values, ref, source, label, field, minimum = -Infinity, moduleType } = check;
+    if (values.every((n) => onGrid(n))) return;
+    const nearest = values.map((value) => Math.max(minimum, snap(value)));
+    violations.push(
+      createViolation({
+        kind: 'off_grid',
+        message: `${label} must use multiples of 0.5 meters.`,
+        refs: ref ? [ref] : [],
+        source,
+        suggestion: `Set ${label} to ${nearest.length === 1 ? nearest[0] : `[${nearest.join(', ')}]`} m (nearest legal 0.5 m values).`,
+        params: { field, values, nearest, ...(moduleType ? { moduleType } : {}) },
+        rule: check.rule ?? label,
+      }),
+    );
   };
-  const checkRotation = (
-    value: number,
-    step: number,
-    ref: string | undefined,
-    source: SourceRef,
-    rule = 'rotation',
-    params: Record<string, unknown> = {},
-  ): void => {
-    if (!onGrid(value, step))
-      violations.push(
-        createViolation({
-          kind: 'bad_rotation',
-          message: `Rotation ${value} degrees must be a multiple of ${step}.`,
-          refs: ref ? [ref] : [],
-          source,
-          suggestion: `Use ${snap(value, step)} degrees.`,
-          params: { rotation: value, step, ...params },
-          rule,
-        }),
-      );
+  const checkRotation = (check: {
+    value: number;
+    step: 15 | 90;
+    ref: string | undefined;
+    source: SourceRef;
+    field: RotationField;
+    moduleType?: string;
+    rule?: string;
+  }): void => {
+    const { value, step, ref, source, field, moduleType } = check;
+    if (onGrid(value, step)) return;
+    const nearest = snap(value, step);
+    violations.push(
+      createViolation({
+        kind: 'bad_rotation',
+        message: `Rotation ${value} degrees must be a multiple of ${step}.`,
+        refs: ref ? [ref] : [],
+        source,
+        suggestion: `Use ${nearest} degrees.`,
+        params: { field, rotation: value, step, nearest, ...(moduleType ? { moduleType } : {}) },
+        rule: check.rule ?? 'rotation',
+      }),
+    );
   };
   for (const [type, definition] of Object.entries(parsed.project.socketTypes).sort(([a], [b]) =>
     compareText(a, b),
@@ -184,7 +213,7 @@ export function compileMap(
               Object.keys(parsed.project.socketTypes),
               `Correct compatibleWith or define socketTypes.${compatible}.`,
             ),
-            params: { reference: compatible },
+            params: { reason: 'unknown_socket_type', reference: compatible },
             rule: `socket-type:${type}:compatible-with:${compatible}`,
           }),
         );
@@ -193,17 +222,16 @@ export function compileMap(
     const refs = structures.flatMap((s) =>
       s.modules.filter((m) => m.module === definition.id).map((m) => moduleRef(s.id, m.id)),
     );
-    checkGridAlignment(
-      definition.size,
-      refs[0],
-      definition.source,
-      `Module "${definition.id}" dimensions`,
-      true,
-      {
-        params: { moduleType: definition.id },
-        ...(!refs.length ? { rule: `definition:${definition.id}:dimensions` } : {}),
-      },
-    );
+    checkGridAlignment({
+      values: definition.size,
+      ref: refs[0],
+      source: definition.source,
+      label: `Module "${definition.id}" dimensions`,
+      field: 'module_size',
+      minimum: 0.5,
+      moduleType: definition.id,
+      ...(!refs.length ? { rule: `definition:${definition.id}:dimensions` } : {}),
+    });
     if (definition.material && !parsed.project.materials.includes(definition.material))
       violations.push(
         createViolation({
@@ -216,36 +244,39 @@ export function compileMap(
             parsed.project.materials,
             'Choose an existing material id.',
           ),
-          params: { reference: definition.material, moduleType: definition.id },
+          params: {
+            reason: 'unknown_material',
+            reference: definition.material,
+            moduleType: definition.id,
+          },
           rule: refs.length
             ? `module:${definition.id}:material`
             : `definition:${definition.id}:material`,
         }),
       );
     for (const socket of definition.sockets) {
-      checkGridAlignment(
-        socket.position,
-        refs[0],
-        socket.source,
-        `Socket "${socket.id}" position`,
-        false,
-        {
-          params: { moduleType: definition.id },
-          ...(!refs.length
-            ? { rule: `definition:${definition.id}:socket:${socket.id}:position` }
-            : {}),
-        },
-      );
-      checkRotation(
-        socket.rotation,
-        90,
-        refs[0],
-        socket.source,
-        refs.length
+      checkGridAlignment({
+        values: socket.position,
+        ref: refs[0],
+        source: socket.source,
+        label: `Socket "${socket.id}" position`,
+        field: 'socket_position',
+        moduleType: definition.id,
+        ...(!refs.length
+          ? { rule: `definition:${definition.id}:socket:${socket.id}:position` }
+          : {}),
+      });
+      checkRotation({
+        value: socket.rotation,
+        step: 90,
+        ref: refs[0],
+        source: socket.source,
+        field: 'socket',
+        moduleType: definition.id,
+        rule: refs.length
           ? `socket:${definition.id}/${socket.id}:rotation`
           : `definition:${definition.id}:socket:${socket.id}:rotation`,
-        { moduleType: definition.id },
-      );
+      });
       if (!parsed.project.socketTypes[socket.type])
         violations.push(
           createViolation({
@@ -258,7 +289,11 @@ export function compileMap(
               Object.keys(parsed.project.socketTypes),
               `Correct the type or define socketTypes.${socket.type} in project.yaml.`,
             ),
-            params: { moduleType: definition.id },
+            params: {
+              reason: 'unknown_socket_type',
+              reference: socket.type,
+              moduleType: definition.id,
+            },
             rule: refs.length
               ? `socket:${definition.id}/${socket.id}:type`
               : `definition:${definition.id}:socket:${socket.id}:type`,
@@ -273,6 +308,12 @@ export function compileMap(
           `Socket ${instanceRef}.${socket.id} (${socket.type}) accepts: ${compatibleSocketTypes(parsed.project.socketTypes, socket.type).join(', ') || 'no declared types'}.`,
       )
       .join(' ');
+  const socketPairParams = (own: PlacedSocket, target: PlacedSocket) => ({
+    socketA: `${own.instanceRef}.${own.socket.id}`,
+    socketB: `${target.instanceRef}.${target.socket.id}`,
+    typeA: own.socket.type,
+    typeB: target.socket.type,
+  });
   const connect = (own: PlacedSocket, target: PlacedSocket, source: SourceRef): void => {
     const a = `${own.instanceRef}.${own.socket.id}`,
       b = `${target.instanceRef}.${target.socket.id}`;
@@ -284,7 +325,7 @@ export function compileMap(
           refs: [own.instanceRef, target.instanceRef],
           source,
           suggestion: `${socketAdvice(own, target)} Use one of these types or update the compatibility rules in project.yaml.`,
-          params: { socketA: a, socketB: b },
+          params: { reason: 'types', ...socketPairParams(own, target) },
           rule: `socket-types:${JSON.stringify([a, b].sort())}`,
         }),
       );
@@ -296,7 +337,7 @@ export function compileMap(
           refs: [own.instanceRef, target.instanceRef],
           source,
           suggestion: `Free ${[a, b].filter((ref) => usedSockets.has(ref)).join(' and ')} by removing its existing attachment, or choose another free socket; each permits one connection. ${socketAdvice(own, target)}`,
-          params: { socketA: a, socketB: b },
+          params: { reason: 'occupied', ...socketPairParams(own, target) },
           rule: `socket-occupied:${JSON.stringify([a, b].sort())}`,
         }),
       );
@@ -305,65 +346,53 @@ export function compileMap(
     socketConnections.push({ a: own.instanceRef, b: target.instanceRef });
   };
   const attachmentMatrix = (own: PlacedSocket, target: PlacedSocket, source: SourceRef): Mat4 => {
-    const ownDirection = directionVector(
-      own.socket.direction,
-      own.socket.rotation + yawOf(own.transform),
-    );
-    const targetDirection = directionVector(
-      target.socket.direction,
-      target.socket.rotation + yawOf(target.transform),
-    );
-    let yaw: number;
-    if (Math.abs(ownDirection[1]) > EPSILON || Math.abs(targetDirection[1]) > EPSILON) {
-      if (
-        Math.abs(ownDirection[1] + targetDirection[1]) > EPSILON ||
-        Math.abs(ownDirection[1]) < EPSILON
-      )
-        violations.push(
-          createViolation({
-            kind: 'incompatible_socket',
-            message: 'Socket directions cannot face each other with a Y-axis rotation.',
-            refs: [own.instanceRef, target.instanceRef],
-            source,
-            suggestion: `Choose an ${targetDirection[1] > EPSILON ? 'own Socket facing down' : targetDirection[1] < -EPSILON ? 'own Socket facing up' : 'own horizontal Socket'} to face ${target.instanceRef}.${target.socket.id}; a Y-axis rotation cannot align the current directions. ${socketAdvice(own, target)}`,
-            rule: `socket-directions:${JSON.stringify([`${own.instanceRef}.${own.socket.id}`, `${target.instanceRef}.${target.socket.id}`].sort())}`,
-          }),
-        );
-      yaw =
-        yawOf(target.transform) +
-        target.socket.rotation -
-        yawOf(own.transform) -
-        own.socket.rotation;
-    } else
-      yaw =
-        (Math.atan2(targetDirection[0], targetDirection[2]) * 180) / Math.PI +
-        180 -
-        (Math.atan2(ownDirection[0], ownDirection[2]) * 180) / Math.PI;
-    yaw = normalizeRotation(yaw);
-    const ownPoint = transformPoint(own.transform, own.socket.position),
-      targetPoint = transformPoint(target.transform, target.socket.position);
-    const rotated = transformPoint(transformMatrix([0, 0, 0], yaw), ownPoint);
-    return transformMatrix(targetPoint.map((n, i) => clean(n - rotated[i]!)) as Vec3, yaw);
+    const { transform, facing } = socketAttachment(own, target);
+    if (!facing) {
+      const targetDirection = directionVector(
+        target.socket.direction,
+        target.socket.rotation + yawOf(target.transform),
+      );
+      violations.push(
+        createViolation({
+          kind: 'incompatible_socket',
+          message: 'Socket directions cannot face each other with a Y-axis rotation.',
+          refs: [own.instanceRef, target.instanceRef],
+          source,
+          suggestion: `Choose an ${targetDirection[1] > EPSILON ? 'own Socket facing down' : targetDirection[1] < -EPSILON ? 'own Socket facing up' : 'own horizontal Socket'} to face ${target.instanceRef}.${target.socket.id}; a Y-axis rotation cannot align the current directions. ${socketAdvice(own, target)}`,
+          params: { reason: 'directions', ...socketPairParams(own, target) },
+          rule: `socket-directions:${JSON.stringify([`${own.instanceRef}.${own.socket.id}`, `${target.instanceRef}.${target.socket.id}`].sort())}`,
+        }),
+      );
+    }
+    return transform;
   };
   const localByStructure = new Map<string, Map<string, LocalInstance>>();
   for (const structure of structures) {
     const structureReference = structureRef(structure.id);
     sourceRefs[structureReference] = structure.source;
     if (!structure.attach) {
-      checkGridAlignment(
-        structure.position,
-        structureReference,
-        structure.source,
-        `Structure "${structure.id}" position`,
-      );
+      checkGridAlignment({
+        values: structure.position,
+        ref: structureReference,
+        source: structure.source,
+        label: `Structure "${structure.id}" position`,
+        field: 'structure_position',
+      });
       if (structure.height !== 'auto')
-        checkGridAlignment(
-          [structure.height],
-          structureReference,
-          structure.source,
-          `Structure "${structure.id}" height`,
-        );
-      checkRotation(structure.rotation, 15, structureReference, structure.source);
+        checkGridAlignment({
+          values: [structure.height],
+          ref: structureReference,
+          source: structure.source,
+          label: `Structure "${structure.id}" height`,
+          field: 'structure_height',
+        });
+      checkRotation({
+        value: structure.rotation,
+        step: 15,
+        ref: structureReference,
+        source: structure.source,
+        field: 'structure',
+      });
     }
     const locals = new Map<string, LocalInstance>(),
       definitions = new Map(structure.modules.map((m) => [m.id, m])),
@@ -384,6 +413,7 @@ export function compileMap(
             refs: [ref],
             source: instance.source,
             suggestion: 'Give one module an at position and remove the attachment cycle.',
+            params: { reason: 'attachment_cycle', reference: instance.id },
             rule: 'module-attachment-cycle',
           }),
         );
@@ -403,7 +433,7 @@ export function compileMap(
               Object.keys(parsed.modules),
               'Use an existing module id or create its module.yaml and model.ts.',
             ),
-            params: { reference: instance.module },
+            params: { reason: 'unknown_module', reference: instance.module },
             rule: 'module-type',
           }),
         );
@@ -442,7 +472,7 @@ export function compileMap(
                     ),
                   'Set attach.to to instance_id.socket_id.',
                 )}`,
-                params: { reference: instance.attach.to },
+                params: { reason: 'unresolved_attachment', reference: instance.attach.to },
                 rule: 'module-attachment',
               }),
             );
@@ -463,16 +493,35 @@ export function compileMap(
           };
         transform = attachmentMatrix(own, targetSocket, instance.source);
         connect(own, targetSocket, instance.source);
-        checkRotation(yawOf(transform), 90, ref, instance.source);
-        checkGridAlignment(
-          transformBounds(transform, definition.size).min,
+        checkRotation({
+          value: yawOf(transform),
+          step: 90,
           ref,
-          instance.source,
-          'Attached module position',
-        );
+          source: instance.source,
+          field: 'attached_module',
+        });
+        checkGridAlignment({
+          values: transformBounds(transform, definition.size).min,
+          ref,
+          source: instance.source,
+          label: 'Attached module position',
+          field: 'attached_module_position',
+        });
       } else {
-        checkGridAlignment(instance.at!, ref, instance.source, `Module "${instance.id}" position`);
-        checkRotation(instance.rotation, 90, ref, instance.source);
+        checkGridAlignment({
+          values: instance.at!,
+          ref,
+          source: instance.source,
+          label: `Module "${instance.id}" position`,
+          field: 'module_position',
+        });
+        checkRotation({
+          value: instance.rotation,
+          step: 90,
+          ref,
+          source: instance.source,
+          field: 'module',
+        });
         transform = moduleTransform(instance.at!, definition.size, instance.rotation);
       }
       const result: LocalInstance = {
@@ -517,6 +566,7 @@ export function compileMap(
           refs: [ref],
           source: structure.source,
           suggestion: 'Keep one structure positioned and remove the attachment cycle.',
+          params: { reason: 'attachment_cycle', reference: structure.id },
           rule: 'structure-attachment-cycle',
         }),
       );
@@ -561,6 +611,7 @@ export function compileMap(
                   ),
                 'Set attach.to to other_structure/instance.socket.',
               )}`,
+              params: { reason: 'unresolved_attachment', reference: structure.attach.to },
               rule: 'structure-attachment',
             }),
           );
@@ -575,7 +626,13 @@ export function compileMap(
       const transform = attachmentMatrix(own, target, structure.source);
       connect(own, target, structure.source);
       const relativeRotation = yawOf(transform) - yawOf(targetPlacement.transform);
-      checkRotation(relativeRotation, 90, ref, structure.source);
+      checkRotation({
+        value: relativeRotation,
+        step: 90,
+        ref,
+        source: structure.source,
+        field: 'structure_attachment',
+      });
       placement = { transform, root: targetPlacement.root };
     } else {
       const [x, z] = structure.position,
@@ -715,7 +772,7 @@ export function compileMap(
               map.size,
             ),
             location: bounds.min,
-            params: { bounds, size: map.size },
+            params: { edges: exceededMapEdges(bounds, map.size), bounds, size: map.size },
           }),
         );
       for (const socket of local.definition.sockets) {
@@ -738,10 +795,29 @@ export function compileMap(
       shape = marker.shape,
       position = markerPosition(shape);
     sourceRefs[ref] = marker.source;
-    checkGridAlignment(position, ref, marker.source, `Marker "${marker.id}" position`);
-    checkRotation(shape.rotation, 15, ref, marker.source);
+    checkGridAlignment({
+      values: position,
+      ref,
+      source: marker.source,
+      label: `Marker "${marker.id}" position`,
+      field: 'marker_position',
+    });
+    checkRotation({
+      value: shape.rotation,
+      step: 15,
+      ref,
+      source: marker.source,
+      field: 'marker',
+    });
     if (shape.kind === 'box')
-      checkGridAlignment(shape.size, ref, marker.source, `Marker "${marker.id}" size`, true);
+      checkGridAlignment({
+        values: shape.size,
+        ref,
+        source: marker.source,
+        label: `Marker "${marker.id}" size`,
+        field: 'marker_size',
+        minimum: 0.5,
+      });
     const definition = parsed.project.markerTypes[marker.type];
     if (!definition)
       violations.push(
@@ -755,6 +831,7 @@ export function compileMap(
             Object.keys(parsed.project.markerTypes),
             `Correct the type or define markerTypes.${marker.type} in project.yaml.`,
           ),
+          params: { reason: 'unknown_marker_type', reference: marker.type },
           rule: 'marker-type',
         }),
       );
@@ -790,6 +867,7 @@ export function compileMap(
           source: marker.source,
           suggestion: boundsSuggestion(ref, bounds, map.size),
           location: position,
+          params: { edges: exceededMapEdges(bounds, map.size), bounds, size: map.size },
         }),
       );
     scene.markers.push({ ref, type: marker.type, shape, properties: marker.properties });

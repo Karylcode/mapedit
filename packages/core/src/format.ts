@@ -513,6 +513,27 @@ export function parseProject(inputFiles: Record<string, string>): ParsedProject 
   };
 }
 
+export type MoveEdit = Extract<Edit, { kind: 'move' }>;
+
+/**
+ * Snap a human move to the map grid and 15-degree steps, then choose its height.
+ * A Marker keeps its height above terrain; an explicit Structure height stays explicit;
+ * anything else sits on the terrain. Shared by the real editor and the mock server.
+ */
+export function snapMove(
+  edit: MoveEdit,
+  current: { markerPosition?: Vec3; explicitHeight?: number },
+  terrainHeight: (x: number, z: number) => number = () => 0,
+): MoveEdit {
+  const x = snap(edit.position[0]),
+    z = snap(edit.position[2]);
+  const previous = current.markerPosition;
+  const y = previous
+    ? snap(previous[1] + terrainHeight(x, z) - terrainHeight(previous[0], previous[2]))
+    : (current.explicitHeight ?? snap(terrainHeight(x, z)));
+  return { ...edit, position: [x, y, z], rotation: normalizeRotation(snap(edit.rotation, 15)) };
+}
+
 /** Snap a human move to the map grid. Explicit structure heights remain explicit. */
 export function normalizeEdit(
   parsed: ParsedProject,
@@ -531,15 +552,14 @@ export function normalizeEdit(
     reference?.kind === 'marker'
       ? map?.markers.find((m) => m.id === reference.markerId)
       : undefined;
-  const x = snap(edit.position[0]),
-    z = snap(edit.position[2]);
-  const oldPosition = marker && markerPosition(marker.shape);
-  const y = oldPosition
-    ? snap(oldPosition[1] + terrainHeight(x, z) - terrainHeight(oldPosition[0], oldPosition[2]))
-    : structure && structure.height !== 'auto'
-      ? structure.height
-      : snap(terrainHeight(x, z));
-  return { ...edit, position: [x, y, z], rotation: normalizeRotation(snap(edit.rotation, 15)) };
+  return snapMove(
+    edit,
+    {
+      ...(marker ? { markerPosition: markerPosition(marker.shape) } : {}),
+      ...(structure && structure.height !== 'auto' ? { explicitHeight: structure.height } : {}),
+    },
+    terrainHeight,
+  );
 }
 
 /** Return only changed source texts, without mutating the parsed project. */

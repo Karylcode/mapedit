@@ -356,6 +356,7 @@ export function appendTerrainChunk(doc: Document, chunk: TerrainChunkMesh): Mesh
       doc
         .createMaterial(name)
         .setBaseColorFactor(colors[surface]!)
+        .setMetallicFactor(0)
         .setRoughnessFactor(1)
         .setDoubleSided(true);
     mesh.addPrimitive(

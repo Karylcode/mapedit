@@ -57,6 +57,10 @@ export class DiskState extends EventEmitter implements StateStore {
   private baseline = new Map<string, Buffer>();
   private watcher?: FSWatcher;
   private revision = 0;
+  /** Counts every processed change of the project's authoring files. */
+  get projectRevision(): number {
+    return this.revision;
+  }
   private busy = Promise.resolve();
   private closed = false;
   private lastAgent = new Map<string, number>();
@@ -249,13 +253,14 @@ export class DiskState extends EventEmitter implements StateStore {
   }
   async preview(edit: Edit, requestId: number, mapId = this.scene.map.id): Promise<Preview> {
     const cached = await this.getBuild(mapId);
-    const normalized = normalizeEdit(cached.parsed, mapId, edit, cached.heightAt);
+    // A malformed or stale ref is answered as one missing_reference (protocol section 4).
     try {
       if (edit.kind === 'delete') {
         if (!cached.compilation.sourceRefs[edit.ref])
           throw new Error(`Unknown object "${edit.ref}".`);
         return { type: 'previewResult', requestId, ok: true, violations: [] };
       }
+      const normalized = normalizeEdit(cached.parsed, mapId, edit, cached.heightAt);
       const files = {
         ...cached.parsed.files,
         ...applySourceEdit(cached.parsed, mapId, normalized),
@@ -282,6 +287,11 @@ export class DiskState extends EventEmitter implements StateStore {
         ...(transform ? { transform } : {}),
       };
     } catch (error) {
+      // An existing object that cannot be edited is a Module inside a Structure or an
+      // attached Structure; anything else is a stale or malformed ref.
+      const reason = cached.compilation.sourceRefs[edit.ref]
+        ? 'immovable_object'
+        : 'unknown_object';
       return {
         type: 'previewResult',
         requestId,
@@ -290,7 +300,7 @@ export class DiskState extends EventEmitter implements StateStore {
           createViolation({
             kind: 'missing_reference',
             message: error instanceof Error ? error.message : String(error),
-            params: {},
+            params: { reason, reference: edit.ref },
             refs: [edit.ref],
             suggestion: 'Reload the map and select an existing object.',
             rule: 'edit-reference',

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { transformMatrix, createViolation } from '@mapedit/core';
+import { transformMatrix, createViolation, exceededMapEdges, snapMove } from '@mapedit/core';
 import { parseObjectRef, markerPosition } from '@mapedit/protocol';
 import type {
   Edit,
@@ -7,6 +7,7 @@ import type {
   ProjectInfo,
   SceneSnapshot,
   ServerMessage,
+  Vec3,
   ViolationView,
   NoticeCode,
 } from '@mapedit/protocol';
@@ -18,6 +19,8 @@ import type { AgentServices } from './mcp.js';
 import type { ScreenshotService } from './screenshot.js';
 
 export type Preview = Extract<ServerMessage, { type: 'previewResult' }>;
+/** The mock terrain is one flat chunk whose surface is at height 0. */
+const mockTerrainHeight = (): number => 0;
 export interface StateStore {
   project: ProjectInfo;
   scene: SceneSnapshot;
@@ -88,34 +91,46 @@ export class MemoryState extends EventEmitter implements StateStore {
       this.scene.structures.some(
         (s) => s.ref === edit.ref || s.instances.some((i) => i.ref === edit.ref),
       ) || this.scene.markers.some((m) => m.ref === edit.ref);
+    // A stale or malformed ref gets exactly one missing_reference, as in protocol section 4.
     if (!exists || (edit.kind === 'move' && object?.kind === 'module'))
-      violations.push(
-        createViolation({
-          kind: 'missing_reference',
-          message: 'Select an existing structure or marker to move.',
-          params: {},
-          refs: [edit.ref],
-          suggestion: 'Reload the map and select an existing object.',
-          rule: 'mock-preview-reference',
-        }),
-      );
-    if (edit.kind === 'delete')
-      return { type: 'previewResult', requestId, ok: violations.length === 0, violations };
-    const position = edit.position.map((v) => Math.round(v * 2) / 2) as [number, number, number];
-    position[1] = 0;
-    const rotation = Math.round(edit.rotation / 15) * 15;
+      return {
+        type: 'previewResult',
+        requestId,
+        ok: false,
+        violations: [
+          createViolation({
+            kind: 'missing_reference',
+            message: exists
+              ? `Move the whole Structure; ${edit.ref} is a Module inside it.`
+              : `Unknown object "${edit.ref}".`,
+            params: { reason: exists ? 'immovable_object' : 'unknown_object', reference: edit.ref },
+            refs: [edit.ref],
+            suggestion: 'Reload the map and select an existing structure or marker.',
+            rule: 'mock-preview-reference',
+          }),
+        ],
+      };
+    if (edit.kind === 'delete') return { type: 'previewResult', requestId, ok: true, violations };
+    // The same height rule as the real editor, on the mock's flat terrain at height 0.
+    const marker = this.scene.markers.find((item) => item.ref === edit.ref);
+    const { position, rotation } = snapMove(
+      edit,
+      marker ? { markerPosition: markerPosition(marker.shape) } : {},
+      mockTerrainHeight,
+    );
+    // Mock Structures are one 2 m block; Markers are checked at their position.
     const extent = object?.kind === 'structure' ? 2 : 0;
-    if (
-      position[0] < 0 ||
-      position[2] < 0 ||
-      position[0] + extent > this.scene.map.size.x ||
-      position[2] + extent > this.scene.map.size.z
-    )
+    const bounds = {
+      min: position,
+      max: [position[0] + extent, position[1] + extent, position[2] + extent] as Vec3,
+    };
+    const edges = exceededMapEdges(bounds, this.scene.map.size);
+    if (edges.length)
       violations.push(
         createViolation({
           kind: 'out_of_bounds',
           message: 'The object would be outside the map.',
-          params: { position },
+          params: { edges, bounds, size: this.scene.map.size },
           refs: [edit.ref],
           location: position,
           suggestion: 'Move the object inside the map.',
@@ -150,7 +165,7 @@ export class MemoryState extends EventEmitter implements StateStore {
       this.scene.markers = this.scene.markers.filter((m) => m.ref !== edit.ref);
     } else if (structure && preview.transform) {
       const previous = structure.transform;
-      const angle = Math.round(edit.rotation / 15) * 15;
+      const angle = snapMove(edit, {}, mockTerrainHeight).rotation;
       const oldAngle = (Math.atan2(-previous[2]!, previous[0]!) * 180) / Math.PI;
       const delta = ((angle - oldAngle) * Math.PI) / 180;
       for (const instance of structure.instances) {
@@ -174,7 +189,7 @@ export class MemoryState extends EventEmitter implements StateStore {
       ];
       const coordinates = markerPosition(marker.shape);
       coordinates.splice(0, 3, ...position);
-      marker.shape.rotation = Math.round(edit.rotation / 15) * 15;
+      marker.shape.rotation = snapMove(edit, {}, mockTerrainHeight).rotation;
     }
     this.scene.revision++;
     this.record('human', `${edit.kind === 'move' ? 'Move' : 'Delete'} ${edit.ref}`, [

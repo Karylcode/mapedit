@@ -33,6 +33,34 @@ export function multiplyMatrices(a: Mat4, b: Mat4): Mat4 {
     ),
   );
 }
+/** Inverse of a rotation-plus-translation matrix, without general matrix inversion. */
+export function inverseRigid(matrix: Mat4): Mat4 {
+  const result = [
+    matrix[0]!,
+    matrix[4]!,
+    matrix[8]!,
+    0,
+    matrix[1]!,
+    matrix[5]!,
+    matrix[9]!,
+    0,
+    matrix[2]!,
+    matrix[6]!,
+    matrix[10]!,
+    0,
+    0,
+    0,
+    0,
+    1,
+  ];
+  for (let row = 0; row < 3; row++)
+    result[row + 12] = -(
+      result[row]! * matrix[12]! +
+      result[row + 4]! * matrix[13]! +
+      result[row + 8]! * matrix[14]!
+    );
+  return result;
+}
 export function transformBounds(matrix: Mat4, size: Vec3): Bounds {
   const points = [0, size[0]].flatMap((x) =>
     [0, size[1]].flatMap((y) => [0, size[2]].map((z) => transformPoint(matrix, [x, y, z]))),

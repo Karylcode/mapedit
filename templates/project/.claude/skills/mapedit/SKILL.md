@@ -52,7 +52,9 @@ Call the same tool with only `{"cursor":"..."}` until `nextCursor` is `null`,
 then concatenate the fragments in order to recover the original text (normally
 JSON). Continuations read the captured result, so terrain changes, exports and
 module builds run only once; images appear on the first page. Captures expire
-after five minutes and may be evicted when the cache fills. If a cursor expires,
+after five minutes and may be evicted when the cache fills. If project files change
+between pages, the continuation returns `Results changed since the first page.`;
+run the tool again without `cursor`. If a cursor expires or is voided this way,
 inspect current state before deciding whether to repeat a modifying tool.
 Collection `offset` and `limit` arguments still select which items to inspect.
 
@@ -60,7 +62,9 @@ Collection `offset` and `limit` arguments still select which items to inspect.
 
 `project.yaml` defines the project name, socket compatibility and marker types.
 `maps/<folder>/map.yaml` defines `id`, `name`, `size: {x, z}` (100–1000 whole metres)
-and `sun: {azimuth, elevation}`. An omitted `id` defaults to the folder name.
+and `sun: {azimuth, elevation}`. `azimuth` is degrees clockwise from north viewed
+from above (0 north, 90 east, 180 south); `elevation` is degrees above the horizon.
+An omitted `id` defaults to the folder name.
 Structure files live beside that map in `structures/`; module definitions live in
 `modules/<folder>/module.yaml`. IDs may differ from folder names. IDs start with
 a letter and contain letters, digits, `_` or `-`.
@@ -103,7 +107,9 @@ markers:
     properties: { event: enter_village }
 ```
 
-Marker rotation uses 15 degree steps. A box is positioned by its centre: a box
+Marker rotation uses 15 degree steps. At rotation 0 a point marker faces south
+(+Z); rotation 90 faces east (+X), because positive rotations turn counterclockwise
+viewed from above. A box is positioned by its centre: a box
 2 metres tall at ground height zero needs `center.y: 1`. Human dragging preserves
 clearance relative to terrain, rounding the final y coordinate to 0.5 metres.
 

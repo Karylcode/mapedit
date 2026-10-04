@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createServer } from 'node:http';
+import { createServer as createHttpServer } from 'node:http';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -8,6 +11,7 @@ import { parseProject, compileMap } from '@mapedit/core';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createMcpHttpHandler, type AgentServices } from '../src/mcp.js';
 import { ScreenshotService } from '../src/screenshot.js';
+import { createServer } from '../src/index.js';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -71,7 +75,9 @@ async function fixture(options: { error?: boolean; small?: boolean } = {}) {
     { id: 'large', kind: 'off_grid', message: large, refs: [instance.ref], params: {} },
   ];
   parsed.modules['block']!.name = large;
-  const counts = { flush: 0, terrain: 0, export: 0, build: 0, query: 0 };
+  const counts = { flush: 0, continuations: 0, terrain: 0, export: 0, build: 0, query: 0 };
+  // An unprocessed Agent file edit; the next flush turns it into a new project revision.
+  const project = { revision: 0, pendingChange: false };
   class Screenshots extends ScreenshotService {
     override async capture(): Promise<Buffer> {
       throw new Error(large);
@@ -81,7 +87,15 @@ async function fixture(options: { error?: boolean; small?: boolean } = {}) {
   const services: AgentServices = {
     async flush() {
       counts.flush++;
-      if (options.error) throw new Error(large);
+      // Only the tool's own flush fails, so continuation pages of that error still work.
+      if (options.error && counts.flush === 1) throw new Error(large);
+      if (project.pendingChange) {
+        project.pendingChange = false;
+        project.revision++;
+      }
+    },
+    projectRevision() {
+      return project.revision;
     },
     async getScene() {
       return compilation.scene;
@@ -116,7 +130,7 @@ async function fixture(options: { error?: boolean; small?: boolean } = {}) {
     },
   };
   const handler = createMcpHttpHandler(services, screenshots);
-  const server = createServer((request, response) => {
+  const server = createHttpServer((request, response) => {
     void handler.handle(request, response);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -132,12 +146,15 @@ async function fixture(options: { error?: boolean; small?: boolean } = {}) {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
-  const call = async (name: string, args: Record<string, unknown>) =>
-    (await client.callTool({ name, arguments: args })) as CallToolResult;
+  const call = async (name: string, args: Record<string, unknown>) => {
+    if ('cursor' in args) counts.continuations++;
+    return (await client.callTool({ name, arguments: args })) as CallToolResult;
+  };
   return {
     call,
     counts,
     detail,
+    project,
     list: () => client.listTools(),
     url: `http://127.0.0.1:${address.port}`,
   };
@@ -171,17 +188,17 @@ describe('F11 bounded MCP text and captured continuation pages', () => {
     const definitions = (await list()).tools;
     expect(definitions).toHaveLength(10);
     for (const definition of definitions) {
-      const branches = definition.inputSchema.anyOf as Array<{
-        required?: string[];
-        additionalProperties?: boolean;
-        properties: Record<string, unknown>;
-      }>;
-      expect(branches).toHaveLength(2);
-      expect(branches[1]).toMatchObject({ required: ['cursor'], additionalProperties: false });
-      expect(Object.keys(branches[1]!.properties)).toEqual(['cursor']);
-      if (definition.name === 'overview') expect(branches[0]!.required ?? []).toEqual([]);
-      if (definition.name === 'query') expect(branches[0]!.required).toEqual(['x', 'z']);
-      if (definition.name === 'export') expect(branches[0]!.required).toEqual(['out']);
+      expect(definition.inputSchema).toMatchObject({ type: 'object', additionalProperties: false });
+      expect(definition.inputSchema).not.toHaveProperty('anyOf');
+      expect(definition.inputSchema.required ?? []).toEqual([]);
+      expect(definition.inputSchema.properties).toHaveProperty('cursor');
+      expect(definition.description).toContain('Continue with only {"cursor":"..."}');
+      if (definition.name === 'overview')
+        expect(definition.description).not.toContain('Required arguments');
+      if (definition.name === 'query')
+        expect(definition.description).toContain('Required arguments: x, z.');
+      if (definition.name === 'export')
+        expect(definition.description).toContain('Required arguments: out.');
     }
   });
   for (const [name, args] of tools)
@@ -194,7 +211,9 @@ describe('F11 bounded MCP text and captured continuation pages', () => {
       const text = await collect(call, name, initial);
       if (name === 'screenshot') expect(text).toContain(large);
       else expect(JSON.stringify(JSON.parse(text))).toContain(JSON.stringify(large).slice(1, -1));
-      expect(counts.flush).toBe(1);
+      // The tool flushed once; each continuation flushed before answering (F22).
+      expect(counts.continuations).toBeGreaterThan(0);
+      expect(counts.flush).toBe(1 + counts.continuations);
       if (name === 'build_module') {
         expect(initial.content.filter((content) => content.type === 'image')).toHaveLength(1);
         expect(counts.build).toBe(1);
@@ -210,7 +229,7 @@ describe('F11 bounded MCP text and captured continuation pages', () => {
       expect(initial.isError).toBe(true);
       firstPage(initial);
       expect(await collect(call, name, initial)).toContain(large);
-      expect(counts.flush).toBe(1);
+      expect(counts.flush).toBe(1 + counts.continuations);
     });
 
   it('preserves small result shapes', async () => {
@@ -224,10 +243,11 @@ describe('F11 bounded MCP text and captured continuation pages', () => {
     const { call, counts } = await fixture();
     const initial = await call('query', { x: 0, z: 0, [large]: true });
     expect(initial.isError).toBe(true);
+    expect(counts.flush).toBe(0);
     firstPage(initial);
     const errors = JSON.parse(await collect(call, 'query', initial)) as Array<{ keys: string[] }>;
     expect(errors[0]!.keys).toEqual([large]);
-    expect(counts.flush).toBe(0);
+    expect(counts.flush).toBe(counts.continuations);
     expect(counts.query).toBe(0);
   });
 
@@ -264,7 +284,23 @@ describe('F11 bounded MCP text and captured continuation pages', () => {
     expect(await call('terrain', { cursor })).toEqual(next);
     expect(JSON.parse(await collect(call, 'terrain', initial))).toEqual({ detail: large });
     expect(counts.terrain).toBe(1);
-    expect(counts.flush).toBe(1);
+    expect(counts.flush).toBe(1 + counts.continuations);
+  });
+
+  it('F22 processes file changes before a continuation and voids a stale cursor', async () => {
+    const { call, counts, project } = await fixture();
+    const cursor = firstPage(await call('query', { x: 0, z: 0 })).paging.nextCursor!;
+    project.pendingChange = true;
+    const stale = await call('query', { cursor });
+    expect(stale.isError).toBe(true);
+    expect(resultText(stale)).toBe(
+      'Results changed since the first page. Run the tool again without cursor.',
+    );
+    expect(counts.flush).toBe(2);
+    expect(project.pendingChange).toBe(false);
+    // A voided cursor stays unavailable even though nothing changed since.
+    expect(resultText(await call('query', { cursor }))).toMatch(/unavailable or expired/);
+    expect(counts.query).toBe(1);
   });
 
   it('continues captured results through the stdio bridge without replaying export', async () => {
@@ -330,5 +366,58 @@ describe('F11 bounded MCP text and captured continuation pages', () => {
     const evicted = await call('query', { cursor });
     expect(evicted.isError).toBe(true);
     expect(resultText(evicted)).toMatch(/expired|unavailable/i);
+  });
+});
+
+describe('F22 continuation pages after file changes', () => {
+  async function realProject() {
+    const root = await mkdtemp(join(tmpdir(), 'mapedit-f22-'));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    // Off-grid Structures make a check result larger than one page.
+    const structures = Array.from(
+      { length: 120 },
+      (_, index) =>
+        `  - id: s${index}\n    position: [${2 + (index % 30) * 3}.25, ${2 + Math.floor(index / 30) * 3}]\n    modules:\n      - {id: base, module: block, at: [0, 0, 0]}\n`,
+    ).join('');
+    const files: Record<string, string> = {
+      'project.yaml': 'name: Continuations\n',
+      'modules/block/module.yaml': 'size: [2, 2, 2]\n',
+      'modules/block/model.ts': "import {box} from '@mapedit/model'; export default box([2,2,2]);",
+      'maps/village/map.yaml': 'size: {x: 100, z: 100}\n',
+      'maps/village/structures/grid.yaml': `structures:\n${structures}`,
+    };
+    for (const [file, text] of Object.entries(files)) {
+      await mkdir(dirname(join(root, file)), { recursive: true });
+      await writeFile(join(root, file), text);
+    }
+    const server = await createServer({ root, port: 0 });
+    cleanup.push(() => server.close());
+    const client = new Client({ name: 'f22-test', version: '1' });
+    await client.connect(new StreamableHTTPClientTransport(new URL('/mcp', server.url)));
+    cleanup.push(() => client.close());
+    const call = async (args: Record<string, unknown>) =>
+      (await client.callTool({ name: 'check', arguments: args })) as CallToolResult;
+    return { root, call };
+  }
+
+  it('invalidates a cursor when project files change after the first page', async () => {
+    const { root, call } = await realProject();
+    const cursor = firstPage(await call({ limit: 100 })).paging.nextCursor!;
+    const file = join(root, 'maps/village/structures/grid.yaml');
+    await writeFile(file, (await readFile(file, 'utf8')).replace('[2.25, 2]', '[2.5, 2]'));
+    const stale = await call({ cursor });
+    expect(stale.isError).toBe(true);
+    expect(resultText(stale)).toBe(
+      'Results changed since the first page. Run the tool again without cursor.',
+    );
+    // The fresh first page reflects the change.
+    expect(resultText(await call({ limit: 100 }))).not.toContain('structure:s0\\"');
+  });
+
+  it('keeps continuing while the project is unchanged', async () => {
+    const { call } = await realProject();
+    const initial = await call({ limit: 100 });
+    const text = await collect((name, args) => call(args), 'check', initial);
+    expect(JSON.parse(text).maps[0].violations.items).toHaveLength(100);
   });
 });
