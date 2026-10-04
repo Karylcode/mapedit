@@ -1,7 +1,9 @@
 # Backend implementation status
 
-**Review entry point for Claude:** M0–M7 backend implementation, local acceptance
-and cross-platform CI are complete. Start with `docs/protocol.md`, `docs/map-format.md`,
+**Review entry point for Claude:** M0–M7 backend implementation is complete; the
+F1–F16 review corrections in `docs/handoff/backend-fixes.md` are now in progress
+on the same `backend` branch and PR. See the review correction log below.
+Start with `docs/protocol.md`, `docs/map-format.md`,
 `docs/model-api.md` and `docs/export-format.md`; the executable boundaries are
 `packages/core/src/index.ts`, `packages/server/src/index.ts` and the CLI.
 Protocol stays at version 1; the only additive HTTP contract detail is CLI identity
@@ -14,6 +16,10 @@ two-agent/Unity Play experience remain the planned joint acceptance after the
 frontend exists. GitHub publication and CI status are recorded below.
 
 ## 目前進度
+
+Implementing F1–F16 in order, with regression tests before bug fixes and numbered
+commits. The earlier M0–M7 validation below remains the baseline, not the final
+acceptance for this correction pass.
 
 M0–M7 complete and pushed on `backend`, each with its own milestone commit.
 [PR #1](https://github.com/Karylcode/mapedit/pull/1) is open against `main`.
@@ -150,3 +156,18 @@ None. GitHub authentication, system Edge and licensed Unity 6 were available.
   screenshot transport/render contract has passed using the test renderer.
 - UnityGLTF emits optional URP/VisualScripting assembly-reference warnings in the
   minimal built-in-renderer test project; compilation and actual import pass.
+
+## 審查修正
+
+F1–F16 are tracked in order here. Each completed entry records the implementation,
+test location and any deviation. Final Windows and GitHub CI acceptance will be
+recorded after all corrections are complete.
+
+- **F1 complete:** violation IDs use sorted object refs and stable rule/field
+  discriminators, excluding revision, source line and measured values. Drag
+  comparison uses IDs while still rejecting violations affecting the moved object
+  or newly unsupported neighbors. Updated protocol type comments. Red/green
+  regressions: `server/test/drag-violations.test.ts` (both reported failures and
+  lost support), `core/test/violation-identity.test.ts` (field uniqueness and order
+  independence). Six related test files / 51 tests, typecheck and scoped lint pass.
+  Deviation: none.

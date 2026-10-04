@@ -3,6 +3,7 @@ import type { Vec3, ViolationView } from '@mapedit/protocol';
 import type { Bounds, Compilation, CompiledInstance } from './domain.js';
 import { transformPoint } from './math.js';
 import { geometryMesh, getManifold, meshGeometry, type ModelGeometry } from './model.js';
+import { violationId } from './violation.js';
 
 export const GEOMETRY_TOLERANCE = 0.0001;
 const MIN_VOLUME = 1e-9;
@@ -145,7 +146,7 @@ export async function checkGeometry(
   ): void => {
     const source = instancesByRef.get(refs[0]!)?.source;
     result.violations.push({
-      id: `${kind}:${refs.join(':')}`,
+      id: violationId({ kind, refs, rule: params.terrain === true ? 'terrain' : '' }),
       kind,
       refs,
       message,

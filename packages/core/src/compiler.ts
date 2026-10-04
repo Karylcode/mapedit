@@ -33,6 +33,7 @@ import {
   transformPoint,
   yawOf,
 } from './math.js';
+import { violationId } from './violation.js';
 
 export interface CompileOptions {
   revision?: number;
@@ -96,9 +97,10 @@ export function compileMap(
     suggestion: string,
     location?: Vec3,
     params: Record<string, unknown> = {},
+    rule = '',
   ): void => {
     violations.push({
-      id: `${kind}:${violations.length + 1}`,
+      id: violationId({ kind, refs, rule }),
       kind,
       message,
       refs,
@@ -117,9 +119,16 @@ export function compileMap(
         'Round each coordinate or dimension to the nearest 0.5 meters.',
         undefined,
         { values },
+        label,
       );
   };
-  const rotation = (value: number, step: number, ref: string, source: SourceRef): void => {
+  const rotation = (
+    value: number,
+    step: number,
+    ref: string,
+    source: SourceRef,
+    rule = 'rotation',
+  ): void => {
     if (!onGrid(value, step))
       emit(
         'bad_rotation',
@@ -129,6 +138,7 @@ export function compileMap(
         `Use ${snap(value, step)} degrees.`,
         undefined,
         { rotation: value, step },
+        rule,
       );
   };
   for (const [type, definition] of Object.entries(parsed.project.socketTypes).sort(([a], [b]) =>
@@ -144,6 +154,7 @@ export function compileMap(
           `Define socketTypes.${compatible} or correct compatibleWith.`,
           undefined,
           { reference: compatible },
+          `socket-type:${type}:compatible-with:${compatible}`,
         );
   }
   for (const definition of Object.values(parsed.modules).sort((a, b) => compareText(a.id, b.id))) {
@@ -165,6 +176,7 @@ export function compileMap(
         'Choose a built-in material or declare the project material.',
         undefined,
         { reference: definition.material },
+        `module:${definition.id}:material`,
       );
     for (const socket of definition.sockets) {
       grid(
@@ -173,7 +185,13 @@ export function compileMap(
         socket.source,
         `Socket "${socket.id}" position`,
       );
-      rotation(socket.rotation, 90, refs[0] ?? `moduleType:${definition.id}`, socket.source);
+      rotation(
+        socket.rotation,
+        90,
+        refs[0] ?? `moduleType:${definition.id}`,
+        socket.source,
+        `socket:${definition.id}/${socket.id}:rotation`,
+      );
       if (!parsed.project.socketTypes[socket.type])
         emit(
           'missing_reference',
@@ -181,6 +199,9 @@ export function compileMap(
           refs,
           socket.source,
           `Define socketTypes.${socket.type} in project.yaml.`,
+          undefined,
+          {},
+          `socket:${definition.id}/${socket.id}:type`,
         );
     }
   }
@@ -201,6 +222,7 @@ export function compileMap(
         'Choose compatible socket types or update project compatibility rules.',
         undefined,
         { socketA: a, socketB: b },
+        `socket-types:${JSON.stringify([a, b].sort())}`,
       );
     if (usedSockets.has(a) || usedSockets.has(b))
       emit(
@@ -211,6 +233,7 @@ export function compileMap(
         'Use a free socket; each socket permits one connection.',
         undefined,
         { socketA: a, socketB: b },
+        `socket-occupied:${JSON.stringify([a, b].sort())}`,
       );
     usedSockets.add(a);
     usedSockets.add(b);
@@ -237,6 +260,9 @@ export function compileMap(
           [own.instanceRef, target.instanceRef],
           source,
           'Connect up to down, or connect two horizontal sockets.',
+          undefined,
+          {},
+          `socket-directions:${JSON.stringify([`${own.instanceRef}.${own.socket.id}`, `${target.instanceRef}.${target.socket.id}`].sort())}`,
         );
       yaw =
         yawOf(target.transform) +
@@ -285,6 +311,9 @@ export function compileMap(
           [ref],
           instance.source,
           'Give one module an at position and remove the attachment cycle.',
+          undefined,
+          {},
+          'module-attachment-cycle',
         );
         failed.add(instanceId);
         return;
@@ -299,6 +328,7 @@ export function compileMap(
           'Use an existing module id or create its module.yaml and model.ts.',
           undefined,
           { reference: instance.module },
+          'module-type',
         );
         failed.add(instanceId);
         return;
@@ -322,6 +352,7 @@ export function compileMap(
               'Use attach: { socket: own_socket, to: instance_id.socket_id } with existing ids.',
               undefined,
               { reference: instance.attach.to },
+              'module-attachment',
             );
           visiting.delete(instanceId);
           failed.add(instanceId);
@@ -393,6 +424,9 @@ export function compileMap(
         [ref],
         structure.source,
         'Keep one structure positioned and remove the attachment cycle.',
+        undefined,
+        {},
+        'structure-attachment-cycle',
       );
       failed.add(structure.id);
       return;
@@ -414,6 +448,9 @@ export function compileMap(
             [ref],
             structure.source,
             'Use attach: { socket: own_instance.socket, to: other_structure/instance.socket }.',
+            undefined,
+            {},
+            'structure-attachment',
           );
         visiting.delete(structure.id);
         failed.add(structure.id);
@@ -573,6 +610,9 @@ export function compileMap(
         [ref],
         marker.source,
         `Define markerTypes.${marker.type} in project.yaml.`,
+        undefined,
+        {},
+        'marker-type',
       );
     else if (definition.shape !== shape.kind)
       fileErrors.push({

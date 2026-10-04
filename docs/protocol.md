@@ -11,7 +11,9 @@
 - HTTP 回應另帶 `X-Mapedit-Instance`（每次啟動的新識別碼）、`X-Mapedit-Project`（專案實體路徑的 SHA-256）與 `X-Mapedit-Pid`。CLI 使用這些標頭驗證本機連線紀錄，避免連到同一連接埠上後來啟動的其他專案；前端不需要使用。
 - 正式版：後端直接提供 `packages/web/dist` 的靜態檔；`/render` 這類前端路徑一律回 `index.html`。
 - 開發時：前端用 Vite 開發伺服器，把 `/api`、`/assets`、`/ws` 轉給後端。
-- `mapedit dev --mock`：後端用一張固定的測試場景回應所有請求，拖動和刪除只改記憶體。讓前端不用等編譯器完成就能開發。
+- `mapedit dev --mock`：後端用一張固定的測試場景回應所有請求，拖動和刪除只改記憶體，讓前端可以獨立開發和測試。
+  - 測試場景要涵蓋快照裡的每一種資料：每一種違規（重疊和沒有支撐要帶 `location` 和 `suggestion`）、地基延伸、點標記和方形標記、檔案錯誤。
+  - mock 另外提供 `POST /api/mock/trigger`，body 是 `{ "notice": NoticeCode }`。後端會模擬對應的情境並送出那個提示；`file_error` 會同時在下一份快照加上一筆 `fileErrors`。這個網址只有 mock 模式才有。
 
 | 路徑 | 方法 | 提供者 | 用途 |
 |---|---|---|---|
@@ -22,6 +24,7 @@
 | `/api/scene?map=<mapId>` | GET | 後端 | 回傳目前的 `SceneSnapshot`，給截圖頁面和除錯用 |
 | `/assets/...` | GET | 後端 | 產生出來的 glb。網址由 `SceneSnapshot` 提供，前端不要自己拼 |
 | `/mcp` | POST、GET | 後端 | MCP（Streamable HTTP），前端不使用 |
+| `/api/mock/trigger` | POST | 後端（只有 mock） | 模擬提示情境，給前端測試用 |
 
 ## 2. 共同約定
 
@@ -115,10 +118,10 @@ type ViolationKind =
   | 'missing_reference';
 
 interface ViolationView {
-  id: string;
+  id: string;                      // 同一個違規在不同 revision 之間保持相同，例如由 kind 和排序後的 refs 組成
   kind: ViolationKind;
   message: string;                 // 英文，和給 Agent 的訊息相同
-  params: Record<string, unknown>; // 前端用 kind 加 params 翻成介面語言
+  params: Record<string, unknown>; // 前端用 kind 加 params 翻成介面語言；來自檔案的違規會帶 file 和 line
   refs: ObjectRef[];
   location?: Vec3;
   suggestion?: string;             // 英文

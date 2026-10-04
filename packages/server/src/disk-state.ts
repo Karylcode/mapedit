@@ -304,12 +304,12 @@ export class DiskState extends EventEmitter implements StateStore {
       };
       const parsed = parseProject(files);
       const candidate = await this.builder.preview(parsed, mapId, this.revision, cached);
-      const before = new Set(cached.scene.violations.map((v) => JSON.stringify(v)));
+      const before = new Set(cached.scene.violations.map((v) => v.id));
       const target = candidate.scene.structures.find((s) => s.ref === edit.ref);
       const marker = candidate.scene.markers.find((m) => m.ref === edit.ref);
       const refs = new Set([edit.ref, ...(target?.instances.map((i) => i.ref) ?? [])]);
       const violations = candidate.scene.violations.filter(
-        (v) => v.refs.some((ref) => refs.has(ref)) || !before.has(JSON.stringify(v)),
+        (v) => v.refs.some((ref) => refs.has(ref)) || !before.has(v.id),
       );
       if (candidate.scene.fileErrors.length)
         throw new Error(candidate.scene.fileErrors[0]!.message);

@@ -65,9 +65,11 @@ export type ViolationKind =
   | 'out_of_bounds'
   | 'missing_reference';
 export interface ViolationView {
+  /** Stable for the same violation across revisions, including reordered diagnostics. */
   id: string;
   kind: ViolationKind;
   message: string;
+  /** File-backed violations include file and line; display metadata does not affect id. */
   params: Record<string, unknown>;
   refs: ObjectRef[];
   location?: Vec3;
