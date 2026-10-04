@@ -383,13 +383,13 @@ export class DiskState extends EventEmitter implements StateStore {
   async travel(direction: -1 | 1): Promise<string | undefined> {
     return this.serial(async () => {
       await this.refresh();
-      const target = this.history.target(direction);
-      if (!target) return direction < 0 ? 'Nothing to undo.' : 'Nothing to redo.';
-      const desired = target.snapshot.files;
-      for (const file of this.changed(this.baseline, desired))
-        await this.safeWrite(file, desired.get(file));
-      this.baseline = new Map(desired);
-      this.history.cursor = target.cursor;
+      // The cursor moves once the checkpoint's files are on disk.
+      const reason = await this.history.travel(direction, async ({ files }) => {
+        for (const file of this.changed(this.baseline, files))
+          await this.safeWrite(file, files.get(file));
+        this.baseline = new Map(files);
+      });
+      if (reason) return reason;
       this.revision++;
       await this.rebuild();
       return undefined;

@@ -514,3 +514,82 @@ by Claude. Each entry records the change, the tests and any deviation.
   the previous producers). `server/test/build-project.test.ts` now reads
   `params.target`. Deviation: none; `immovable_object` was added to the reasons for
   editor previews that try to move a Module or an attached Structure.
+- **F23b complete:** the repository `.gitignore` ignores `.mapedit/`. The project
+  template ships `templates/project/gitignore` (stored without the dot because
+  package managers drop `.gitignore` files from tarballs) and `mapedit init`
+  writes it as `.gitignore` containing `.mapedit/`. When the target folder
+  already has a `.gitignore`, init keeps it and appends only the missing rule
+  (matching its line endings) instead of refusing, which is what it does for
+  every other existing file. Tests: `cli/test/init.test.ts` "F23b" (new project
+  and this repository; existing file with and without the rule), and the packed
+  CLI acceptance in `scripts/test-packed-cli.mjs` now asserts the installed CLI
+  creates the `.gitignore`. The first test failed before the change. Deviation:
+  none.
+- **F24 complete:** `groups`, `Candidate`/`candidate()` and the
+  `SolidInstance = AdviceSolid` alias were already replaced in F18 and F20
+  (`solidsByStructure`, `Placement`/`place()`, one shared `PlacedSolid` type in
+  `core/src/solid.ts`); the compiler's unexplained `positive` flag became the
+  `minimum` option of `checkGridAlignment` in F23, and the bounds advice now
+  names its directions `forward`/`backward`. This commit renames the pager's
+  `bound()`/`continue()` to `firstPage()`/`nextPage()`, calls Modules "modules"
+  in the mock messages, and says "map-space" in `docs/map-format.md`. Tests:
+  `core/test/terminology.test.ts` and `server/test/terminology.test.ts` "F24"
+  check the identifiers, mock messages and wording; all four failed before the
+  renames. Deviation: none.
+- **F25 complete:** each duplicate now has one implementation.
+  `sceneHasProblems` (`core/src/report.ts`) decides whether a map has violations
+  or file errors for export, the CLI exit code, `exportProject` and MCP `ok`.
+  `selectedMapIds` (`server/src/build-project.ts`) chooses the maps for
+  `buildProjects` and the MCP `getScenes`. Path containment lives only in
+  `server/src/paths.ts`: `scripts/test-packed-cli.mjs` imports the built
+  `containsPath` (that script already needs a build), and the check in
+  `scripts/prepare-cli.mjs` was removed because its destination is a fixed
+  folder inside the CLI package and could never fail. The compiler's three Socket
+  address lists use one `socketAddresses` helper. In geometry, `bucketKeys`
+  serves both the pair search and `nearby`, the overlap test is the shared
+  `overlapLocation` (F20), and `supportedFrom` (`core/src/support.ts`) is the
+  single Support search used by the check and the advice. `NOTICE_CODES` in
+  `packages/protocol` defines `NoticeCode` and drives `parseMockNotice`, and
+  `TERRAIN_HEIGHT_RANGE` in `core/src/terrain.ts` bounds both the PNG encoding
+  and the MCP terrain schema. Tests: `core/test/shared-helpers.test.ts` and
+  `server/test/shared-helpers.test.ts` cover the new helpers; existing compiler,
+  geometry, CLI, MCP, mock and packed-CLI tests cover the call sites (all 304
+  tests pass). Deviation: none.
+- **F26 complete:** (1) The brief geometry suggestions set when overlap,
+  terrain-overlap and unsupported violations are created are no longer dead
+  code: since F20 they are what violations after the first 50 keep, so they stay
+  (the F20 test asserts them). (2) Violation ids no longer use display labels:
+  grid and rotation rules are the fixed `field` ids from F23 (for example
+  `structure_position`), and Module definition rules are
+  `definition:<module>:size`, `:material`, and `:socket:<socket>:position`,
+  `:rotation` or `:type`, whether or not the Module is used. (3) The material
+  rule no longer looks like an ObjectRef (`module:<id>:material` became
+  `definition:<id>:material`). (4) `triggerMockNotice` left the shared
+  `StateStore`; the mock implements the separate `MockNoticeTrigger`, and the
+  server enables `/api/mock/trigger` only in mock mode for a state that passes
+  `canTriggerMockNotices`. (5) Undo and redo live in `ProjectHistory.travel()`,
+  which moves the now read-only `cursor` only after the state's restore callback
+  succeeds; both states pass their own restore step. (6) Suggestion text moved
+  from `compiler.ts` into `core/src/compiler-suggestions.ts`
+  (`createCompilerAdvice`), mirroring the geometry advice; the compiler keeps
+  compilation and violation identity. Tests: `core/test/violation-identity.test.ts`
+  "F26" (fixed rule ids, none label-like or ObjectRef-like),
+  `server/test/history.test.ts` (cursor moves after restore, failed restore keeps
+  it, cursor cannot be assigned, `StateStore` lacks `triggerMockNotice`) and
+  `core/test/terminology.test.ts` "F26" (every compiler suggestion comes from
+  the advice module); each failed before its change. Existing suggestion and
+  golden tests confirm the text is unchanged, and the F15 identity test now
+  expects the fixed rule. Deviation: item (1) keeps the lines because F20 made
+  them live.
+- **Extra (frontend request) – screenshots without a GPU:** the headless browser
+  now starts with `SCREENSHOT_BROWSER_ARGS` =
+  `--disable-dev-shm-usage --enable-unsafe-swiftshader` (`server/src/screenshot.ts`),
+  so the three.js `/render` page can fall back to software WebGL on machines
+  without a GPU, such as GitHub's Ubuntu runner; with a GPU nothing changes.
+  When `mapeditRender` throws (the frontend reports missing WebGL or an unknown
+  map that way instead of hanging), the screenshot error is the page's own
+  message, for example `Render page error: WebGL is not available in this
+  browser: …`, without Playwright's prefix and stack. Tests:
+  `server/test/screenshot.test.ts` (the flag, the relayed page error, and a real
+  WebGL2 context in the headless render page, which also runs on CI); the first
+  two failed before the change.

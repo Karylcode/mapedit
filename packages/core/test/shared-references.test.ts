@@ -74,8 +74,9 @@ describe('F15 shared references and material ids', () => {
       ...compilation.scene.violations.flatMap((violation) => violation.refs),
     ];
     for (const ref of refs) expect(parseObjectRef(ref)).toBeDefined();
+    // F26: the rule part of the id is the fixed field id, not the display label.
     expect(compilation.scene.violations[0]?.id).toBe(
-      'off_grid:[["structure:house"],"Structure \\"house\\" position"]',
+      'off_grid:[["structure:house"],"structure_position"]',
     );
   });
 

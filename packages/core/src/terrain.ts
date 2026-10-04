@@ -21,8 +21,10 @@ export type TerrainCommand =
   | { operation: 'paint'; region: TerrainRegion; surface: Surface }
   | { operation: 'mountain'; region: TerrainRegion; height: number };
 const quantize = (value: number) => Math.round(value * 2) / 2;
+/** Heights the signed 16-bit PNG encoding stores, in metres (sample = metres * 2 + 32768). */
+export const TERRAIN_HEIGHT_RANGE = { min: -16384, max: 16383.5 } as const;
 const inHeightRange = (value: number) =>
-  Number.isFinite(value) && value >= -16384 && value <= 16383.5;
+  Number.isFinite(value) && value >= TERRAIN_HEIGHT_RANGE.min && value <= TERRAIN_HEIGHT_RANGE.max;
 
 export function createTerrain(width: number, depth: number, height = 0): TerrainData {
   if (

@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   listFloatingInstances,
+  sceneHasProblems,
   type Compilation,
   type ModuleDefinition,
   type TerrainCommand,
@@ -177,7 +178,7 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
               `Send only {"cursor":"..."} to continue a paged result. Remove ${others.map((key) => JSON.stringify(key)).join(', ')}, or run the tool again without cursor.`,
             );
           // Answer only after the latest file changes, like every other tool call.
-          return pager.continue(
+          return pager.nextPage(
             name,
             cursorSchema.parse((values as { cursor: unknown }).cursor),
             async () => {
@@ -200,9 +201,9 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       const tool = tools.get(name);
       if (!tool) throw new Error('Unknown tool. Use tools/list to see the fixed tool names.');
       const result = await tool.run(request.params.arguments);
-      return pager.bound(name, result, services.projectRevision());
+      return pager.firstPage(name, result, services.projectRevision());
     } catch (error) {
-      return pager.bound(
+      return pager.firstPage(
         name,
         {
           isError: true,
@@ -259,7 +260,7 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
         maps: scenes.map((scene) => ({
           map: scene.map.id,
           revision: scene.revision,
-          ok: scene.violations.length === 0 && scene.fileErrors.length === 0,
+          ok: !sceneHasProblems(scene),
           violations: page(scene.violations, offset, limit),
           fileErrors: page(scene.fileErrors, offset, limit),
           floating: page(listFloatingInstances(scene), offset, limit),

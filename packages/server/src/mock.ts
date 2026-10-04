@@ -108,7 +108,7 @@ export function mockScene(): SceneSnapshot {
       violation({
         kind: 'overlap',
         ids: ['overlap_a', 'overlap_b'],
-        message: 'Two blocks overlap by 0.5 m.',
+        message: 'Two modules overlap by 0.5 m.',
         params: { target: 'module' },
         suggestion: `Move ${structureRef('overlap_a')} west by 0.5 m to clear the overlap with ${structureRef('overlap_b')}.`,
         location: [41.75, 1, 11],
@@ -116,7 +116,7 @@ export function mockScene(): SceneSnapshot {
       violation({
         kind: 'unsupported',
         ids: ['unsupported'],
-        message: 'The block is 2 m above the terrain.',
+        message: 'The module is 2 m above the terrain.',
         params: {},
         suggestion: `Move ${structureRef('unsupported')} down by 2 m to reach the terrain.`,
         location: [51, 2, 11],
@@ -140,7 +140,7 @@ export function mockScene(): SceneSnapshot {
       violation({
         kind: 'out_of_bounds',
         ids: ['out_of_bounds'],
-        message: 'The block extends 1 m beyond the east edge.',
+        message: 'The module extends 1 m beyond the east edge.',
         params: {
           edges: [{ edge: 'east', distance: 1 }],
           bounds: { min: [99, 0, 10], max: [101, 2, 12] },

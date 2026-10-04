@@ -12,6 +12,7 @@ import {
 } from './terrain.js';
 import { inverseRigid, multiplyMatrices, transformMatrix } from './math.js';
 import { checkGeometry, GEOMETRY_TOLERANCE } from './geometry.js';
+import { sceneHasProblems } from './report.js';
 
 export interface ExportInput {
   compilation: Compilation;
@@ -25,7 +26,7 @@ export interface ExportInput {
 /** Export the checked map as one self-contained, engine-neutral GLB. */
 export async function exportMapGlb(input: ExportInput): Promise<Uint8Array> {
   const { scene } = input.compilation;
-  if (scene.violations.length || scene.fileErrors.length)
+  if (sceneHasProblems(scene))
     throw new Error(
       `Export refused: ${scene.violations.length} violations and ${scene.fileErrors.length} file errors. Run check and fix them first.`,
     );

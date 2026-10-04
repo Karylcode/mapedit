@@ -3,6 +3,7 @@ import type { Bounds, Compilation, CompiledSocket } from './domain.js';
 import { clean, compareText, inverseRigid, multiplyMatrices, transformMatrix } from './math.js';
 import { socketAttachment, socketTypesCompatible } from './socket-rules.js';
 import { moveSolid, type PlacedSolid } from './solid.js';
+import { supportedFrom } from './support.js';
 
 export interface TerrainContact {
   overlap: boolean;
@@ -75,19 +76,8 @@ export function createGeometryAdvice(context: AdviceContext): {
       ]);
   const placements = new Map<string, Placement>();
   const supportedWithout = new Map<string, ReadonlySet<string>>();
-  const reachable = (seeds: Iterable<string>, accepts: (ref: string) => boolean): Set<string> => {
-    const result = new Set([...seeds].filter(accepts));
-    const queue = [...result];
-    for (let index = 0; index < queue.length; index++) {
-      for (const next of context.supportLinks.get(queue[index]!) ?? []) {
-        if (accepts(next) && !result.has(next)) {
-          result.add(next);
-          queue.push(next);
-        }
-      }
-    }
-    return result;
-  };
+  const reachable = (seeds: Iterable<string>, accepts: (ref: string) => boolean) =>
+    supportedFrom(seeds, context.supportLinks, accepts);
   const supportedNow = reachable(context.supportSeeds, () => true);
   /** Support that remains when the moving Modules are taken away. */
   const supportedOutside = (key: string, moving: ReadonlySet<string>): ReadonlySet<string> => {

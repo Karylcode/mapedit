@@ -37,29 +37,8 @@ import {
   yawOf,
 } from './math.js';
 import { createViolation } from './violation.js';
-import { compatibleSocketTypes, socketAttachment, socketTypesCompatible } from './socket-rules.js';
-
-function referenceSuggestion(value: string, candidates: string[], fallback: string): string {
-  const distance = (candidate: string): number => {
-    let row = Array.from({ length: candidate.length + 1 }, (_, index) => index);
-    for (let i = 0; i < value.length; i++) {
-      const next = [i + 1];
-      for (let j = 0; j < candidate.length; j++)
-        next.push(
-          Math.min(next[j]! + 1, row[j + 1]! + 1, row[j]! + (value[i] === candidate[j] ? 0 : 1)),
-        );
-      row = next;
-    }
-    return row[candidate.length]!;
-  };
-  const closest = [...new Set(candidates)]
-    .map((id) => ({ id, distance: distance(id) }))
-    .sort((a, b) => a.distance - b.distance || compareText(a.id, b.id))
-    .slice(0, 3);
-  return closest.length
-    ? `Closest existing ids to "${value}": ${closest.map(({ id }) => `"${id}"`).join(', ')}. ${fallback}`
-    : fallback;
-}
+import { socketAttachment, socketTypesCompatible } from './socket-rules.js';
+import { createCompilerAdvice } from './compiler-suggestions.js';
 
 /** Map edges the bounds cross, and how far beyond each edge they reach, in metres. */
 export function exceededMapEdges(
@@ -74,22 +53,6 @@ export function exceededMapEdges(
     edges.push({ edge: 'east', distance: clean(bounds.max[0] - size.x) });
   if (bounds.min[0] < -EPSILON) edges.push({ edge: 'west', distance: clean(-bounds.min[0]) });
   return edges;
-}
-
-function boundsSuggestion(ref: string, bounds: Bounds, size: MapDefinition['size']): string {
-  const moves: string[] = [];
-  for (const [axis, limit, positive, negative] of [
-    [0, size.x, 'east', 'west'],
-    [2, size.z, 'south', 'north'],
-  ] as const) {
-    const minimum = Math.ceil((-bounds.min[axis] - EPSILON) / 0.5) * 0.5;
-    const maximum = Math.floor((limit - bounds.max[axis] + EPSILON) / 0.5) * 0.5;
-    if (minimum > maximum)
-      return `Resize or split ${ref}; its full bounds cannot fit within the map's ${size.x} by ${size.z} m boundary on the 0.5 m grid.`;
-    const delta = minimum > 0 ? minimum : maximum < 0 ? maximum : 0;
-    if (delta) moves.push(`${delta > 0 ? positive : negative} by ${clean(Math.abs(delta))} m`);
-  }
-  return `Move ${ref} ${moves.join(' and ')} to put its whole shape inside the map.`;
 }
 
 export interface CompileOptions {
@@ -146,6 +109,7 @@ export function compileMap(
   const structures = [...map.structures].sort((a, b) => compareText(a.id, b.id));
   const byId = new Map(structures.map((s) => [s.id, s]));
   const terrainHeight = options.terrainHeight ?? (() => 0);
+  const advice = createCompilerAdvice(parsed);
 
   const checkGridAlignment = (check: {
     values: number[];
@@ -167,9 +131,9 @@ export function compileMap(
         message: `${label} must use multiples of 0.5 meters.`,
         refs: ref ? [ref] : [],
         source,
-        suggestion: `Set ${label} to ${nearest.length === 1 ? nearest[0] : `[${nearest.join(', ')}]`} m (nearest legal 0.5 m values).`,
+        suggestion: advice.grid(label, nearest),
         params: { field, values, nearest, ...(moduleType ? { moduleType } : {}) },
-        rule: check.rule ?? label,
+        rule: check.rule ?? field,
       }),
     );
   };
@@ -191,9 +155,9 @@ export function compileMap(
         message: `Rotation ${value} degrees must be a multiple of ${step}.`,
         refs: ref ? [ref] : [],
         source,
-        suggestion: `Use ${nearest} degrees.`,
+        suggestion: advice.rotation(nearest),
         params: { field, rotation: value, step, nearest, ...(moduleType ? { moduleType } : {}) },
-        rule: check.rule ?? 'rotation',
+        rule: check.rule ?? field,
       }),
     );
   };
@@ -208,11 +172,7 @@ export function compileMap(
             message: `Socket type "${type}" references unknown type "${compatible}".`,
             refs: [],
             source: parsed.project.source,
-            suggestion: referenceSuggestion(
-              compatible,
-              Object.keys(parsed.project.socketTypes),
-              `Correct compatibleWith or define socketTypes.${compatible}.`,
-            ),
+            suggestion: advice.unknownCompatibleType(compatible),
             params: { reason: 'unknown_socket_type', reference: compatible },
             rule: `socket-type:${type}:compatible-with:${compatible}`,
           }),
@@ -230,7 +190,7 @@ export function compileMap(
       field: 'module_size',
       minimum: 0.5,
       moduleType: definition.id,
-      ...(!refs.length ? { rule: `definition:${definition.id}:dimensions` } : {}),
+      rule: `definition:${definition.id}:size`,
     });
     if (definition.material && !parsed.project.materials.includes(definition.material))
       violations.push(
@@ -239,19 +199,13 @@ export function compileMap(
           message: `Unknown material "${definition.material}".`,
           refs,
           source: definition.source,
-          suggestion: referenceSuggestion(
-            definition.material,
-            parsed.project.materials,
-            'Choose an existing material id.',
-          ),
+          suggestion: advice.unknownMaterial(definition.material),
           params: {
             reason: 'unknown_material',
             reference: definition.material,
             moduleType: definition.id,
           },
-          rule: refs.length
-            ? `module:${definition.id}:material`
-            : `definition:${definition.id}:material`,
+          rule: `definition:${definition.id}:material`,
         }),
       );
     for (const socket of definition.sockets) {
@@ -262,9 +216,7 @@ export function compileMap(
         label: `Socket "${socket.id}" position`,
         field: 'socket_position',
         moduleType: definition.id,
-        ...(!refs.length
-          ? { rule: `definition:${definition.id}:socket:${socket.id}:position` }
-          : {}),
+        rule: `definition:${definition.id}:socket:${socket.id}:position`,
       });
       checkRotation({
         value: socket.rotation,
@@ -273,9 +225,7 @@ export function compileMap(
         source: socket.source,
         field: 'socket',
         moduleType: definition.id,
-        rule: refs.length
-          ? `socket:${definition.id}/${socket.id}:rotation`
-          : `definition:${definition.id}:socket:${socket.id}:rotation`,
+        rule: `definition:${definition.id}:socket:${socket.id}:rotation`,
       });
       if (!parsed.project.socketTypes[socket.type])
         violations.push(
@@ -284,30 +234,24 @@ export function compileMap(
             message: `Unknown socket type "${socket.type}".`,
             refs,
             source: socket.source,
-            suggestion: referenceSuggestion(
-              socket.type,
-              Object.keys(parsed.project.socketTypes),
-              `Correct the type or define socketTypes.${socket.type} in project.yaml.`,
-            ),
+            suggestion: advice.unknownSocketType(socket.type),
             params: {
               reason: 'unknown_socket_type',
               reference: socket.type,
               moduleType: definition.id,
             },
-            rule: refs.length
-              ? `socket:${definition.id}/${socket.id}:type`
-              : `definition:${definition.id}:socket:${socket.id}:type`,
+            rule: `definition:${definition.id}:socket:${socket.id}:type`,
           }),
         );
     }
   }
-  const socketAdvice = (own: PlacedSocket, target: PlacedSocket): string =>
-    [target, own]
-      .map(
-        ({ instanceRef, socket }) =>
-          `Socket ${instanceRef}.${socket.id} (${socket.type}) accepts: ${compatibleSocketTypes(parsed.project.socketTypes, socket.type).join(', ') || 'no declared types'}.`,
-      )
-      .join(' ');
+  /** Socket addresses as written in attach: `instance.socket`, or `structure/instance.socket`. */
+  const socketAddresses = (modules: readonly ModuleInstance[], structureId?: string): string[] =>
+    modules.flatMap((instance) =>
+      (parsed.modules[instance.module]?.sockets ?? []).map(
+        (socket) => `${structureId ? `${structureId}/` : ''}${instance.id}.${socket.id}`,
+      ),
+    );
   const socketPairParams = (own: PlacedSocket, target: PlacedSocket) => ({
     socketA: `${own.instanceRef}.${own.socket.id}`,
     socketB: `${target.instanceRef}.${target.socket.id}`,
@@ -324,7 +268,7 @@ export function compileMap(
           message: `Socket types "${own.socket.type}" and "${target.socket.type}" cannot connect.`,
           refs: [own.instanceRef, target.instanceRef],
           source,
-          suggestion: `${socketAdvice(own, target)} Use one of these types or update the compatibility rules in project.yaml.`,
+          suggestion: advice.incompatibleTypes(own, target),
           params: { reason: 'types', ...socketPairParams(own, target) },
           rule: `socket-types:${JSON.stringify([a, b].sort())}`,
         }),
@@ -336,7 +280,11 @@ export function compileMap(
           message: 'A socket is already occupied by another connection.',
           refs: [own.instanceRef, target.instanceRef],
           source,
-          suggestion: `Free ${[a, b].filter((ref) => usedSockets.has(ref)).join(' and ')} by removing its existing attachment, or choose another free socket; each permits one connection. ${socketAdvice(own, target)}`,
+          suggestion: advice.occupied(
+            own,
+            target,
+            [a, b].filter((ref) => usedSockets.has(ref)),
+          ),
           params: { reason: 'occupied', ...socketPairParams(own, target) },
           rule: `socket-occupied:${JSON.stringify([a, b].sort())}`,
         }),
@@ -358,7 +306,7 @@ export function compileMap(
           message: 'Socket directions cannot face each other with a Y-axis rotation.',
           refs: [own.instanceRef, target.instanceRef],
           source,
-          suggestion: `Choose an ${targetDirection[1] > EPSILON ? 'own Socket facing down' : targetDirection[1] < -EPSILON ? 'own Socket facing up' : 'own horizontal Socket'} to face ${target.instanceRef}.${target.socket.id}; a Y-axis rotation cannot align the current directions. ${socketAdvice(own, target)}`,
+          suggestion: advice.directions(own, target, targetDirection[1]),
           params: { reason: 'directions', ...socketPairParams(own, target) },
           rule: `socket-directions:${JSON.stringify([`${own.instanceRef}.${own.socket.id}`, `${target.instanceRef}.${target.socket.id}`].sort())}`,
         }),
@@ -412,7 +360,7 @@ export function compileMap(
             message: `Cyclic module attachment involving "${instance.id}".`,
             refs: [ref],
             source: instance.source,
-            suggestion: 'Give one module an at position and remove the attachment cycle.',
+            suggestion: advice.moduleCycle(),
             params: { reason: 'attachment_cycle', reference: instance.id },
             rule: 'module-attachment-cycle',
           }),
@@ -428,11 +376,7 @@ export function compileMap(
             message: `Module "${instance.module}" does not exist.`,
             refs: [ref],
             source: instance.source,
-            suggestion: referenceSuggestion(
-              instance.module,
-              Object.keys(parsed.modules),
-              'Use an existing module id or create its module.yaml and model.ts.',
-            ),
+            suggestion: advice.unknownModule(instance.module),
             params: { reason: 'unknown_module', reference: instance.module },
             rule: 'module-type',
           }),
@@ -457,21 +401,11 @@ export function compileMap(
                 message: `Cannot resolve attachment "${instance.attach.socket}" to "${instance.attach.to}".`,
                 refs: [ref],
                 source: instance.source,
-                suggestion: `${referenceSuggestion(
-                  instance.attach.socket,
+                suggestion: advice.moduleAttachment(
+                  instance.attach,
                   definition.sockets.map((socket) => socket.id),
-                  'Set attach.socket to an own Socket id.',
-                )} ${referenceSuggestion(
-                  instance.attach.to,
-                  structure.modules
-                    .filter((other) => other.id !== instance.id)
-                    .flatMap((other) =>
-                      (parsed.modules[other.module]?.sockets ?? []).map(
-                        (socket) => `${other.id}.${socket.id}`,
-                      ),
-                    ),
-                  'Set attach.to to instance_id.socket_id.',
-                )}`,
+                  socketAddresses(structure.modules.filter((other) => other.id !== instance.id)),
+                ),
                 params: { reason: 'unresolved_attachment', reference: instance.attach.to },
                 rule: 'module-attachment',
               }),
@@ -565,7 +499,7 @@ export function compileMap(
           message: `Cyclic structure attachment involving "${structure.id}".`,
           refs: [ref],
           source: structure.source,
-          suggestion: 'Keep one structure positioned and remove the attachment cycle.',
+          suggestion: advice.structureCycle(),
           params: { reason: 'attachment_cycle', reference: structure.id },
           rule: 'structure-attachment-cycle',
         }),
@@ -590,27 +524,13 @@ export function compileMap(
               message: `Cannot resolve structure attachment to "${structure.attach.to}".`,
               refs: [ref],
               source: structure.source,
-              suggestion: `${referenceSuggestion(
-                structure.attach.socket,
-                structure.modules.flatMap((instance) =>
-                  (parsed.modules[instance.module]?.sockets ?? []).map(
-                    (socket) => `${instance.id}.${socket.id}`,
-                  ),
-                ),
-                'Set attach.socket to own_instance.socket.',
-              )} ${referenceSuggestion(
-                structure.attach.to,
+              suggestion: advice.structureAttachment(
+                structure.attach,
+                socketAddresses(structure.modules),
                 structures
                   .filter((other) => other.id !== structure.id)
-                  .flatMap((other) =>
-                    other.modules.flatMap((instance) =>
-                      (parsed.modules[instance.module]?.sockets ?? []).map(
-                        (socket) => `${other.id}/${instance.id}.${socket.id}`,
-                      ),
-                    ),
-                  ),
-                'Set attach.to to other_structure/instance.socket.',
-              )}`,
+                  .flatMap((other) => socketAddresses(other.modules, other.id)),
+              ),
               params: { reason: 'unresolved_attachment', reference: structure.attach.to },
               rule: 'structure-attachment',
             }),
@@ -766,7 +686,7 @@ export function compileMap(
             message: `Module "${ref}" extends outside the map.`,
             refs: [ref, structureRef(placement.root)],
             source: local.instance.source,
-            suggestion: boundsSuggestion(
+            suggestion: advice.bounds(
               structureRef(placement.root),
               boundsForRoot(placement.root),
               map.size,
@@ -826,11 +746,7 @@ export function compileMap(
           message: `Unknown marker type "${marker.type}".`,
           refs: [ref],
           source: marker.source,
-          suggestion: referenceSuggestion(
-            marker.type,
-            Object.keys(parsed.project.markerTypes),
-            `Correct the type or define markerTypes.${marker.type} in project.yaml.`,
-          ),
+          suggestion: advice.unknownMarkerType(marker.type),
           params: { reason: 'unknown_marker_type', reference: marker.type },
           rule: 'marker-type',
         }),
@@ -865,7 +781,7 @@ export function compileMap(
           message: `Marker "${marker.id}" extends outside the map.`,
           refs: [ref],
           source: marker.source,
-          suggestion: boundsSuggestion(ref, bounds, map.size),
+          suggestion: advice.bounds(ref, bounds, map.size),
           location: position,
           params: { edges: exceededMapEdges(bounds, map.size), bounds, size: map.size },
         }),

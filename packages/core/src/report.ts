@@ -1,5 +1,10 @@
 import type { ObjectRef, SceneSnapshot, Vec3 } from '@mapedit/protocol';
 
+/** A map with any violation or file error fails check and cannot be exported. */
+export function sceneHasProblems(scene: Pick<SceneSnapshot, 'violations' | 'fileErrors'>): boolean {
+  return scene.violations.length > 0 || scene.fileErrors.length > 0;
+}
+
 export interface FloatingInstance {
   ref: ObjectRef;
   moduleType: string;

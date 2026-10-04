@@ -4,12 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = new URL('../', import.meta.url);
-const packageRoot = fileURLToPath(new URL('packages/cli/', root));
 const source = fileURLToPath(new URL('templates/project/', root));
-const destination = path.resolve(packageRoot, 'templates/project');
-const relative = path.relative(packageRoot, destination);
-if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-  throw new Error('CLI templates must stay inside the CLI package.');
+// A fixed folder inside the CLI package, packed through its "files" list.
+const destination = fileURLToPath(new URL('packages/cli/templates/project/', root));
 async function sameTree(left, right) {
   const expected = await readdir(left, { withFileTypes: true });
   let actual;

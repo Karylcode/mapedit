@@ -14,6 +14,7 @@ import type { AgentServices } from './mcp.js';
 import type { DiskState } from './disk-state.js';
 import type { ScreenshotService } from './screenshot.js';
 import { exportBuiltProject } from './export-project.js';
+import { selectedMapIds } from './build-project.js';
 
 export function createAgentServices(
   state: DiskState,
@@ -24,13 +25,8 @@ export function createAgentServices(
     flush: () => state.flush(),
     projectRevision: () => state.projectRevision,
     getScene: (id) => state.getScene(id),
-    async getScenes(id) {
-      if (id !== undefined) return [await state.getScene(id)];
-      const maps = state.project.maps.map((map) => map.id).sort();
-      return maps.length
-        ? Promise.all(maps.map((map) => state.getScene(map)))
-        : [await state.getScene()];
-    },
+    getScenes: (id) =>
+      Promise.all(selectedMapIds(state.project, id).map((map) => state.getScene(map))),
     getCompilation: async (id) => (await state.getBuild(id)).compilation,
     getModules: () =>
       Object.values(current().parsed.modules).sort((a, b) => compareText(a.id, b.id)),

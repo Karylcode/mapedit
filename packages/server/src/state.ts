@@ -31,7 +31,6 @@ export interface StateStore {
   getScene(id?: string): Promise<SceneSnapshot>;
   asset(path: string): Uint8Array | undefined;
   createAgentServices(screenshots: ScreenshotService): AgentServices;
-  triggerMockNotice?(code: NoticeCode): Promise<void>;
   preview(edit: Edit, requestId: number, mapId?: string): Promise<Preview>;
   apply(edit: Edit, baseRevision: number, mapId?: string): Promise<string | undefined>;
   travel(direction: -1 | 1): Promise<string | undefined>;
@@ -39,7 +38,15 @@ export interface StateStore {
   close(): Promise<void>;
 }
 
-export class MemoryState extends EventEmitter implements StateStore {
+/** Mock-only capability behind POST /api/mock/trigger; real project states lack it. */
+export interface MockNoticeTrigger {
+  triggerMockNotice(code: NoticeCode): Promise<void>;
+}
+export function canTriggerMockNotices(state: StateStore): state is StateStore & MockNoticeTrigger {
+  return typeof (state as Partial<MockNoticeTrigger>).triggerMockNotice === 'function';
+}
+
+export class MemoryState extends EventEmitter implements StateStore, MockNoticeTrigger {
   project: ProjectInfo = { name: 'Mock project', maps: [{ id: 'village', name: 'Mock village' }] };
   scene = mockScene();
   protected readonly history = new ProjectHistory(structuredClone(this.scene));
@@ -205,13 +212,11 @@ export class MemoryState extends EventEmitter implements StateStore {
     return undefined;
   }
   async travel(direction: -1 | 1): Promise<string | undefined> {
-    const target = this.history.target(direction);
-    if (!target) return direction < 0 ? 'Nothing to undo.' : 'Nothing to redo.';
-    const revision = this.scene.revision + 1;
-    this.scene = structuredClone(target.snapshot);
-    this.scene.revision = revision;
-    this.history.cursor = target.cursor;
-    return undefined;
+    return this.history.travel(direction, (snapshot) => {
+      const revision = this.scene.revision + 1;
+      this.scene = structuredClone(snapshot);
+      this.scene.revision = revision;
+    });
   }
   replaceFromAgent(
     scene: SceneSnapshot,

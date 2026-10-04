@@ -1,23 +1,16 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseProject, compatibleSocketTypes, transformMatrix } from '@mapedit/core';
-import { structureRef, type NoticeCode } from '@mapedit/protocol';
+import { NOTICE_CODES, structureRef, type NoticeCode } from '@mapedit/protocol';
 import type { AgentServices } from './mcp.js';
 import type { MemoryState } from './state.js';
 import type { ScreenshotService } from './screenshot.js';
 import { boxGlb, mockScene } from './mock.js';
 
 export function parseMockNotice(value: unknown): NoticeCode {
-  const codes: NoticeCode[] = [
-    'agent_changed',
-    'overwritten_by_agent',
-    'agent_change_overridden',
-    'edit_rejected',
-    'file_error',
-  ];
   const code =
     value && typeof value === 'object' && 'notice' in value
-      ? codes.find((code) => code === value.notice)
+      ? NOTICE_CODES.find((code) => code === value.notice)
       : undefined;
   if (!code) throw new Error('Expected a known notice code in {"notice": NoticeCode}.');
   return code;
