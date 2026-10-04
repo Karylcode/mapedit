@@ -171,3 +171,10 @@ recorded after all corrections are complete.
   lost support), `core/test/violation-identity.test.ts` (field uniqueness and order
   independence). Six related test files / 51 tests, typecheck and scoped lint pass.
   Deviation: none.
+- **F2 complete:** marker moves preserve terrain-relative height, including a box's
+  bottom clearance and point markers. Repeated moves use the latest saved position.
+  `core/test/marker-move.test.ts` reproduces both reported box cases, elevated
+  points and repeated moves; all pass after the fix. Marker/authoring/disk/drag
+  suites (25 tests), typecheck and lint pass. Grid clarification: final height is
+  rounded to 0.5 m, so sloped terrain can introduce up to 0.25 m clearance error;
+  documented in `map-format.md` and covered by a test. No other deviation.

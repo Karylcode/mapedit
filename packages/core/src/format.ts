@@ -513,10 +513,18 @@ export function normalizeEdit(
   terrainHeight: (x: number, z: number) => number = () => 0,
 ): Edit {
   if (edit.kind === 'delete') return edit;
-  const structure = parsed.maps[mapId]?.structures.find((s) => edit.ref === `structure:${s.id}`);
+  const map = parsed.maps[mapId];
+  const structure = map?.structures.find((s) => edit.ref === `structure:${s.id}`);
+  const marker = map?.markers.find((m) => edit.ref === `marker:${m.id}`);
   const x = snap(edit.position[0]),
     z = snap(edit.position[2]);
-  const y = structure && structure.height !== 'auto' ? structure.height : snap(terrainHeight(x, z));
+  const oldPosition =
+    marker && (marker.shape.kind === 'point' ? marker.shape.position : marker.shape.center);
+  const y = oldPosition
+    ? snap(oldPosition[1] + terrainHeight(x, z) - terrainHeight(oldPosition[0], oldPosition[2]))
+    : structure && structure.height !== 'auto'
+      ? structure.height
+      : snap(terrainHeight(x, z));
   return { ...edit, position: [x, y, z], rotation: normalizeRotation(snap(edit.rotation, 15)) };
 }
 
