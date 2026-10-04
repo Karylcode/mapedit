@@ -110,7 +110,7 @@ describe('F15 shared memory/disk history and notice behavior', () => {
             expect.objectContaining({ kind: 'missing_reference', refs: [ref] }),
           ]),
         );
-        expect(await state.apply(edit, revision)).toEqual(expect.any(String));
+        expect(await state.apply(edit, revision)).toMatchObject({ reason: expect.any(String) });
         expect(state.scene.revision).toBe(revision);
         expect(state.entries).toEqual([]);
       }
@@ -126,7 +126,10 @@ describe('F15 shared memory/disk history and notice behavior', () => {
       expect(state.entries.at(-1)!.id).toBeGreaterThan(removedId);
       expect(state.cursor).toBe(2);
       expect(state.entries).toHaveLength(2);
-      expect(await state.travel(1)).toBe('Nothing to redo.');
+      expect(await state.travel(1)).toEqual({
+        reason: 'Nothing to redo.',
+        failure: 'nothing_to_redo',
+      });
       for (const [direction, x] of [
         [-1, 12],
         [-1, 10],
@@ -159,7 +162,10 @@ describe('F15 shared memory/disk history and notice behavior', () => {
 
     it(`${kind}: uses matching levels and refs for every notice`, async () => {
       const { state, agent, brokenFile, messages } = await fixture(kind);
-      expect(await state.apply(move(-10), state.scene.revision)).toEqual(expect.any(String));
+      expect(await state.apply(move(-10), state.scene.revision)).toMatchObject({
+        reason: expect.any(String),
+        failure: 'violations',
+      });
       await state.apply(move(12), state.scene.revision);
       const dragRevision = state.scene.revision;
       await agent(14);

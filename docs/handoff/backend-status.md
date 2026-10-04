@@ -667,3 +667,22 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   browser with the same flags as `ScreenshotService`. Exports only, no behavior
   change. Tests: `protocol/test/catalogs.test.ts` and the export check in
   `server/test/screenshot.test.ts`.
+- **F28 complete:** `docs/protocol.md` section 4 adds an optional `failure` code
+  to `previewResult` and `editResult` (`EditFailure`: `violations`,
+  `unknown_object`, `immovable_object`, `file_errors`, `nothing_to_undo`,
+  `nothing_to_redo`, `internal_error`) and flow 9: while any project file is
+  unreadable, moves answer `failure: 'file_errors'` with no violations, and
+  deletes stay allowed. Section 3 states that `immovable_object` is only for a
+  Module inside a Structure or an attached Structure. `packages/protocol` exports
+  `EDIT_FAILURES`/`EditFailure`. Core's `applySourceEdit` throws `EditError`
+  with its failure code, so the server tells a stale ref, an immovable object
+  and file errors apart instead of guessing from `sourceRefs`; other exceptions
+  propagate (F30 answers them). `StateStore.apply`/`travel` return
+  `{ reason, failure }`, `ProjectHistory.travel` returns `nothing_to_undo` or
+  `nothing_to_redo`, and both the real and mock states send the codes. Tests:
+  `server/test/edit-failures.test.ts` previews and applies a valid Structure
+  while another structure file, a module.yaml, a model.ts or another map is
+  broken (all four answered `immovable_object` with the YAML error before), and
+  checks `immovable_object`, `unknown_object` and `violations` codes; updated
+  expectations in the disk-state, drag, consistency and history tests.
+  Deviation: none.

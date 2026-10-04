@@ -43,7 +43,10 @@ describe('dragging while unrelated violations already exist', () => {
     expect(preview.violations).toEqual([
       expect.objectContaining({ kind: 'unsupported', refs: ['module:b/base'] }),
     ]);
-    expect(await state.apply(edit, 0, 'test')).toContain('no Support');
+    expect(await state.apply(edit, 0, 'test')).toMatchObject({
+      reason: expect.stringContaining('no Support'),
+      failure: 'violations',
+    });
     expect(state.scene.structures.find((value) => value.ref === 'structure:a')!.transform[12]).toBe(
       10,
     );

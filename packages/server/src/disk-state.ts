@@ -8,21 +8,24 @@ import {
   normalizeEdit,
   transformMatrix,
   createViolation,
+  EditError,
   type ParsedProject,
 } from '@mapedit/core';
 import type {
   Edit,
+  EditFailure,
   HistoryEntry,
   ProjectInfo,
   SceneSnapshot,
   ServerMessage,
+  ViolationView,
 } from '@mapedit/protocol';
 import { markerPosition } from '@mapedit/protocol';
 import type { Preview, StateStore } from './state.js';
 import type { BuiltProject } from './build-project.js';
 import { readProjectInputs } from './project-files.js';
 import { containsPath } from './paths.js';
-import { ProjectHistory } from './history.js';
+import { ProjectHistory, type EditRefusal } from './history.js';
 import { noticeMessage } from './notice.js';
 import { createAgentServices } from './services.js';
 import type { AgentServices } from './mcp.js';
@@ -253,13 +256,21 @@ export class DiskState extends EventEmitter implements StateStore {
   }
   async preview(edit: Edit, requestId: number, mapId = this.scene.map.id): Promise<Preview> {
     const cached = await this.getBuild(mapId);
-    // A malformed or stale ref is answered as one missing_reference (protocol section 4).
+    const refuse = (failure: EditFailure, violations: ViolationView[] = []): Preview => ({
+      type: 'previewResult',
+      requestId,
+      ok: false,
+      violations,
+      failure,
+    });
     try {
       if (edit.kind === 'delete') {
         if (!cached.compilation.sourceRefs[edit.ref])
-          throw new Error(`Unknown object "${edit.ref}".`);
+          throw new EditError(`Unknown object "${edit.ref}".`, 'unknown_object');
         return { type: 'previewResult', requestId, ok: true, violations: [] };
       }
+      // Any unreadable project file blocks moves until it is fixed (protocol section 4, flow 9).
+      if (cached.scene.fileErrors.length) return refuse('file_errors');
       const normalized = normalizeEdit(cached.parsed, mapId, edit, cached.heightAt);
       const files = {
         ...cached.parsed.files,
@@ -274,8 +285,7 @@ export class DiskState extends EventEmitter implements StateStore {
       const violations = candidate.scene.violations.filter(
         (v) => v.refs.some((ref) => refs.has(ref)) || !before.has(v.id),
       );
-      if (candidate.scene.fileErrors.length)
-        throw new Error(candidate.scene.fileErrors[0]!.message);
+      if (candidate.scene.fileErrors.length) return refuse('file_errors');
       const transform =
         target?.transform ??
         (marker ? transformMatrix(markerPosition(marker.shape), marker.shape.rotation) : undefined);
@@ -285,29 +295,34 @@ export class DiskState extends EventEmitter implements StateStore {
         ok: violations.length === 0,
         violations,
         ...(transform ? { transform } : {}),
+        ...(violations.length ? { failure: 'violations' as const } : {}),
       };
     } catch (error) {
-      // An existing object that cannot be edited is a Module inside a Structure or an
-      // attached Structure; anything else is a stale or malformed ref.
-      const reason = cached.compilation.sourceRefs[edit.ref]
-        ? 'immovable_object'
-        : 'unknown_object';
-      return {
-        type: 'previewResult',
-        requestId,
-        ok: false,
-        violations: [
-          createViolation({
-            kind: 'missing_reference',
-            message: error instanceof Error ? error.message : String(error),
-            params: { reason, reference: edit.ref },
-            refs: [edit.ref],
-            suggestion: 'Reload the map and select an existing object.',
-            rule: 'edit-reference',
-          }),
-        ],
-      };
+      if (!(error instanceof EditError)) throw error;
+      if (error.failure === 'file_errors') return refuse('file_errors');
+      // A stale or malformed ref, or an object that only moves with its Structure, is
+      // answered as one missing_reference (protocol section 4, flow 7).
+      return refuse(error.failure, [
+        createViolation({
+          kind: 'missing_reference',
+          message: error.message,
+          params: { reason: error.failure, reference: edit.ref },
+          refs: [edit.ref],
+          suggestion:
+            error.failure === 'immovable_object'
+              ? 'Move the whole Structure that contains it instead.'
+              : 'Reload the map and select an existing object.',
+          rule: 'edit-reference',
+        }),
+      ]);
     }
+  }
+  /** The English reason for an edit blocked by file errors, naming the first one. */
+  private fileErrorReason(build: BuiltProject): string {
+    const first = build.scene.fileErrors[0];
+    return first
+      ? `Fix the project file errors before moving objects. ${first.file}:${first.line ?? 1}: ${first.message}`
+      : 'Fix the project file errors before moving objects.';
   }
   private async safeWrite(file: string, data: Buffer | undefined): Promise<void> {
     const target = resolve(this.root, file);
@@ -341,24 +356,28 @@ export class DiskState extends EventEmitter implements StateStore {
     edit: Edit,
     baseRevision: number,
     mapId = this.scene.map.id,
-  ): Promise<string | undefined> {
+  ): Promise<EditRefusal | undefined> {
     return this.serial(async () => {
       await this.refresh();
       const preview = await this.preview(edit, 0, mapId);
-      if (!preview.ok) {
-        const reason = preview.violations[0]?.message ?? 'Edit rejected.';
-        this.notice('edit_rejected', reason, [edit.ref]);
-        return reason;
-      }
       const build = await this.getBuild(mapId);
+      if (!preview.ok) {
+        const failure = preview.failure ?? 'violations';
+        const reason =
+          failure === 'file_errors'
+            ? this.fileErrorReason(build)
+            : (preview.violations[0]?.message ?? 'Edit rejected.');
+        this.notice('edit_rejected', reason, [edit.ref]);
+        return { reason, failure };
+      }
       const normalized = normalizeEdit(build.parsed, mapId, edit, build.heightAt);
       let changed: Record<string, string>;
       try {
         changed = applySourceEdit(build.parsed, mapId, normalized);
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        this.notice('edit_rejected', reason, [edit.ref]);
-        return reason;
+        if (!(error instanceof EditError)) throw error;
+        this.notice('edit_rejected', error.message, [edit.ref]);
+        return { reason: error.message, failure: error.failure };
       }
       for (const [file, content] of Object.entries(changed))
         await this.safeWrite(file, Buffer.from(content));
@@ -380,7 +399,7 @@ export class DiskState extends EventEmitter implements StateStore {
       return undefined;
     });
   }
-  async travel(direction: -1 | 1): Promise<string | undefined> {
+  async travel(direction: -1 | 1): Promise<EditRefusal | undefined> {
     return this.serial(async () => {
       await this.refresh();
       // The cursor moves once the checkpoint's files are on disk.

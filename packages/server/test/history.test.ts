@@ -19,7 +19,10 @@ describe('F26 ProjectHistory owns undo and redo', () => {
     ).rejects.toThrow('disk full');
     expect(history.cursor).toBe(1);
     expect(await history.travel(-1, (snapshot) => void restored.push(snapshot))).toBeUndefined();
-    expect(await history.travel(-1, () => {})).toBe('Nothing to undo.');
+    expect(await history.travel(-1, () => {})).toEqual({
+      reason: 'Nothing to undo.',
+      failure: 'nothing_to_undo',
+    });
     expect(await history.travel(1, (snapshot) => void restored.push(snapshot))).toBeUndefined();
     expect(restored).toEqual(['one', 'start', 'one']);
     expect(history.cursor).toBe(1);

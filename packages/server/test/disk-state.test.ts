@@ -141,9 +141,10 @@ describe('disk state project history', () => {
     }
     expect(elapsed.sort((a, b) => a - b)[5]).toBeLessThan(30);
     expect(await readFile(join(root, 'maps/village/structures/house.yaml'), 'utf8')).toBe(house);
-    expect(await state.apply({ ...edit, position: [-10, 0, 0] }, 0, 'village')).toContain(
-      'outside',
-    );
+    expect(await state.apply({ ...edit, position: [-10, 0, 0] }, 0, 'village')).toMatchObject({
+      reason: expect.stringContaining('outside'),
+      failure: 'violations',
+    });
     expect(await state.apply(edit, 0, 'village')).toBeUndefined();
     const text = await readFile(join(root, 'maps/village/structures/house.yaml'), 'utf8');
     expect(text).toContain('# Preserve this comment');

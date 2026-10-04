@@ -117,8 +117,9 @@ export type ServerMessage =
       ok: boolean;
       transform?: Mat4;
       violations: ViolationView[];
+      failure?: EditFailure;
     }
-  | { type: 'editResult'; requestId: number; ok: boolean; reason?: string }
+  | { type: 'editResult'; requestId: number; ok: boolean; reason?: string; failure?: EditFailure }
   | { type: 'history'; entries: HistoryEntry[]; cursor: number }
   | {
       type: 'notice';
@@ -127,6 +128,17 @@ export type ServerMessage =
       message: string;
       refs?: ObjectRef[];
     };
+/** Why a previewEdit, applyEdit, undo or redo did not succeed (protocol section 4). */
+export const EDIT_FAILURES = [
+  'violations',
+  'unknown_object',
+  'immovable_object',
+  'file_errors',
+  'nothing_to_undo',
+  'nothing_to_redo',
+  'internal_error',
+] as const;
+export type EditFailure = (typeof EDIT_FAILURES)[number];
 export interface HistoryEntry {
   id: number;
   author: 'human' | 'agent';

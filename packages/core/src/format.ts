@@ -4,6 +4,7 @@ import {
   markerPosition,
   parseObjectRef,
   type Edit,
+  type EditFailure,
   type FileErrorView,
   type Vec3,
 } from '@mapedit/protocol';
@@ -562,6 +563,17 @@ export function normalizeEdit(
   );
 }
 
+/** An edit the source files cannot express, with its protocol failure code. */
+export class EditError extends Error {
+  constructor(
+    message: string,
+    readonly failure: Extract<EditFailure, 'unknown_object' | 'immovable_object' | 'file_errors'>,
+  ) {
+    super(message);
+    this.name = 'EditError';
+  }
+}
+
 /** Return only changed source texts, without mutating the parsed project. */
 export function applySourceEdit(
   parsed: ParsedProject,
@@ -569,7 +581,7 @@ export function applySourceEdit(
   edit: Edit,
 ): Record<string, string> {
   const map = parsed.maps[mapId];
-  if (!map) throw new Error(`Unknown map "${mapId}".`);
+  if (!map) throw new EditError(`Unknown map "${mapId}".`, 'unknown_object');
   const reference = parseObjectRef(edit.ref);
   const structure =
     reference?.kind === 'structure'
@@ -584,10 +596,10 @@ export function applySourceEdit(
           ?.modules.find((m) => m.id === reference.instanceId)
       : undefined;
   const target = structure ?? marker ?? instance;
-  if (!target) throw new Error(`Unknown object "${edit.ref}".`);
+  if (!target) throw new EditError(`Unknown object "${edit.ref}".`, 'unknown_object');
   const source = target.source,
     document = parsed.documents.get(source.file)?.clone();
-  if (!document) throw new Error(`Missing YAML document "${source.file}".`);
+  if (!document) throw new EditError(`Missing YAML document "${source.file}".`, 'file_errors');
   if (edit.kind === 'delete') {
     const removals: SourceRef[] = [source];
     if (structure) {
@@ -615,8 +627,12 @@ export function applySourceEdit(
     return changed;
   }
   if (instance)
-    throw new Error('Move a whole structure; individual module moves are not supported.');
-  if (structure?.attach) throw new Error('Move the root of the merged structure.');
+    throw new EditError(
+      'Move a whole structure; individual module moves are not supported.',
+      'immovable_object',
+    );
+  if (structure?.attach)
+    throw new EditError('Move the root of the merged structure.', 'immovable_object');
   const updates: { path: Path; value: number }[] = [];
   if (structure) {
     updates.push(

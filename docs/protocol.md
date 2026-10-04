@@ -195,7 +195,7 @@ interface ProjectInfo {
 - `unresolved_attachment`：`attach` 找不到自己的插槽或目標插槽（`reference` 是 `attach.to`）
 - `attachment_cycle`：模組或結構的 `attach` 形成循環
 - `unknown_object`：編輯器送來的 ref 格式錯誤，或指向不存在的物件（第 4 節流程 7）
-- `immovable_object`：編輯器想移動不能單獨移動的物件，例如結構裡的單一模組，或已經接到別的結構上的結構（要移動它所在的整個結構）
+- `immovable_object`：編輯器想移動不能單獨移動的物件，只有兩種：結構裡的單一模組，或已經接到別的結構上的結構（要移動它所在的整個結構）。其他原因造成的預覽失敗不會用這個理由，見第 4 節的 `EditFailure`
 
 ## 4. WebSocket 訊息
 
@@ -226,8 +226,8 @@ type Edit =
 type ServerMessage =
   | { type: 'welcome'; protocolVersion: 1; project: ProjectInfo }
   | { type: 'scene'; scene: SceneSnapshot }
-  | { type: 'previewResult'; requestId: number; ok: boolean; transform?: Mat4; violations: ViolationView[] }
-  | { type: 'editResult'; requestId: number; ok: boolean; reason?: string }
+  | { type: 'previewResult'; requestId: number; ok: boolean; transform?: Mat4; violations: ViolationView[]; failure?: EditFailure }
+  | { type: 'editResult'; requestId: number; ok: boolean; reason?: string; failure?: EditFailure }
   | { type: 'history'; entries: HistoryEntry[]; cursor: number }
   | { type: 'notice'; level: 'info' | 'warning' | 'error'; code: NoticeCode; message: string; refs?: ObjectRef[] };
 
@@ -247,6 +247,16 @@ type NoticeCode =
   | 'file_error';             // 有檔案無法讀取
 
 // notice 的 message 是英文；前端依 code 翻成介面語言。
+
+// 新增：ok 為 false 時一定附上的原因代碼，前端依代碼翻成介面語言；reason 仍是英文說明。
+type EditFailure =
+  | 'violations'       // 放在那裡會造成違規，內容看 violations（只有 previewResult 和 applyEdit 會用）
+  | 'unknown_object'   // ref 格式錯誤，或指向不存在的物件（見流程 7）
+  | 'immovable_object' // 結構裡的單一模組，或已經接到別的結構上的結構，不能單獨移動
+  | 'file_errors'      // 專案有檔案無法讀取，修好之前不能預覽或修改（見流程 9）
+  | 'nothing_to_undo'  // undo 時沒有可以復原的修改
+  | 'nothing_to_redo'  // redo 時沒有可以重做的修改
+  | 'internal_error';  // 其他錯誤，例如讀檔失敗；reason 是英文說明
 ```
 
 ### 流程
@@ -268,7 +278,9 @@ type NoticeCode =
 7. **參照失效**：前端手上的 ref 可能因為 Agent 剛改了檔案而失效。`previewEdit`、`applyEdit` 的 `edit.ref` 格式錯誤（不符合第 2 節的 `ObjectRef` 格式），或指向不存在的物件時，後端**不斷線**：
    - `previewEdit` 回 `previewResult { ok: false }`，`violations` 只有一筆 `missing_reference`，它的 `refs` 是收到的 ref。
    - `applyEdit` 回 `editResult { ok: false, reason }`，並送 `notice { code: 'edit_rejected' }`；檔案和修改紀錄都不變。
+   - 兩種回覆的 `failure` 都是 `unknown_object`；想移動結構裡的模組或已接合的結構時是 `immovable_object`，`violations` 那一筆的 `params.reason` 也一樣。
 8. **斷線**：只有訊息本身的結構不合法時，後端才以 1008 關閉連線，例如不是 JSON、`type` 不認得、欄位型別不對（`ref` 不是字串、`position` 不是三個有限數字、`requestId` 不是整數），或是在 `hello` 之前送其他訊息、在 `openMap` 之前送修改。
+9. **檔案錯誤**：專案裡只要有檔案無法讀取（`scene.fileErrors` 不是空的，包括其他地圖、模組定義或 model.ts 的錯誤），移動的預覽和套用都不能進行（刪除不受影響）：`previewResult { ok: false, failure: 'file_errors', violations: [] }`、`editResult { ok: false, failure: 'file_errors', reason }`。前端顯示「有檔案無法讀取，修好之前不能移動」，錯誤內容看快照的 `fileErrors`。
 
 ## 5. 前端的責任範圍（給後端參考）
 

@@ -291,17 +291,17 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
             send(client, await state.preview(message.edit, message.requestId, opened.get(client)));
             return;
           }
-          const reason =
+          const refusal =
             message.type === 'applyEdit'
               ? await state.apply(message.edit, message.baseRevision, opened.get(client))
               : await state.travel(message.type === 'undo' ? -1 : 1);
           send(client, {
             type: 'editResult',
             requestId: message.requestId,
-            ok: reason === undefined,
-            ...(reason ? { reason } : {}),
+            ok: refusal === undefined,
+            ...(refusal ? { reason: refusal.reason, failure: refusal.failure } : {}),
           });
-          if (!reason) {
+          if (!refusal) {
             for (const mapId of new Set(opened.values()))
               broadcast({ type: 'scene', scene: await state.getScene(mapId) });
             broadcast({ type: 'history', entries: state.entries, cursor: state.cursor });
