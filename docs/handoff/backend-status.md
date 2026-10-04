@@ -234,3 +234,9 @@ recorded after all corrections are complete.
   `core/test/material-policy.test.ts` reproduces all three invalid declarations
   and verifies built-in material authoring. All 41 related parsing/compiler tests,
   typecheck and scoped lint pass. Deviation: none.
+- **F10 complete:** compiler Socket placement uses `PlacedSocket`, `targetSocket`
+  and `localSocket`; its composed map transform is named `mapTransform`. The
+  identifier audit preserves protocol `SceneSnapshot` and notice `level` fields,
+  and external GLTF/math terminology. `core/test/terminology.test.ts` checks the
+  actual TypeScript identifiers; 38 terminology/compiler/golden tests, typecheck
+  and scoped lint pass. Deviation: none.

@@ -91,7 +91,7 @@ interface StructurePlacement {
   transform: Mat4;
   root: string;
 }
-interface SocketAnchor {
+interface PlacedSocket {
   socket: Socket;
   transform: Mat4;
   instanceRef: string;
@@ -266,14 +266,14 @@ export function compileMap(
         );
     }
   }
-  const socketAdvice = (own: SocketAnchor, target: SocketAnchor): string =>
+  const socketAdvice = (own: PlacedSocket, target: PlacedSocket): string =>
     [target, own]
       .map(
         ({ instanceRef, socket }) =>
           `Socket ${instanceRef}.${socket.id} (${socket.type}) accepts: ${compatibleSocketTypes(parsed.project.socketTypes, socket.type).join(', ') || 'no declared types'}.`,
       )
       .join(' ');
-  const connect = (own: SocketAnchor, target: SocketAnchor, source: SourceRef): void => {
+  const connect = (own: PlacedSocket, target: PlacedSocket, source: SourceRef): void => {
     const a = `${own.instanceRef}.${own.socket.id}`,
       b = `${target.instanceRef}.${target.socket.id}`;
     if (!socketTypesCompatible(parsed.project.socketTypes, own.socket.type, target.socket.type))
@@ -302,7 +302,7 @@ export function compileMap(
     usedSockets.add(b);
     socketConnections.push({ a: own.instanceRef, b: target.instanceRef });
   };
-  const attachmentMatrix = (own: SocketAnchor, target: SocketAnchor, source: SourceRef): Mat4 => {
+  const attachmentMatrix = (own: PlacedSocket, target: PlacedSocket, source: SourceRef): Mat4 => {
     const ownDirection = directionVector(
       own.socket.direction,
       own.socket.rotation + yawOf(own.transform),
@@ -415,8 +415,8 @@ export function compileMap(
         );
         const target = match ? resolve(match[1]!) : undefined;
         const ownSocket = definition.sockets.find((s) => s.id === instance.attach!.socket),
-          targetSocket = target?.definition.sockets.find((s) => s.id === match?.[2]);
-        if (!target || !ownSocket || !targetSocket) {
+          targetSocketDefinition = target?.definition.sockets.find((s) => s.id === match?.[2]);
+        if (!target || !ownSocket || !targetSocketDefinition) {
           if (!failed.has(instanceId))
             emit(
               'missing_reference',
@@ -447,18 +447,18 @@ export function compileMap(
           return;
         }
         attachTo = `module:${structure.id}/${target.instance.id}`;
-        const own: SocketAnchor = {
+        const own: PlacedSocket = {
             socket: ownSocket,
             transform: transformMatrix([0, 0, 0]),
             instanceRef: ref,
           },
-          targetAnchor: SocketAnchor = {
-            socket: targetSocket,
+          targetSocket: PlacedSocket = {
+            socket: targetSocketDefinition,
             transform: target.transform,
             instanceRef: attachTo,
           };
-        transform = attachmentMatrix(own, targetAnchor, instance.source);
-        connect(own, targetAnchor, instance.source);
+        transform = attachmentMatrix(own, targetSocket, instance.source);
+        connect(own, targetSocket, instance.source);
         rotation(yawOf(transform), 90, ref, instance.source);
         grid(
           transformBounds(transform, definition.size).min,
@@ -488,7 +488,7 @@ export function compileMap(
   const placements = new Map<string, StructurePlacement>(),
     visiting = new Set<string>(),
     failed = new Set<string>();
-  const localAnchor = (structureId: string, text: string): SocketAnchor | undefined => {
+  const localSocket = (structureId: string, text: string): PlacedSocket | undefined => {
     const match = /^([A-Za-z][A-Za-z0-9_-]*)\.([A-Za-z][A-Za-z0-9_-]*)$/.exec(text);
     if (!match) return;
     const local = localByStructure.get(structureId)?.get(match[1]!);
@@ -525,9 +525,9 @@ export function compileMap(
       const match = /^([A-Za-z][A-Za-z0-9_-]*)\/(.+)$/.exec(structure.attach.to),
         targetStructure = match ? byId.get(match[1]!) : undefined;
       const targetPlacement = targetStructure ? place(targetStructure) : undefined;
-      const own = localAnchor(structure.id, structure.attach.socket),
+      const own = localSocket(structure.id, structure.attach.socket),
         targetLocal =
-          targetStructure && match ? localAnchor(targetStructure.id, match[2]!) : undefined;
+          targetStructure && match ? localSocket(targetStructure.id, match[2]!) : undefined;
       if (!own || !targetLocal || !targetPlacement) {
         if (!failed.has(structure.id))
           emit(
@@ -594,15 +594,15 @@ export function compileMap(
           const target = locals.get(targetId);
           if (target) offset = offsetFor(target);
         } else if (local.definition.terrainFollow && structure.height === 'auto') {
-          const world = multiplyMatrices(placement.transform, local.transform);
-          const bounds = transformBounds(world, local.definition.size);
+          const mapTransform = multiplyMatrices(placement.transform, local.transform);
+          const bounds = transformBounds(mapTransform, local.definition.size);
           offset =
             snap(
               terrainHeight(
                 (bounds.min[0] + bounds.max[0]) / 2,
                 (bounds.min[2] + bounds.max[2]) / 2,
               ),
-            ) - world[13]!;
+            ) - mapTransform[13]!;
         }
         offsets.set(local.instance.id, offset);
         return offset;
