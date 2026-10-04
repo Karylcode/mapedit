@@ -212,3 +212,11 @@ recorded after all corrections are complete.
   metadata, preserved by MCP. `cli/test/diagnostics.test.ts` reproduces the missing
   prefix before the fix; the MCP multi-map test checks the exact file and line.
   Five related CLI/MCP tests, typecheck and scoped lint pass. Deviation: none.
+- **F7 complete:** `templates/authoring.md` is the single English source for both
+  complete Agent guides. `scripts/generate-authoring.mjs` generates `AGENTS.md`
+  and skill frontmatter plus the identical body; build runs the generator and
+  `--check` verifies freshness. Both contain the workflow, full authoring format
+  and common errors without delegating fundamentals to another document.
+  `cli/test/agent-docs.test.ts` first reproduced the incomplete guide, then checks
+  all sections, canonical equality and initialized copies. Eight documentation,
+  init and end-to-end tests, build, lint and formatting pass. Deviation: none.

@@ -7,7 +7,8 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "pnpm generate:authoring && tsc -b",
+    "generate:authoring": "node scripts/generate-authoring.mjs",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "e2e": "node scripts/e2e.mjs",
