@@ -1,4 +1,4 @@
-import { parseObjectRef } from '@mapedit/protocol';
+import { parseObjectRef, structureRef } from '@mapedit/protocol';
 import type {
   InstanceView,
   MarkerView,
@@ -17,6 +17,11 @@ export class SnapshotIndex {
   readonly moduleTypes = new Map<string, ModuleTypeView>();
   /** Instance ref → the structure that draws it. */
   private readonly owners = new Map<ObjectRef, StructureView>();
+  /**
+   * `structure:<id>` → instances whose refs are `module:<id>/…`. A structure
+   * attached to another is drawn inside the root's view but keeps these refs.
+   */
+  private readonly bySource = new Map<ObjectRef, InstanceView[]>();
   /** How many structures share each name. */
   private readonly nameCounts = new Map<string, number>();
 
@@ -29,6 +34,12 @@ export class SnapshotIndex {
       for (const instance of structure.instances) {
         this.instances.set(instance.ref, instance);
         this.owners.set(instance.ref, structure);
+        const parsed = parseObjectRef(instance.ref);
+        if (parsed?.kind !== 'module') continue;
+        const source = structureRef(parsed.structureId);
+        const list = this.bySource.get(source) ?? [];
+        list.push(instance);
+        this.bySource.set(source, list);
       }
     }
     for (const marker of scene.markers) this.markers.set(marker.ref, marker);
@@ -44,20 +55,39 @@ export class SnapshotIndex {
     return (this.nameCounts.get(name) ?? 0) > 1 && name !== id ? `${name} (${id})` : name;
   }
 
-  /** The structure a structure or module ref belongs to. */
+  /** The drawn structure a structure or module ref belongs to (the root, for an attached one). */
   structureOf(ref: ObjectRef): StructureView | undefined {
-    return this.structures.get(ref) ?? this.owners.get(ref);
+    const attached = this.bySource.get(ref)?.[0];
+    return (
+      this.structures.get(ref) ??
+      this.owners.get(ref) ??
+      (attached && this.owners.get(attached.ref))
+    );
   }
 
   has(ref: ObjectRef): boolean {
-    return this.structures.has(ref) || this.instances.has(ref) || this.markers.has(ref);
+    return (
+      this.structures.has(ref) ||
+      this.instances.has(ref) ||
+      this.markers.has(ref) ||
+      this.bySource.has(ref)
+    );
   }
 
-  /** Instance refs drawn for an object ref: every module of a structure, or the module itself. */
+  /** True for a structure drawn inside another one because it is attached to it. */
+  isAttached(ref: ObjectRef): boolean {
+    return !this.structures.has(ref) && this.bySource.has(ref);
+  }
+
+  /**
+   * Instances drawn for an object ref: every module of a drawn structure, the
+   * modules of an attached structure, or the module itself.
+   */
   instancesOf(ref: ObjectRef): ObjectRef[] {
     const structure = this.structures.get(ref);
     if (structure) return structure.instances.map((instance) => instance.ref);
-    return this.instances.has(ref) ? [ref] : [];
+    if (this.instances.has(ref)) return [ref];
+    return (this.bySource.get(ref) ?? []).map((instance) => instance.ref);
   }
 
   /** Display name: structure name, module type name, or marker type, falling back to ids. */

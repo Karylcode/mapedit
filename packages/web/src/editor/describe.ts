@@ -45,7 +45,8 @@ export function describeObject(
 
 /** One object's name in lists: modules read "Structure · instance". */
 export function objectName(ref: ObjectRef, index: SnapshotIndex | undefined): string {
-  if (!index?.has(ref)) return idOf(ref);
+  // An attached structure has no view of its own: its id names it best.
+  if (!index?.has(ref) || index.isAttached(ref)) return idOf(ref);
   const structure = index.structureOf(ref);
   if (!structure) return index.label(ref);
   const name = index.structureName(structure.ref);

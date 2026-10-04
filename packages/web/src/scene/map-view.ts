@@ -269,24 +269,12 @@ export class MapView {
     const index = this.index;
     if (!index) return [];
     const structure = index.structures.get(ref);
-    if (structure) {
-      const frame = new Matrix4().fromArray(structure.transform);
-      const toLocal = frame.clone().invert();
-      const min = new Vector3(Infinity, Infinity, Infinity);
-      const max = new Vector3(-Infinity, -Infinity, -Infinity);
-      const corner = new Vector3();
-      for (const instance of structure.instances) {
-        const size = this.sizeOf(instance);
-        scratch.fromArray(instance.transform).premultiply(toLocal);
-        for (let i = 0; i < 8; i++) {
-          corner
-            .set(i & 1 ? size.x : 0, i & 2 ? size.y : 0, i & 4 ? size.z : 0)
-            .applyMatrix4(scratch);
-          min.min(corner);
-          max.max(corner);
-        }
-      }
-      return structure.instances.length ? [{ matrix: frame, min, max }] : [];
+    if (structure) return this.structureBox(structure.transform, structure.instances);
+    // A structure attached to another one: its own modules, in the merged grid.
+    if (index.isAttached(ref)) {
+      const root = index.structureOf(ref)!;
+      const instances = index.instancesOf(ref).map((member) => index.instances.get(member)!);
+      return this.structureBox(root.transform, instances);
     }
     const instance = index.instances.get(ref);
     if (instance)
@@ -304,6 +292,31 @@ export class MapView {
       return [{ matrix, min: new Vector3(-0.7, 0, -0.7), max: new Vector3(0.7, 2.3, 0.7) }];
     const half = new Vector3(...shape.size).multiplyScalar(0.5);
     return [{ matrix, min: half.clone().negate(), max: half }];
+  }
+
+  /** One box around some modules, aligned with the structure grid they share. */
+  private structureBox(
+    transform: readonly number[],
+    instances: readonly InstanceView[],
+  ): OrientedBox[] {
+    if (!instances.length) return [];
+    const frame = new Matrix4().fromArray(transform);
+    const toLocal = frame.clone().invert();
+    const min = new Vector3(Infinity, Infinity, Infinity);
+    const max = new Vector3(-Infinity, -Infinity, -Infinity);
+    const corner = new Vector3();
+    for (const instance of instances) {
+      const size = this.sizeOf(instance);
+      scratch.fromArray(instance.transform).premultiply(toLocal);
+      for (let i = 0; i < 8; i++) {
+        corner
+          .set(i & 1 ? size.x : 0, i & 2 ? size.y : 0, i & 4 ? size.z : 0)
+          .applyMatrix4(scratch);
+        min.min(corner);
+        max.max(corner);
+      }
+    }
+    return [{ matrix: frame, min, max }];
   }
 
   /** Map-space bounds of an object, for focusing the camera. */

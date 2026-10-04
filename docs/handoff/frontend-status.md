@@ -203,6 +203,12 @@ is not modified here.
 - **FE11 完成**：新快照的地圖大小和上一份不同時，更新鏡頭的範圍（不重新取景），F 也框住新的大小。
   測試：`test/real-edit-browser.test.ts` 把真專案的 `map.yaml` 從 100 改成 400 公尺，鏡頭的最大距離和邊界跟著變成
   640 和 40 公尺，按 F 看到整張 400 公尺的地圖（修正前停在 160 和 10 公尺）。
+- **FE12 完成**：接在別的結構上的結構不會單獨出現在快照裡（它的模組畫在根結構下面，但 ref 仍是
+  `module:<自己的 id>/…`）。`SnapshotIndex` 用 `parseObjectRef` 把 `structure:B` 對應到所有 `module:B/*` 的實例，
+  所以違規的紅色標示、清單點選後飛過去、選取和 Agent 修改的藍框、`/render` 的 `highlight` 都找得到它；它的外框
+  用根結構的格子、只框它自己的模組，名稱顯示自己的 id。測試：`test/attached-structures.test.ts` 用「annex 接在 house
+  上、違規只寫 `structure:annex`」的快照：被標紅、有範圍可以飛過去和框出來（修正前什麼都沒有）。另外用真的編譯器
+  確認過這種快照的形狀：annex 的模組出現在 `structure:house` 裡、ref 是 `module:annex/base`。
 
 ## 自行決定的事
 
