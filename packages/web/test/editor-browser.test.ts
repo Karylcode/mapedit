@@ -249,6 +249,18 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     await narrow.close();
   });
 
+  it('keeps a warning when info toasts overflow (FE19)', async () => {
+    const fresh = await openEditor(browser, server.url);
+    const texts = await editorState(fresh, (e) => {
+      e.toasts.show({ level: 'warning', text: 'Your edit was replaced', key: 'w', seconds: 60 });
+      for (let i = 1; i <= 4; i++)
+        e.toasts.show({ level: 'info', text: `Info ${i}`, key: `i${i}`, seconds: 60 });
+      return e.toasts.texts();
+    });
+    expect(texts).toEqual(['Info 4', 'Info 3', 'Info 2', 'Your edit was replaced']);
+    await fresh.close();
+  });
+
   it('reports no page errors', () => {
     expect((page as Page & { errors: string[] }).errors).toEqual([]);
   });

@@ -19,6 +19,19 @@ export interface ToastInput {
 
 const DEFAULT_SECONDS: Record<ToastLevel, number> = { info: 4, warning: 7, error: 14 };
 const LIMIT = 4;
+const URGENCY: Record<ToastLevel, number> = { info: 0, warning: 1, error: 2 };
+
+/**
+ * Which toast to drop when too many are shown, given their levels newest
+ * first: the oldest of the least urgent level. A warning that a human edit was
+ * lost must outlast any number of info toasts.
+ */
+export function overflowVictim(levels: readonly ToastLevel[]): number {
+  const least = Math.min(...levels.map((level) => URGENCY[level]));
+  let oldest = levels.length - 1;
+  while (oldest > 0 && URGENCY[levels[oldest]!] !== least) oldest--;
+  return oldest;
+}
 
 interface Shown {
   input: ToastInput;
@@ -72,8 +85,11 @@ export class Toasts {
     this.shown.set(toast, shown);
     this.fill(shown);
     this.element.prepend(toast);
-    while (this.element.children.length > LIMIT)
-      this.remove(this.element.lastElementChild as HTMLElement);
+    while (this.element.children.length > LIMIT) {
+      const stacked = [...this.element.children] as HTMLElement[];
+      const levels = stacked.map((element) => this.shown.get(element)!.input.level);
+      this.remove(stacked[overflowVictim(levels)]!);
+    }
     return toast;
   }
 

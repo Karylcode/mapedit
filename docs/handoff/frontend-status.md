@@ -256,6 +256,12 @@ is not modified here.
 - **FE18 完成**：protocol.md 第 4 節 `Edit` 的說明改成實際的意思：`position` 是物件原點想放的位置（還沒對齊），
   也就是結構的 `position`、點標記的 `position` 或方形標記的 `center`，不是滑鼠指到的點。前端送的和後端 `snapMove`
   的解讀本來就一致，只改文件，沒有程式測試。已通知後端。
+- **FE19 完成**：提示超過 4 則時，先移掉最舊的一般資訊，再來才是最舊的警告，錯誤最後才移。只剩警告和錯誤時，
+  新來的一般資訊直接不顯示。
+  測試：
+  - `test/toasts.test.ts`：測挑選要移掉哪一則的 `overflowVictim`。
+  - `test/editor-browser.test.ts`：先顯示一則警告，再來四則一般資訊，警告還在，被移掉的是第一則資訊
+    （修正前警告被擠掉）。
 
 ## 自行決定的事
 
