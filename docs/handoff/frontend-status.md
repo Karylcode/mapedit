@@ -4,6 +4,13 @@
 [claude-frontend.md](claude-frontend.md) and [protocol.md](../protocol.md); the backend
 is not modified here.
 
+**檢查入口：** W0–W6 全部完成，分支 `frontend`（從 `backend` 開出，已合併 `backend` 到 bf99ebf 為止的所有修正）。
+這台 Windows 上整個 repo 的 `pnpm typecheck`、`pnpm lint`、`pnpm test`（68 個檔案、407 個測試，其中前端
+15 個檔案、94 個測試，含 6 個用 headless Edge 實際操作的瀏覽器測試檔）全部通過。程式從
+`packages/web/src/main.ts` 開始：`editor/` 是編輯器（`editor.ts` 把連線、場景、輸入、編輯和介面接在一起），
+`render/` 是截圖頁，`scene/` 是兩者共用的 three.js 畫面，`net/connection.ts` 是 WebSocket 客戶端，
+`i18n/` 是兩種語言的文字。
+
 ## 目前進度
 
 | 階段 | 狀態 | 驗收 |
@@ -14,7 +21,7 @@ is not modified here.
 | W3 編輯 | 完成 | `test/editing-logic.test.ts`、`test/edit-browser.test.ts`（mock）、`test/real-edit-browser.test.ts`（真的專案） |
 | W4 違規、提示、語言 | 完成 | `test/notices.test.ts`、`test/issues-browser.test.ts`（真的 Edge，中英文） |
 | W5 `/render` | 完成 | `test/render-views.test.ts`、`test/render-browser.test.ts`（頁面契約，以及真的專案透過 MCP `screenshot`、`build_module`） |
-| W6 端到端 | 進行中 | |
+| W6 端到端 | 完成 | `mapedit dev` 提供的正式建置上走完 `pnpm e2e` 村莊；全部測試、lint、typecheck；README |
 
 ## 每個階段完成了什麼、怎麼驗證
 
@@ -125,6 +132,26 @@ is not modified here.
   1000 × 1000 公尺、400 棟房子、103 個違規的地圖（`{"map":"big","tileSize":384}`）：
 
   ![big map](images/render-big-map.png)
+- **W6**：`pnpm build` 之後，在 `pnpm e2e` 產生的村莊執行 `mapedit dev`，`http://127.0.0.1:4790` 直接是編輯器
+  （`/render` 和圖示也由後端提供）。用 headless Edge 走一遍（腳本記錄在下面）：畫面正確（三間房子、轉
+  15／30 度、道路、山、出生點和觸發區，沒有違規）；直接改 `house_east.yaml`（模擬 Agent），網頁不用重新整理
+  就畫出新位置，出現「Agent 修改了 Starter House (house_east)」並短暫框出那棟房子；人把 `house_west` 拖走，
+  檔案寫回 `position: [26.5, 20.5]`、開頭註解還在，修改紀錄是「Agent、人」；再讓 Agent 把 `house_centre` 移到
+  和 `house_west` 重疊，出現 12 個穿模違規和旗子，切成英文、點第一個違規也正常；把檔案改回去後回到零違規。
+  全程沒有頁面錯誤。同名的結構（三棟都叫 Starter House）在清單、提示和紀錄裡會附上 id 區分。
+  README 補上執行方式、編輯器操作表和前端開發方式。驗證：上面各階段的測試，加上整個 repo 的測試全部通過。
+
+  打開時（`mapedit dev`，正式建置）：
+
+  ![editor](images/editor-village.png)
+
+  Agent 造成穿模之後（左邊違規清單、地圖上的編號旗子、右邊修改紀錄）：
+
+  ![violation](images/editor-violation.png)
+
+  切成英文、點第一個違規：
+
+  ![violation in English](images/editor-violation-en.png)
 
 ## 自行決定的事
 
@@ -141,6 +168,10 @@ is not modified here.
 - 拼圖的排法：一到三個角度一列，四、五個兩列（5 個角度時多出的一格放地圖資訊），比全部排成一列更適合
   Agent 讀圖（圖片會被縮到長邊約 1,500 像素，兩列時每格比較大）。
 - Agent 修改物件時，除了提示，還用藍框把被改的物件標出 1.6 秒，方便人在旁邊看 Agent 蓋東西。
+- 好幾個結構同名時（範本的房子都叫 Starter House），清單、提示和紀錄寫成「名稱 (id)」；Agent 修改的提示和藍框
+  以整個結構為單位，不逐一列出模組。
+- 瀏覽器測試用 `--enable-unsafe-swiftshader` 啟動系統的 Edge 或 Chrome，沒有 GPU 的 CI 也能跑；找不到瀏覽器時跳過。
+  等待都留了 15 秒的餘裕，給軟體 WebGL 和比較慢的機器。
 - 左鍵在空地上拖曳也會平移地圖（像網頁地圖），方便沒有中鍵的觸控板；在物件上拖曳留給 W3 的移動。
 - 太陽方位角：從上往下看、從北方順時針量（0 度北方 −Z、90 度東方 +X），已寫進 protocol.md
   第 2 節並通知後端。點標記 `rotation` 為 0 時面向南方 +Z（glTF 的前方，也和 Minecraft 的
@@ -160,8 +191,13 @@ is not modified here.
 
 ## 需要人處理
 
-（目前沒有）
+- 真的 Claude Code／Codex 從一句話蓋出村莊、人在旁邊用編輯器看和修正、匯出到 Unity 按 Play 的聯合驗收
+  （backend-status.md「需要前端配合」最後一項）：需要真的 Agent 和 Unity，不在這次自動化範圍內。
+- 介面的視覺方向（測量員標籤、粉線藍、旗紅）是我自己定的，請人看過截圖後決定要不要調整。
 
 ## 已知問題
 
-（目前沒有）
+- three.js 讓主要的 JavaScript 檔約 690 KB（gzip 後約 177 KB）；本機工具可以接受，沒有再拆。
+- 違規非常多（例如 100 個以上）時，看整張地圖會有很多旗子；遠的旗子會縮小到 45%，點清單可以飛過去看。
+- 這個環境的 PATH 上沒有 pnpm；我用 `corepack pnpm@11.19.0` 當 `pnpm`。如果用 corepack 但沒指定版本，
+  在沒有 `packageManager` 的暫存資料夾會跑到 pnpm 12，`packed-cli.test.ts` 會失敗（和程式無關）。
