@@ -165,6 +165,11 @@ is not modified here.
   `refresh()` 不超過 20 次（修正前同一個測試是 6,022 次以上，測試在 500 次時就停止繼續呼叫）。
 - **FE2 完成**：模組類型換模型時沿用原本的實例緩衝區大小，只有實例數超過容量時才加倍。測試：同一個檔案，
   40 面牆的模型換 20 次，緩衝區大小不變（修正前變成 41,943,040 個實例）。
+- **FE3 完成**：換地圖時取消拖動和手勢、清掉選取和滑過提示；新地圖的第一份快照畫出來之前，點選和滑過都沒有作用，
+  拖動、R、Delete 都不送修改。修改的 `baseRevision` 只取「畫面上就是目前地圖」時的 revision，沒有就不送，不再用 0 代替。
+  測試：`test/maps-browser.test.ts` 用有兩張地圖、兩邊都有 `structure:house` 和 `marker:player_spawn` 的真專案，
+  以 Playwright 攔下第二張地圖的快照：等待期間點選、Delete、R、拖動都沒有送出任何 `applyEdit`／`previewEdit`，
+  放行後第二張地圖的檔案沒有被改（修正前會送出 `delete structure:house`，`baseRevision` 是 0）。
 
 ## 自行決定的事
 

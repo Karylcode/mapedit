@@ -44,8 +44,16 @@ export function start(root: HTMLElement = document.body): void {
   const viewport = new Viewport(stage, map);
   const controls = new OverviewControls(viewport.overview, viewport.camera, map);
 
+  /**
+   * True once the open map's own snapshot is drawn. Until then the screen
+   * still shows the previous map, which must not be picked or edited.
+   */
+  const ready = (): boolean => store.state.scene?.map.id === store.state.mapId;
+
   const openMap = (mapId: string): void => {
     if (store.state.mapId === mapId && connection.currentMap === mapId) return;
+    edits.cancelDrag();
+    input.cancelGesture();
     store.set({
       mapId,
       scene: undefined,
@@ -112,12 +120,13 @@ export function start(root: HTMLElement = document.body): void {
     click(hit) {
       const current = map.index;
       store.set({
-        selection: current ? clickSelection(store.state.selection, hit, current) : undefined,
+        selection:
+          current && ready() ? clickSelection(store.state.selection, hit, current) : undefined,
       });
     },
     hover(hit, x, y) {
       const previous = store.state.hover;
-      if (!hit) {
+      if (!hit || !ready()) {
         if (previous) store.set({ hover: undefined });
       } else if (previous?.ref !== hit || previous.x !== x || previous.y !== y)
         store.set({ hover: { ref: hit, x, y } });

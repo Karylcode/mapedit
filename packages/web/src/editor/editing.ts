@@ -75,12 +75,25 @@ export class EditController {
     return this.drag !== undefined && this.drag.applyId === undefined;
   }
 
+  /**
+   * The revision edits are based on, or undefined while the open map's first
+   * snapshot has not arrived: what is drawn then belongs to another map, and
+   * an edit naming its ids would land on the newly opened one.
+   */
+  private baseRevision(): number | undefined {
+    const { scene, mapId, revision } = this.store.state;
+    return scene && scene.map.id === mapId && this.map.scene?.map.id === mapId
+      ? revision
+      : undefined;
+  }
+
   /** Start dragging the structure or marker under the pointer; false lets the map pan instead. */
   beginDrag(hit: ObjectRef, pointer: Vector2, client: Point): boolean {
+    const baseRevision = this.baseRevision();
     const index = this.map.index;
     const ref = index && movableOf(hit, index);
     const frame = ref && this.map.frameOf(ref);
-    if (!index || !ref || !frame || this.drag) return false;
+    if (baseRevision === undefined || !index || !ref || !frame || this.drag) return false;
     if (this.connection.status !== 'open') {
       this.say('warning', 'edit.offline');
       return false;
@@ -94,7 +107,7 @@ export class EditController {
     this.viewport.scene.add(ghost);
     this.drag = {
       ref,
-      baseRevision: this.store.state.revision ?? 0,
+      baseRevision,
       offset: [origin.x - grab.x, origin.z - grab.z],
       rotation: this.rotationOf(ref),
       pointer: pointer.clone(),
@@ -156,12 +169,13 @@ export class EditController {
       this.viewport.invalidate();
       return;
     }
+    const baseRevision = this.baseRevision();
     const index = this.map.index;
     const selection = this.store.state.selection;
     const ref = index && selection ? movableOf(selection, index) : undefined;
     const frame = ref && this.map.frameOf(ref);
     const bounds = ref && this.map.boundsOf(ref);
-    if (!ref || !frame || !bounds) return;
+    if (baseRevision === undefined || !ref || !frame || !bounds) return;
     const origin = new Vector3().setFromMatrixPosition(frame).toArray() as Vec3;
     const center = bounds.getCenter(new Vector3()).toArray() as Vec3;
     const position = turnAbout(origin, center, step).map(round) as Vec3;
@@ -174,7 +188,7 @@ export class EditController {
           position,
           rotation: normalizeAngle(this.rotationOf(ref) + step),
         },
-        baseRevision: this.store.state.revision ?? 0,
+        baseRevision,
       },
       { kind: 'apply', ref, action: 'rotate' },
     );
@@ -182,13 +196,14 @@ export class EditController {
 
   /** Delete removes the selected structure, single module or marker. */
   deleteSelection(): void {
+    const baseRevision = this.baseRevision();
     const ref = this.store.state.selection;
-    if (!ref || this.drag) return;
+    if (baseRevision === undefined || !ref || this.drag) return;
     this.send(
       {
         type: 'applyEdit',
         edit: { kind: 'delete', ref },
-        baseRevision: this.store.state.revision ?? 0,
+        baseRevision,
       },
       { kind: 'apply', ref, action: 'delete' },
     );

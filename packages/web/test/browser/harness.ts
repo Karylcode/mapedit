@@ -67,8 +67,16 @@ export function launch(executablePath: string): Promise<Browser> {
   return chromium.launch({ executablePath, headless: true, args: ['--enable-unsafe-swiftshader'] });
 }
 
-/** Open the editor and wait until the map's models are drawn. */
-export async function openEditor(browser: Browser, url: string, locale = 'en-US'): Promise<Page> {
+/**
+ * Open the editor and wait until the map's models are drawn. `prepare` runs
+ * before the page loads, e.g. to route its WebSocket.
+ */
+export async function openEditor(
+  browser: Browser,
+  url: string,
+  locale = 'en-US',
+  prepare?: (page: Page) => Promise<void>,
+): Promise<Page> {
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 1,
@@ -77,6 +85,7 @@ export async function openEditor(browser: Browser, url: string, locale = 'en-US'
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(String(error)));
   (page as Page & { errors: string[] }).errors = errors;
+  await prepare?.(page);
   await page.goto(url);
   await waitForEditor(page);
   return page;
