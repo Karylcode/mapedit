@@ -41,6 +41,16 @@ type Pending =
   | { kind: 'apply'; ref: ObjectRef; action: 'move' | 'rotate' | 'delete' }
   | { kind: 'undo' | 'redo' };
 
+/** An edit the backend has not answered, or answered before its snapshot arrived. */
+interface InFlight {
+  requestId: number;
+  edit: Edit;
+  answered: boolean;
+}
+
+/** What a left-button drag on an object turns into. */
+export type DragStart = 'drag' | 'pan' | 'blocked';
+
 const round = (value: number) => Math.round(value * 1000) / 1000;
 
 /**
@@ -52,6 +62,11 @@ export class EditController {
   private readonly throttle: PreviewThrottle;
   private readonly raycaster = new Raycaster();
   private readonly pending = new Map<number, Pending>();
+  /**
+   * Edits per object until the snapshot showing them arrives, so quick
+   * repeated presses build on what was already sent instead of the old snapshot.
+   */
+  private readonly inFlight = new Map<ObjectRef, InFlight>();
 
   constructor(
     private readonly connection: Connection,
@@ -87,19 +102,27 @@ export class EditController {
       : undefined;
   }
 
-  /** Start dragging the structure or marker under the pointer; false lets the map pan instead. */
-  beginDrag(hit: ObjectRef, pointer: Vector2, client: Point): boolean {
+  /**
+   * Start dragging the structure or marker under the pointer. Over open
+   * ground, or before the map is drawn, the drag pans instead; while the
+   * object still has a change on its way, it is held with a hint to wait.
+   */
+  beginDrag(hit: ObjectRef, pointer: Vector2, client: Point): DragStart {
     const baseRevision = this.baseRevision();
     const index = this.map.index;
     const ref = index && movableOf(hit, index);
     const frame = ref && this.map.frameOf(ref);
-    if (baseRevision === undefined || !index || !ref || !frame || this.drag) return false;
+    if (baseRevision === undefined || !index || !ref || !frame) return 'pan';
+    if (this.drag || this.inFlight.has(ref)) {
+      this.say('info', 'edit.busy');
+      return 'blocked';
+    }
     if (this.connection.status !== 'open') {
       this.say('warning', 'edit.offline');
-      return false;
+      return 'blocked';
     }
     const grab = this.ground(pointer);
-    if (!grab) return false;
+    if (!grab) return 'pan';
     const origin = new Vector3().setFromMatrixPosition(frame);
     const ghost = new Ghost(this.map, ref, frame);
     const ratio = this.viewport.renderer.getPixelRatio();
@@ -116,7 +139,7 @@ export class EditController {
     };
     this.store.set({ selection: ref, hover: undefined });
     this.viewport.invalidate();
-    return true;
+    return 'drag';
   }
 
   dragMove(pointer: Vector2, client: Point): void {
@@ -176,18 +199,19 @@ export class EditController {
     const frame = ref && this.map.frameOf(ref);
     const bounds = ref && this.map.boundsOf(ref);
     if (baseRevision === undefined || !ref || !frame || !bounds) return;
-    const origin = new Vector3().setFromMatrixPosition(frame).toArray() as Vec3;
+    // Turning about the center keeps the center fixed, so presses made before
+    // the next snapshot continue from the last position and angle sent.
+    const previous = this.inFlight.get(ref)?.edit;
+    if (previous?.kind === 'delete') return;
+    const origin =
+      previous?.position ?? (new Vector3().setFromMatrixPosition(frame).toArray() as Vec3);
+    const rotation = previous?.rotation ?? this.rotationOf(ref);
     const center = bounds.getCenter(new Vector3()).toArray() as Vec3;
     const position = turnAbout(origin, center, step).map(round) as Vec3;
     this.send(
       {
         type: 'applyEdit',
-        edit: {
-          kind: 'move',
-          ref,
-          position,
-          rotation: normalizeAngle(this.rotationOf(ref) + step),
-        },
+        edit: { kind: 'move', ref, position, rotation: normalizeAngle(rotation + step) },
         baseRevision,
       },
       { kind: 'apply', ref, action: 'rotate' },
@@ -199,6 +223,7 @@ export class EditController {
     const baseRevision = this.baseRevision();
     const ref = this.store.state.selection;
     if (baseRevision === undefined || !ref || this.drag) return;
+    if (this.inFlight.get(ref)?.edit.kind === 'delete') return;
     this.send(
       {
         type: 'applyEdit',
@@ -224,6 +249,8 @@ export class EditController {
       return undefined;
     }
     this.pending.set(id, pending);
+    if (request.type === 'applyEdit')
+      this.inFlight.set(request.edit.ref, { requestId: id, edit: request.edit, answered: false });
     return id;
   }
 
@@ -254,7 +281,11 @@ export class EditController {
   private receive(message: ServerMessage): void {
     if (message.type === 'previewResult') this.previewed(message);
     else if (message.type === 'editResult') this.answered(message);
-    else if (message.type === 'scene' && this.drag?.applied) this.cancelDrag();
+    else if (message.type === 'scene') {
+      // The snapshot after a successful edit shows it; later presses use the snapshot again.
+      for (const [ref, edit] of this.inFlight) if (edit.answered) this.inFlight.delete(ref);
+      if (this.drag?.applied) this.cancelDrag();
+    }
   }
 
   private previewed(result: Extract<ServerMessage, { type: 'previewResult' }>): void {
@@ -280,6 +311,11 @@ export class EditController {
     const pending = this.pending.get(result.requestId);
     if (!pending) return;
     this.pending.delete(result.requestId);
+    for (const [ref, edit] of this.inFlight)
+      if (edit.requestId === result.requestId) {
+        if (result.ok) edit.answered = true;
+        else this.inFlight.delete(ref);
+      }
     const drag = this.drag;
     if (drag && drag.applyId === result.requestId) {
       if (result.ok) drag.applied = true;
@@ -320,6 +356,7 @@ export class EditController {
     const dropped = this.drag?.applyId !== undefined && !this.drag.applied;
     this.cancelDrag();
     this.pending.clear();
+    this.inFlight.clear();
     this.throttle.reset();
     if (dropped) this.say('warning', 'edit.offline');
   }

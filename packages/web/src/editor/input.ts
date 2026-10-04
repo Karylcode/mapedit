@@ -25,8 +25,11 @@ export interface InputActions {
   hover(hit: ObjectRef | undefined, x: number, y: number): void;
   focus(): void;
   escape(): void;
-  /** A left-button drag that started on an object; return false to pan instead. */
-  dragStart?(hit: ObjectRef, pointer: Vector2, client: ClientPoint): boolean;
+  /**
+   * A left-button drag that started on an object: `drag` moves it, `pan`
+   * moves the map instead, `blocked` does neither until the button is released.
+   */
+  dragStart?(hit: ObjectRef, pointer: Vector2, client: ClientPoint): 'drag' | 'pan' | 'blocked';
   dragMove?(pointer: Vector2, client: ClientPoint): void;
   dragEnd?(pointer: Vector2, client: ClientPoint): void;
   /** Any other key; return true when handled. */
@@ -43,7 +46,8 @@ type Gesture =
   | { kind: 'press'; id: number; x: number; y: number; hit?: ObjectRef }
   | { kind: 'orbit'; id: number; x: number; y: number }
   | { kind: 'pan'; id: number }
-  | { kind: 'drag'; id: number };
+  | { kind: 'drag'; id: number }
+  | { kind: 'held'; id: number };
 
 /** True when a key press belongs to a form control rather than the map. */
 export function typingInto(target: EventTarget | null): boolean {
@@ -154,10 +158,14 @@ export class OverviewInput {
       const start = this.pointer(gesture.x, gesture.y);
       const client = { x: event.clientX, y: event.clientY };
       const origin = { x: gesture.x, y: gesture.y };
-      if (gesture.hit && this.actions.dragStart?.(gesture.hit, start, origin)) {
+      const outcome = gesture.hit ? this.actions.dragStart?.(gesture.hit, start, origin) : 'pan';
+      if (outcome === 'drag') {
         this.gesture = { kind: 'drag', id: gesture.id };
         this.actions.hover(undefined, 0, 0);
         this.actions.dragMove?.(pointer, client);
+      } else if (outcome === 'blocked') {
+        // The editor explained why; the map stays put until the button is released.
+        this.gesture = { kind: 'held', id: gesture.id };
       } else {
         // A left drag on open ground moves the map, like a web map.
         this.gesture = { kind: 'pan', id: gesture.id };
@@ -169,7 +177,8 @@ export class OverviewInput {
       gesture.x = event.clientX;
       gesture.y = event.clientY;
     } else if (gesture.kind === 'pan') this.controls.pan(pointer);
-    else this.actions.dragMove?.(pointer, { x: event.clientX, y: event.clientY });
+    else if (gesture.kind === 'drag')
+      this.actions.dragMove?.(pointer, { x: event.clientX, y: event.clientY });
     this.viewport.invalidate();
   }
 

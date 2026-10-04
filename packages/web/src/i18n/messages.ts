@@ -63,6 +63,7 @@ export const zhTW = {
   'edit.rotateRejected': '{name} 沒有轉動',
   'edit.deleteRejected': '{name} 沒有刪除',
   'edit.offline': '還沒連上編輯器伺服器，這次的修改沒有送出',
+  'edit.busy': '上一個修改還在處理中，請稍等再拖',
 
   'history.title': '修改紀錄',
   'history.empty': '開啟以來還沒有修改',
@@ -211,6 +212,7 @@ export const en: Record<MessageKey, Message> = {
   'edit.rotateRejected': '{name} was not rotated',
   'edit.deleteRejected': '{name} was not deleted',
   'edit.offline': 'Not connected to the editor server; the change was not sent',
+  'edit.busy': 'The previous change is still being applied; drag again in a moment',
 
   'history.title': 'Change log',
   'history.empty': 'No changes since the editor opened',

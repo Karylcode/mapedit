@@ -175,6 +175,12 @@ is not modified here.
   測試：`test/dev-proxy.test.ts` 測 `forwardedOrigin`，並實際啟動 Vite 開發伺服器接到 mock 後端：自己頁面的
   WebSocket 升級和 `POST /api/mock/trigger` 通過，`http://evil.example` 的都被後端以 403 拒絕
   （修正前外部網站的 WebSocket 升級會成功，回 101）。這也補上了 W0 代理沒有自動測試的缺口。
+- **FE5 完成**：每個物件記住已送出、但新快照還沒反映的修改。沒有拖動時連按 R，從最後送出的位置和角度接著轉；
+  已送出刪除的物件不再重送刪除，也不再轉動；修改等回覆期間在那個物件上拖曳，不會變成平移，
+  而是跳出「上一個修改還在處理中，請稍等再拖」。收到失敗回覆就忘掉那筆；成功的等新快照到達後才忘掉。
+  測試：`test/edit-controller.test.ts`（用假連線直接測 `EditController`）：快速按三次 R 送出 15、30、45 度
+  （修正前三次都是 15 度）；按兩次 Delete、回覆成功但快照未到時再按一次，都只送一個刪除、沒有錯誤提示；
+  等回覆期間拖曳回傳 `blocked` 並顯示提示。
 
 ## 自行決定的事
 
