@@ -126,6 +126,9 @@ export const BUILTIN_MATERIALS: readonly MaterialDefinition[] = [
   },
 ];
 
+/** The authoring and tool catalogs share the actual built-in material definitions. */
+export const BUILTIN_MATERIAL_IDS: readonly string[] = BUILTIN_MATERIALS.map(({ id }) => id);
+
 export function getMaterial(id: string): MaterialDefinition {
   const material = BUILTIN_MATERIALS.find((entry) => entry.id === id);
   if (!material) throw new Error(`Unknown material '${id}'. Choose a built-in material ID.`);

@@ -1,5 +1,5 @@
 import type { Manifold } from 'manifold-3d';
-import type { Vec3 } from '@mapedit/protocol';
+import { structureRef, type Vec3 } from '@mapedit/protocol';
 import type { Bounds, Compilation, CompiledInstance } from './domain.js';
 import { clean, compareText } from './math.js';
 import { socketTypesCompatible } from './socket-rules.js';
@@ -140,8 +140,8 @@ export function createGeometryAdvice(context: AdviceContext): {
     return result;
   };
   const overlap = (a: AdviceSolid, b: AdviceSolid | undefined, location: Vec3): string => {
-    const first = `structure:${a.instance.structureId}`;
-    const second = b ? `structure:${b.instance.structureId}` : 'terrain';
+    const first = structureRef(a.instance.structureId);
+    const second = b ? structureRef(b.instance.structureId) : 'terrain';
     if (b && a.instance.structureId === b.instance.structureId) {
       return `${a.instance.ref} overlaps ${b.instance.ref} at ${locationText(location)} inside ${first}. Change a Module's local position or shape; moving their common Structure cannot separate them.`;
     }
@@ -157,7 +157,7 @@ export function createGeometryAdvice(context: AdviceContext): {
         for (const structureId of structureIds) {
           if (candidate(structureId, delta).clear) {
             const target = structureId === a.instance.structureId ? second : first;
-            return `Move structure:${structureId} ${direction.name} by ${distance} m to clear the overlap with ${target} at the current geometry and height. Recheck terrain placement and Support after moving.`;
+            return `Move ${structureRef(structureId)} ${direction.name} by ${distance} m to clear the overlap with ${target} at the current geometry and height. Recheck terrain placement and Support after moving.`;
           }
         }
       }
@@ -171,10 +171,10 @@ export function createGeometryAdvice(context: AdviceContext): {
       const tested = candidate(instance.structureId, [0, -distance, 0]);
       if (tested.clear && tested.supported.has(instance.ref)) {
         const view = context.compilation.scene.structures.find(
-          (structure) => structure.ref === `structure:${instance.structureId}`,
+          (structure) => structure.ref === structureRef(instance.structureId),
         );
         const height = clean((view?.transform[13] ?? instance.transform[13]!) - distance);
-        return `Lower structure:${instance.structureId} by ${distance} m to reach terrain or a supported Module; set its explicit height to ${height} m and run check again.`;
+        return `Lower ${structureRef(instance.structureId)} by ${distance} m to reach terrain or a supported Module; set its explicit height to ${height} m and run check again.`;
       }
     }
     const outside = supportedOutside(instance.structureId);

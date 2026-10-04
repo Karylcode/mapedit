@@ -6,9 +6,10 @@ import {
   terrainHeightAt,
   terrainSurfaceAt,
   transformMatrix,
-  type TerrainCommand,
+  compatibleSocketTypes,
+  compareText,
 } from '@mapedit/core';
-import type { SceneSnapshot } from '@mapedit/protocol';
+import { moduleRef, structureRef, type SceneSnapshot } from '@mapedit/protocol';
 import type { AgentServices } from './mcp.js';
 import { DiskState } from './disk-state.js';
 import { ScreenshotService } from './screenshot.js';
@@ -31,15 +32,9 @@ export function createAgentServices(
     },
     getCompilation: async (id) => (await state.getBuild(id)).compilation,
     getModules: () =>
-      Object.values(current().parsed.modules).sort((a, b) => a.id.localeCompare(b.id)),
-    compatibleSocketTypes: (type) => {
-      const types = current().parsed.project.socketTypes;
-      return Object.keys(types).filter(
-        (candidate) =>
-          types[type]?.compatibleWith.includes(candidate) ||
-          types[candidate]?.compatibleWith.includes(type),
-      );
-    },
+      Object.values(current().parsed.modules).sort((a, b) => compareText(a.id, b.id)),
+    compatibleSocketTypes: (type) =>
+      compatibleSocketTypes(current().parsed.project.socketTypes, type),
     async query(mapId, x, z) {
       const build = await state.getBuild(mapId);
       if (x < 0 || z < 0 || x > build.terrain.width || z > build.terrain.depth)
@@ -73,7 +68,7 @@ export function createAgentServices(
       const geometry = build.geometries.get(id);
       if (!geometry || errors.length) return { summary: { module: id, ok: false, errors } };
       const temporaryId = `__module_${randomUUID()}`;
-      const ref = `module:preview/${id}`;
+      const ref = moduleRef('preview', id);
       const preview: SceneSnapshot = {
         protocolVersion: 1,
         revision: build.scene.revision,
@@ -87,7 +82,7 @@ export function createAgentServices(
         moduleTypes: build.scene.moduleTypes.filter((module) => module.id === id),
         structures: [
           {
-            ref: 'structure:preview',
+            ref: structureRef('preview'),
             file: definition.source.file,
             transform: transformMatrix([0, 0, 0]),
             instances: [{ ref, moduleType: id, transform: transformMatrix([0, 0, 0]) }],
@@ -139,7 +134,7 @@ export function createAgentServices(
           throw new Error(
             `Map '${mapId ?? build.scene.map.id}' does not exist or has invalid map.yaml. Fix its map file before changing terrain.`,
           );
-        const changed = applyTerrainCommand(build.terrain, command as unknown as TerrainCommand);
+        const changed = applyTerrainCommand(build.terrain, command);
         const png = encodeTerrain(changed);
         const folder = `${posix.dirname(definition.source.file)}/terrain`;
         return { [`${folder}/height.png`]: png.height, [`${folder}/surface.png`]: png.surface };

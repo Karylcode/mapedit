@@ -1,4 +1,5 @@
 /** Wire contract, version 1. Distances are metres; +Y up, +X east, -Z north. */
+export * from './object-ref.js';
 export type Vec3 = [number, number, number];
 export type Mat4 = number[];
 export type ObjectRef = string;

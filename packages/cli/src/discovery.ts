@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile, rm, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { projectIdentity } from '@mapedit/server';
 
 interface ServerRecord {
   root: string;
@@ -9,10 +9,6 @@ interface ServerRecord {
   instance: string;
 }
 const filename = (root: string) => path.join(root, '.mapedit', 'server.json');
-const projectIdentity = (root: string) =>
-  createHash('sha256')
-    .update(process.platform === 'win32' ? root.toLowerCase() : root)
-    .digest('hex');
 
 export async function registerServer(root: string, url: string): Promise<() => Promise<void>> {
   const canonicalRoot = await realpath(root);

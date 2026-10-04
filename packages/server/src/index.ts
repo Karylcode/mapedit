@@ -4,11 +4,12 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { readFile, stat, realpath } from 'node:fs/promises';
-import { resolve, sep, extname } from 'node:path';
+import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMessage, Edit, ServerMessage } from '@mapedit/protocol';
+import { parseObjectRef } from '@mapedit/protocol';
 import { mockAsset } from './mock.js';
 import { MemoryState, type StateStore } from './state.js';
 import { DiskState } from './disk-state.js';
@@ -17,6 +18,9 @@ import { ScreenshotService } from './screenshot.js';
 import { createMcpHttpHandler, type AgentServices } from './mcp.js';
 import { createAgentServices } from './services.js';
 import { createMockServices, parseMockNotice, triggerMockNotice } from './mock-services.js';
+import { projectIdentity } from './project-identity.js';
+import { containsPath } from './paths.js';
+export { projectIdentity } from './project-identity.js';
 export { MemoryState } from './state.js';
 export { mockScene } from './mock.js';
 export type { StateStore } from './state.js';
@@ -47,6 +51,7 @@ function validEdit(value: unknown): value is Edit {
   const edit = value as Record<string, unknown>;
   return (
     typeof edit.ref === 'string' &&
+    parseObjectRef(edit.ref) !== undefined &&
     (edit.kind === 'delete' ||
       (edit.kind === 'move' &&
         typeof edit.rotation === 'number' &&
@@ -112,9 +117,7 @@ function readMockTrigger(request: IncomingMessage): Promise<unknown> {
 export async function createServer(options: ServerOptions = {}): Promise<MapeditServer> {
   const root = resolve(options.root ?? process.cwd());
   const canonicalRoot = await realpath(root);
-  const projectIdentity = createHash('sha256')
-    .update(process.platform === 'win32' ? canonicalRoot.toLowerCase() : canonicalRoot)
-    .digest('hex');
+  const projectId = projectIdentity(canonicalRoot);
   const instanceIdentity = randomUUID();
   const state: StateStore =
     options.state ??
@@ -147,7 +150,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       if (!validRequest(request))
         return json(response, 403, { error: 'Host or Origin is not allowed.' });
       response.setHeader('X-Mapedit-Instance', instanceIdentity);
-      response.setHeader('X-Mapedit-Project', projectIdentity);
+      response.setHeader('X-Mapedit-Project', projectId);
       response.setHeader('X-Mapedit-Pid', String(process.pid));
       const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
       if (url.pathname === '/api/mock/trigger') {
@@ -205,14 +208,14 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       if (webRoot) {
         const root = resolve(webRoot);
         const target = resolve(root, `.${decodeURIComponent(url.pathname)}`);
-        if (target !== root && !target.startsWith(root + sep))
+        if (!containsPath(root, target))
           return json(response, 403, { error: 'Path is outside the web directory.' });
         const file = await stat(target)
           .then((s) => (s.isFile() ? target : resolve(root, 'index.html')))
           .catch(() => resolve(root, 'index.html'));
         const actualRoot = await realpath(root),
           actualFile = await realpath(file);
-        if (!actualFile.startsWith(actualRoot + sep))
+        if (!containsPath(actualRoot, actualFile))
           return json(response, 403, { error: 'Path is outside the web directory.' });
         const data = await readFile(actualFile);
         const types: Record<string, string> = {

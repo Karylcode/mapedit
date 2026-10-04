@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { transformMatrix } from '@mapedit/core';
+import { parseObjectRef } from '@mapedit/protocol';
 import type {
   Edit,
   HistoryEntry,
@@ -7,7 +9,9 @@ import type {
   ServerMessage,
   ViolationView,
 } from '@mapedit/protocol';
-import { matrix, mockScene } from './mock.js';
+import { mockScene } from './mock.js';
+import { ProjectHistory } from './history.js';
+import { noticeMessage } from './notice.js';
 
 export type Preview = Extract<ServerMessage, { type: 'previewResult' }>;
 export interface StateStore {
@@ -29,9 +33,13 @@ export interface StateStore {
 export class MemoryState extends EventEmitter implements StateStore {
   project: ProjectInfo = { name: 'Mock project', maps: [{ id: 'village', name: 'Mock village' }] };
   scene = mockScene();
-  entries: HistoryEntry[] = [];
-  cursor = 0;
-  protected snapshots: SceneSnapshot[] = [structuredClone(this.scene)];
+  protected readonly history = new ProjectHistory(structuredClone(this.scene));
+  get entries(): HistoryEntry[] {
+    return this.history.entries;
+  }
+  get cursor(): number {
+    return this.history.cursor;
+  }
   protected lastAgent = new Map<string, number>();
   protected lastHuman = new Set<string>();
   async flush(): Promise<void> {}
@@ -52,21 +60,16 @@ export class MemoryState extends EventEmitter implements StateStore {
     message: string,
     refs?: string[],
   ): void {
-    this.emit('message', {
-      type: 'notice',
-      level: code === 'file_error' ? 'error' : 'warning',
-      code,
-      message,
-      ...(refs ? { refs } : {}),
-    } satisfies ServerMessage);
+    this.emit('message', noticeMessage(code, message, refs));
   }
   async preview(edit: Edit, requestId: number): Promise<Preview> {
     const violations: ViolationView[] = [];
+    const object = parseObjectRef(edit.ref);
     const exists =
       this.scene.structures.some(
         (s) => s.ref === edit.ref || s.instances.some((i) => i.ref === edit.ref),
       ) || this.scene.markers.some((m) => m.ref === edit.ref);
-    if (!exists || (edit.kind === 'move' && edit.ref.startsWith('module:')))
+    if (!exists || (edit.kind === 'move' && object?.kind === 'module'))
       violations.push({
         id: 'missing',
         kind: 'missing_reference',
@@ -76,11 +79,11 @@ export class MemoryState extends EventEmitter implements StateStore {
         suggestion: 'Reload the map and select an existing object.',
       });
     if (edit.kind === 'delete')
-      return { type: 'previewResult', requestId, ok: true, violations: [] };
+      return { type: 'previewResult', requestId, ok: violations.length === 0, violations };
     const position = edit.position.map((v) => Math.round(v * 2) / 2) as [number, number, number];
     position[1] = 0;
     const rotation = Math.round(edit.rotation / 15) * 15;
-    const extent = edit.ref.startsWith('structure:') ? 2 : 0;
+    const extent = object?.kind === 'structure' ? 2 : 0;
     if (
       position[0] < 0 ||
       position[2] < 0 ||
@@ -100,22 +103,12 @@ export class MemoryState extends EventEmitter implements StateStore {
       type: 'previewResult',
       requestId,
       ok: violations.length === 0,
-      transform: matrix(position, rotation),
+      transform: transformMatrix(position, rotation),
       violations,
     };
   }
   protected record(author: 'human' | 'agent', summary: string, files: string[]): void {
-    this.entries.splice(this.cursor);
-    this.snapshots.splice(this.cursor + 1);
-    this.entries.push({
-      id: (this.entries.at(-1)?.id ?? 0) + 1,
-      author,
-      time: new Date().toISOString(),
-      summary,
-      files,
-    });
-    this.snapshots.push(structuredClone(this.scene));
-    this.cursor = this.entries.length;
+    this.history.record({ author, summary, files }, structuredClone(this.scene));
   }
   async apply(edit: Edit, baseRevision: number): Promise<string | undefined> {
     const preview = await this.preview(edit, 0);
@@ -140,7 +133,7 @@ export class MemoryState extends EventEmitter implements StateStore {
       for (const instance of structure.instances) {
         const x = instance.transform[12]! - previous[12]!,
           z = instance.transform[14]! - previous[14]!;
-        instance.transform = matrix(
+        instance.transform = transformMatrix(
           [
             preview.transform[12]! + Math.cos(delta) * x + Math.sin(delta) * z,
             preview.transform[13]!,
@@ -174,13 +167,12 @@ export class MemoryState extends EventEmitter implements StateStore {
     return undefined;
   }
   async travel(direction: -1 | 1): Promise<string | undefined> {
-    const target = this.cursor + direction;
-    if (target < 0 || target > this.entries.length)
-      return direction < 0 ? 'Nothing to undo.' : 'Nothing to redo.';
+    const target = this.history.target(direction);
+    if (!target) return direction < 0 ? 'Nothing to undo.' : 'Nothing to redo.';
     const revision = this.scene.revision + 1;
-    this.scene = structuredClone(this.snapshots[target]!);
+    this.scene = structuredClone(target.snapshot);
     this.scene.revision = revision;
-    this.cursor = target;
+    this.history.cursor = target.cursor;
     return undefined;
   }
   replaceFromAgent(

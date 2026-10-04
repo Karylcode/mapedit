@@ -1,7 +1,12 @@
 import { isNode, isScalar, LineCounter, parseDocument, type Document } from 'yaml';
-import type { Edit, FileErrorView, Vec3 } from '@mapedit/protocol';
 import {
-  BUILTIN_MATERIAL_IDS,
+  isObjectId,
+  parseObjectRef,
+  type Edit,
+  type FileErrorView,
+  type Vec3,
+} from '@mapedit/protocol';
+import {
   BUILTIN_SOCKET_TYPES,
   type Attachment,
   type MapDefinition,
@@ -16,6 +21,7 @@ import {
   type SourceRef,
   type Structure,
 } from './domain.js';
+import { BUILTIN_MATERIAL_IDS } from './materials.js';
 import { compareText, normalizeRotation, snap } from './math.js';
 
 type Path = (string | number)[];
@@ -67,7 +73,7 @@ const string = (value: unknown, path: Path, fallback?: string): string => {
 };
 const id = (value: unknown, path: Path, fallback?: string): string => {
   const result = string(value, path, fallback);
-  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(result))
+  if (!isObjectId(result))
     throw new InvalidFormat(
       'Use a stable id starting with a letter and containing only letters, digits, _ or -.',
       path,
@@ -515,8 +521,15 @@ export function normalizeEdit(
 ): Edit {
   if (edit.kind === 'delete') return edit;
   const map = parsed.maps[mapId];
-  const structure = map?.structures.find((s) => edit.ref === `structure:${s.id}`);
-  const marker = map?.markers.find((m) => edit.ref === `marker:${m.id}`);
+  const reference = parseObjectRef(edit.ref);
+  const structure =
+    reference?.kind === 'structure'
+      ? map?.structures.find((s) => s.id === reference.structureId)
+      : undefined;
+  const marker =
+    reference?.kind === 'marker'
+      ? map?.markers.find((m) => m.id === reference.markerId)
+      : undefined;
   const x = snap(edit.position[0]),
     z = snap(edit.position[2]);
   const oldPosition =
@@ -537,11 +550,19 @@ export function applySourceEdit(
 ): Record<string, string> {
   const map = parsed.maps[mapId];
   if (!map) throw new Error(`Unknown map "${mapId}".`);
-  const structure = map.structures.find((s) => `structure:${s.id}` === edit.ref);
-  const marker = map.markers.find((m) => `marker:${m.id}` === edit.ref);
-  const instance = map.structures
-    .flatMap((s) => s.modules.map((m) => ({ ...m, ref: `module:${s.id}/${m.id}` })))
-    .find((m) => m.ref === edit.ref);
+  const reference = parseObjectRef(edit.ref);
+  const structure =
+    reference?.kind === 'structure'
+      ? map.structures.find((s) => s.id === reference.structureId)
+      : undefined;
+  const marker =
+    reference?.kind === 'marker' ? map.markers.find((m) => m.id === reference.markerId) : undefined;
+  const instance =
+    reference?.kind === 'module'
+      ? map.structures
+          .find((s) => s.id === reference.structureId)
+          ?.modules.find((m) => m.id === reference.instanceId)
+      : undefined;
   const target = structure ?? marker ?? instance;
   if (!target) throw new Error(`Unknown object "${edit.ref}".`);
   const source = target.source,

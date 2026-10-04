@@ -1,12 +1,12 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { parseProject } from '@mapedit/core';
-import type { NoticeCode } from '@mapedit/protocol';
+import { parseProject, compatibleSocketTypes, transformMatrix } from '@mapedit/core';
+import { structureRef, type NoticeCode } from '@mapedit/protocol';
 import type { AgentServices } from './mcp.js';
 import type { StateStore } from './state.js';
 import { MemoryState } from './state.js';
 import { ScreenshotService } from './screenshot.js';
-import { boxGlb, matrix, mockScene } from './mock.js';
+import { boxGlb, mockScene } from './mock.js';
 
 export function parseMockNotice(value: unknown): NoticeCode {
   const codes: NoticeCode[] = [
@@ -26,7 +26,7 @@ export function parseMockNotice(value: unknown): NoticeCode {
 
 /** Run the same in-memory edit/history transitions that produce real concurrency notices. */
 export async function triggerMockNotice(state: MemoryState, code: NoticeCode): Promise<void> {
-  const ref = 'structure:house';
+  const ref = structureRef('house');
   const move = {
     kind: 'move' as const,
     ref,
@@ -44,7 +44,7 @@ export async function triggerMockNotice(state: MemoryState, code: NoticeCode): P
     const delta = position.map((coordinate, axis) => coordinate - house.transform[12 + axis]!);
     for (const instance of house.instances)
       for (let axis = 0; axis < 3; axis++) instance.transform[12 + axis]! += delta[axis]!;
-    house.transform = matrix(position);
+    house.transform = transformMatrix(position);
     state.replaceFromAgent(scene, [ref]);
   };
   switch (code) {
@@ -105,7 +105,7 @@ export function createMockServices(
       return undefined;
     },
     getModules: () => Object.values(parsed.modules),
-    compatibleSocketTypes: (type) => parsed.project.socketTypes[type]?.compatibleWith ?? [],
+    compatibleSocketTypes: (type) => compatibleSocketTypes(parsed.project.socketTypes, type),
     async query(_map, x, z) {
       return {
         x,

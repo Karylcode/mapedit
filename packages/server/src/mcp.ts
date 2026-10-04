@@ -11,10 +11,16 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { listFloatingInstances, type Compilation, type ModuleDefinition } from '@mapedit/core';
+import {
+  listFloatingInstances,
+  type Compilation,
+  type ModuleDefinition,
+  type TerrainCommand,
+} from '@mapedit/core';
 import type { InstanceView, SceneSnapshot } from '@mapedit/protocol';
 import { ScreenshotService } from './screenshot.js';
 import { resultPager, closeResultPager } from './mcp-paging.js';
+import { normalizeStructureRef, terrainCommandSchema } from './mcp-inputs.js';
 
 export interface AgentServices {
   flush(): Promise<void>;
@@ -25,7 +31,7 @@ export interface AgentServices {
   compatibleSocketTypes(type: string): string[];
   query(mapId: string | undefined, x: number, z: number): Promise<unknown>;
   buildModule(id: string): Promise<{ summary: unknown; preview?: Buffer }>;
-  terrain(mapId: string | undefined, command: Record<string, unknown>): Promise<unknown>;
+  terrain(mapId: string | undefined, command: TerrainCommand): Promise<unknown>;
   export(mapId: string | undefined, out: string): Promise<unknown>;
 }
 const pageSchema = {
@@ -34,36 +40,6 @@ const pageSchema = {
 };
 const mapSchema = { map: z.string().optional() };
 const vector = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
-const mapPoint = z.tuple([z.number().finite(), z.number().finite()]);
-const terrainRegion = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('circle'),
-    center: mapPoint,
-    radius: z.number().positive().max(2000),
-  }),
-  z.object({ kind: z.literal('rectangle'), min: mapPoint, max: mapPoint }),
-  z.object({
-    kind: z.literal('path'),
-    points: z.array(mapPoint).min(2).max(1000),
-    width: z.number().positive().max(2000),
-  }),
-]);
-const height = z.number().min(-16384).max(16383.5).multipleOf(0.5);
-const terrainCommand = z.discriminatedUnion('operation', [
-  z.object({
-    operation: z.enum(['raise', 'lower']),
-    amount: z.number().positive().max(32767.5).multipleOf(0.5),
-    region: terrainRegion,
-  }),
-  z.object({ operation: z.literal('flatten'), height: height.optional(), region: terrainRegion }),
-  z.object({ operation: z.literal('set_height'), height, region: terrainRegion }),
-  z.object({ operation: z.literal('mountain'), height, region: terrainRegion }),
-  z.object({
-    operation: z.literal('paint'),
-    surface: z.enum(['grass', 'dirt', 'gravel', 'stone', 'sand']),
-    region: terrainRegion,
-  }),
-]);
 const textResult = (value: unknown): CallToolResult => {
   return { content: [{ type: 'text', text: JSON.stringify(value) }] };
 };
@@ -279,16 +255,15 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       },
     },
     async ({ map, structure, views, tileSize, focus, highlight, showViolations }) => {
+      const target = structure === undefined ? undefined : normalizeStructureRef(structure);
       await services.flush();
       const scene = await services.getScene(map);
-      if (structure) {
-        const object = scene.structures.find(
-          (s) => s.ref === structure || s.ref === `structure:${structure}`,
-        );
+      if (target) {
+        const object = scene.structures.find((s) => s.ref === target.ref);
         if (!object) throw new Error(`Structure '${structure}' does not exist.`);
         const compilation = await services.getCompilation(map);
         const bounds = compilation?.instances
-          .filter((i) => i.structureId === object.ref.slice('structure:'.length))
+          .filter((i) => i.structureId === target.structureId)
           .map((i) => i.bounds);
         if (bounds?.length) {
           const min = [0, 1, 2].map((axis) => Math.min(...bounds.map((b) => b.min[axis]!)));
@@ -327,11 +302,10 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       inputSchema: { ...mapSchema, structure: z.string(), ...pageSchema },
     },
     async ({ map, structure, offset, limit }) => {
+      const { ref } = normalizeStructureRef(structure);
       await services.flush();
       const scene = await services.getScene(map);
-      const found = scene.structures.find(
-        (s) => s.ref === structure || s.ref === `structure:${structure}`,
-      );
+      const found = scene.structures.find((s) => s.ref === ref);
       if (!found) throw new Error(`Structure '${structure}' does not exist.`);
       const levels = new Map<number, InstanceView[]>();
       for (const instance of found.instances) {
@@ -375,10 +349,10 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       inputSchema: { ...mapSchema, structure: z.string(), ...pageSchema },
     },
     async ({ map, structure, offset, limit }) => {
+      const { ref } = normalizeStructureRef(structure);
       await services.flush();
       const compiled = await services.getCompilation(map);
       if (!compiled) return textResult({ items: [], total: 0, nextOffset: null });
-      const ref = structure.startsWith('structure:') ? structure : `structure:${structure}`;
       const object = compiled.scene.structures.find((s) => s.ref === ref);
       if (!object) throw new Error(`Structure '${structure}' does not exist.`);
       const refs = new Set(object.instances.map((i) => i.ref));
@@ -469,7 +443,7 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       description:
         units +
         'Apply a terrain command to a circle, rectangle or path. Height steps are 0.5 m. Example: {"command":{"operation":"raise","amount":0.5,"region":{"kind":"circle","center":[10,10],"radius":3}}}.',
-      inputSchema: { ...mapSchema, command: terrainCommand },
+      inputSchema: { ...mapSchema, command: terrainCommandSchema },
     },
     async ({ map, command }) => {
       await services.flush();

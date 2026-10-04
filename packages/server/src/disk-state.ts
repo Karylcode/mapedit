@@ -1,8 +1,14 @@
 import { EventEmitter } from 'node:events';
-import { readFile, writeFile, readdir, mkdir, rm, realpath, lstat } from 'node:fs/promises';
-import { resolve, relative, sep, dirname, isAbsolute, posix } from 'node:path';
+import { writeFile, mkdir, rm, realpath } from 'node:fs/promises';
+import { resolve, dirname, posix } from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
-import { parseProject, applySourceEdit, normalizeEdit, type ParsedProject } from '@mapedit/core';
+import {
+  parseProject,
+  applySourceEdit,
+  normalizeEdit,
+  transformMatrix,
+  type ParsedProject,
+} from '@mapedit/core';
 import type {
   Edit,
   HistoryEntry,
@@ -10,9 +16,12 @@ import type {
   SceneSnapshot,
   ServerMessage,
 } from '@mapedit/protocol';
-import { matrix } from './mock.js';
 import type { Preview, StateStore } from './state.js';
 import type { BuiltProject } from './build-project.js';
+import { readProjectInputs } from './project-files.js';
+import { containsPath } from './paths.js';
+import { ProjectHistory } from './history.js';
+import { noticeMessage } from './notice.js';
 
 export type ProjectBuild = BuiltProject;
 export interface DiskStateBuilder {
@@ -32,11 +41,15 @@ interface Checkpoint {
 export class DiskState extends EventEmitter implements StateStore {
   project!: ProjectInfo;
   scene!: SceneSnapshot;
-  entries: HistoryEntry[] = [];
-  cursor = 0;
+  private history!: ProjectHistory<Checkpoint>;
+  get entries(): HistoryEntry[] {
+    return this.history.entries;
+  }
+  get cursor(): number {
+    return this.history.cursor;
+  }
   readonly builds = new Map<string, ProjectBuild>();
   readonly previewScenes = new Map<string, SceneSnapshot>();
-  private checkpoints: Checkpoint[] = [];
   private baseline = new Map<string, Buffer>();
   private watcher?: FSWatcher;
   private revision = 0;
@@ -44,7 +57,6 @@ export class DiskState extends EventEmitter implements StateStore {
   private closed = false;
   private lastAgent = new Map<string, number>();
   private lastHuman = new Set<string>();
-  private nextHistoryId = 1;
   private timer?: ReturnType<typeof setTimeout>;
   private constructor(
     readonly root: string,
@@ -55,7 +67,7 @@ export class DiskState extends EventEmitter implements StateStore {
   static async create(root: string, builder: DiskStateBuilder): Promise<DiskState> {
     const state = new DiskState(await realpath(root), builder);
     state.baseline = await state.readInputs();
-    state.checkpoints.push({ files: new Map(state.baseline) });
+    state.history = new ProjectHistory({ files: new Map(state.baseline) });
     const build = await builder.build(undefined, 0);
     state.install(build);
     state.watcher = watch(
@@ -81,55 +93,7 @@ export class DiskState extends EventEmitter implements StateStore {
     this.builds.set(build.scene.map.id, build);
   }
   private async readInputs(): Promise<Map<string, Buffer>> {
-    const found = new Map<string, Buffer>();
-    const projectStat = await lstat(resolve(this.root, 'project.yaml')).catch((error) => {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-      throw error;
-    });
-    if (projectStat?.isSymbolicLink())
-      throw new Error('Symbolic links are not supported in authoring inputs: project.yaml');
-    const walk = async (folder: string): Promise<void> => {
-      const directory = resolve(this.root, folder);
-      const metadata = await lstat(directory).catch((error) => {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-        throw error;
-      });
-      if (!metadata) return;
-      if (metadata.isSymbolicLink())
-        throw new Error(`Symbolic links are not supported in authoring inputs: ${folder}`);
-      const physical = await realpath(directory),
-        inside = relative(this.root, physical);
-      if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside))
-        throw new Error(`Authoring input directory is outside the project: ${folder}`);
-      const entries = await readdir(resolve(this.root, folder), { withFileTypes: true }).catch(
-        (error) => {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-          throw error;
-        },
-      );
-      for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
-        const name = folder ? `${folder}/${entry.name}` : entry.name;
-        if (entry.isSymbolicLink())
-          throw new Error(`Symbolic links are not supported in authoring inputs: ${name}`);
-        if (entry.isDirectory()) await walk(name);
-        else if (entry.isFile() && /\.(?:ya?ml|ts|png)$/i.test(entry.name)) {
-          const content = await readFile(resolve(this.root, name));
-          const old = this.baseline.get(name);
-          found.set(name, old?.equals(content) ? old : content);
-        }
-      }
-    };
-    const project = await readFile(resolve(this.root, 'project.yaml')).catch((error) => {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-      throw error;
-    });
-    if (project) {
-      const old = this.baseline.get('project.yaml');
-      found.set('project.yaml', old?.equals(project) ? old : project);
-    }
-    await walk('modules');
-    await walk('maps');
-    return found;
+    return readProjectInputs(this.root, { previous: this.baseline });
   }
   private changed(a: Map<string, Buffer>, b: Map<string, Buffer>): string[] {
     return [...new Set([...a.keys(), ...b.keys()])]
@@ -180,13 +144,7 @@ export class DiskState extends EventEmitter implements StateStore {
     message: string,
     refs?: string[],
   ): void {
-    this.emit('message', {
-      type: 'notice',
-      level: code === 'file_error' ? 'error' : 'warning',
-      code,
-      message,
-      ...(refs ? { refs } : {}),
-    } satisfies ServerMessage);
+    this.emit('message', noticeMessage(code, message, refs));
   }
   private broadcast(): void {
     for (const build of this.builds.values())
@@ -198,17 +156,7 @@ export class DiskState extends EventEmitter implements StateStore {
     } satisfies ServerMessage);
   }
   private record(author: 'human' | 'agent', summary: string, files: string[]): void {
-    this.entries.splice(this.cursor);
-    this.checkpoints.splice(this.cursor + 1);
-    this.entries.push({
-      id: this.nextHistoryId++,
-      author,
-      time: new Date().toISOString(),
-      summary,
-      files,
-    });
-    this.checkpoints.push({ files: new Map(this.baseline) });
-    this.cursor = this.entries.length;
+    this.history.record({ author, summary, files }, { files: new Map(this.baseline) });
   }
   private serial<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.busy.then(operation);
@@ -295,9 +243,12 @@ export class DiskState extends EventEmitter implements StateStore {
   async preview(edit: Edit, requestId: number, mapId = this.scene.map.id): Promise<Preview> {
     const cached = await this.getBuild(mapId);
     const normalized = normalizeEdit(cached.parsed, mapId, edit, cached.heightAt);
-    if (edit.kind === 'delete')
-      return { type: 'previewResult', requestId, ok: true, violations: [] };
     try {
+      if (edit.kind === 'delete') {
+        if (!cached.compilation.sourceRefs[edit.ref])
+          throw new Error(`Unknown object "${edit.ref}".`);
+        return { type: 'previewResult', requestId, ok: true, violations: [] };
+      }
       const files = {
         ...cached.parsed.files,
         ...applySourceEdit(cached.parsed, mapId, normalized),
@@ -316,7 +267,7 @@ export class DiskState extends EventEmitter implements StateStore {
       const transform =
         target?.transform ??
         (marker
-          ? matrix(
+          ? transformMatrix(
               marker.shape.kind === 'point' ? marker.shape.position : marker.shape.center,
               marker.shape.rotation,
             )
@@ -348,24 +299,20 @@ export class DiskState extends EventEmitter implements StateStore {
   }
   private async safeWrite(file: string, data: Buffer | undefined): Promise<void> {
     const target = resolve(this.root, file);
-    const rel = relative(this.root, target);
-    if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))
-      throw new Error('Cannot write outside the project.');
+    if (!containsPath(this.root, target)) throw new Error('Cannot write outside the project.');
     const existing = await realpath(target).catch((error) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
       throw error;
     });
     if (existing) {
-      const inside = relative(this.root, existing);
-      if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside))
+      if (!containsPath(this.root, existing))
         throw new Error('Cannot write through a link outside the project.');
     }
     let parent = dirname(target);
     while (true) {
       try {
         const resolved = await realpath(parent);
-        const inside = relative(this.root, resolved);
-        if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside))
+        if (!containsPath(this.root, resolved))
           throw new Error('Cannot write through a link outside the project.');
         break;
       } catch (error) {
@@ -424,14 +371,13 @@ export class DiskState extends EventEmitter implements StateStore {
   async travel(direction: -1 | 1): Promise<string | undefined> {
     return this.serial(async () => {
       await this.refresh();
-      const target = this.cursor + direction;
-      if (target < 0 || target > this.entries.length)
-        return direction < 0 ? 'Nothing to undo.' : 'Nothing to redo.';
-      const desired = this.checkpoints[target]!.files;
+      const target = this.history.target(direction);
+      if (!target) return direction < 0 ? 'Nothing to undo.' : 'Nothing to redo.';
+      const desired = target.snapshot.files;
       for (const file of this.changed(this.baseline, desired))
         await this.safeWrite(file, desired.get(file));
       this.baseline = new Map(desired);
-      this.cursor = target;
+      this.history.cursor = target.cursor;
       this.revision++;
       await this.rebuild();
       return undefined;

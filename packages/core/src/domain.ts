@@ -120,21 +120,6 @@ export interface Compilation {
   socketTypes: Record<string, SocketType>;
   sourceRefs: Record<string, SourceRef>;
 }
-export const BUILTIN_MATERIAL_IDS = [
-  'wood_planks',
-  'dark_wood',
-  'stone_brick',
-  'plaster',
-  'roof_tiles',
-  'thatch',
-  'grass',
-  'dirt',
-  'gravel',
-  'metal',
-  'white',
-  'red',
-  'blue',
-];
 export const BUILTIN_SOCKET_TYPES: Record<string, SocketType> = {
   foundation: { compatibleWith: ['foundation', 'wall', 'floor', 'stair'] },
   floor: { compatibleWith: ['foundation', 'floor', 'wall', 'stair'] },

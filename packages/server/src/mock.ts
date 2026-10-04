@@ -1,11 +1,6 @@
 import type { SceneSnapshot, StructureView, Vec3, ViolationView } from '@mapedit/protocol';
-
-export function matrix(position: Vec3, rotation = 0): number[] {
-  const angle = (rotation * Math.PI) / 180;
-  const c = Math.cos(angle),
-    s = Math.sin(angle);
-  return [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, ...position, 1];
-}
+import { structureRef, moduleRef, markerRef } from '@mapedit/protocol';
+import { transformMatrix } from '@mapedit/core';
 
 export function mockScene(): SceneSnapshot {
   const structure = (
@@ -14,11 +9,13 @@ export function mockScene(): SceneSnapshot {
     moduleType = 'block',
     rotation = 0,
   ): StructureView => ({
-    ref: `structure:${id}`,
+    ref: structureRef(id),
     name: id,
     file: `maps/village/structures/${id}.yaml`,
-    transform: matrix(position, rotation),
-    instances: [{ ref: `module:${id}/base`, moduleType, transform: matrix(position, rotation) }],
+    transform: transformMatrix(position, rotation),
+    instances: [
+      { ref: moduleRef(id, 'base'), moduleType, transform: transformMatrix(position, rotation) },
+    ],
   });
   const violation = (
     kind: ViolationView['kind'],
@@ -31,7 +28,7 @@ export function mockScene(): SceneSnapshot {
     kind,
     message,
     suggestion,
-    refs: ids.map((id) => `module:${id}/base`),
+    refs: ids.map((id) => moduleRef(id, 'base')),
     location,
     params: { file: `maps/village/structures/${ids[0]}.yaml`, line: 3 },
   });
@@ -65,12 +62,16 @@ export function mockScene(): SceneSnapshot {
     ],
     structures: [
       {
-        ref: 'structure:house',
+        ref: structureRef('house'),
         name: 'House',
         file: 'maps/village/structures/house.yaml',
-        transform: matrix([10, 0, 10]),
+        transform: transformMatrix([10, 0, 10]),
         instances: [
-          { ref: 'module:house/base', moduleType: 'block', transform: matrix([10, 0, 10]) },
+          {
+            ref: moduleRef('house', 'base'),
+            moduleType: 'block',
+            transform: transformMatrix([10, 0, 10]),
+          },
         ],
       },
       structure('raised_foundation', [20, 2, 20], 'foundation'),
@@ -85,17 +86,20 @@ export function mockScene(): SceneSnapshot {
       structure('socket_b', [42, 0, 30]),
     ],
     generated: [
-      { owner: 'module:raised_foundation/base', url: '/assets/mock/foundation-extension.glb' },
+      {
+        owner: moduleRef('raised_foundation', 'base'),
+        url: '/assets/mock/foundation-extension.glb',
+      },
     ],
     markers: [
       {
-        ref: 'marker:spawn',
+        ref: markerRef('spawn'),
         type: 'spawn',
         shape: { kind: 'point', position: [5, 0, 5], rotation: 0 },
         properties: {},
       },
       {
-        ref: 'marker:zone',
+        ref: markerRef('zone'),
         type: 'trigger',
         shape: { kind: 'box', center: [10, 1, 5], size: [4, 2, 4], rotation: 0 },
         properties: { event: 'enter_village' },
@@ -106,14 +110,14 @@ export function mockScene(): SceneSnapshot {
         'overlap',
         ['overlap_a', 'overlap_b'],
         'Two blocks overlap by 0.5 m.',
-        'Move structure:overlap_a west by 0.5 m to clear the overlap with structure:overlap_b.',
+        `Move ${structureRef('overlap_a')} west by 0.5 m to clear the overlap with ${structureRef('overlap_b')}.`,
         [41.75, 1, 11],
       ),
       violation(
         'unsupported',
         ['unsupported'],
         'The block is 2 m above the terrain.',
-        'Move structure:unsupported down by 2 m to reach the terrain.',
+        `Move ${structureRef('unsupported')} down by 2 m to reach the terrain.`,
         [51, 2, 11],
       ),
       violation(
@@ -134,7 +138,7 @@ export function mockScene(): SceneSnapshot {
         'out_of_bounds',
         ['out_of_bounds'],
         'The block extends 1 m beyond the east edge.',
-        'Move structure:out_of_bounds west by 1 m to fit inside the map.',
+        `Move ${structureRef('out_of_bounds')} west by 1 m to fit inside the map.`,
         [100, 1, 11],
       ),
       violation(

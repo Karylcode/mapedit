@@ -1,5 +1,5 @@
 import { Document, WebIO, type mat4, type Mesh } from '@gltf-transform/core';
-import type { Mat4, Vec3 } from '@mapedit/protocol';
+import { parseObjectRef, type Mat4, type Vec3 } from '@mapedit/protocol';
 import type { Compilation } from './domain.js';
 import type { ModelGeometry } from './model.js';
 import { appendGeometry } from './glb.js';
@@ -109,13 +109,19 @@ export async function exportMapGlb(input: ExportInput): Promise<Uint8Array> {
   }
   const meshes = new Map<string, Mesh>();
   for (const structure of scene.structures) {
+    const structureReference = parseObjectRef(structure.ref);
+    if (structureReference?.kind !== 'structure')
+      throw new Error(`Export refused: invalid Structure reference '${structure.ref}'.`);
     const node = doc
-      .createNode(structure.ref.slice('structure:'.length))
+      .createNode(structureReference.structureId)
       .setMatrix(structure.transform as mat4)
       .setExtras({ mapedit: { kind: 'structure', ref: structure.ref, source: structure.file } });
     map.addChild(node);
     const inverse = inverseRigid(structure.transform);
     for (const instance of structure.instances) {
+      const instanceReference = parseObjectRef(instance.ref);
+      if (instanceReference?.kind !== 'module')
+        throw new Error(`Export refused: invalid Module reference '${instance.ref}'.`);
       let mesh = meshes.get(instance.moduleType);
       if (!mesh) {
         const geometry = input.models.get(instance.moduleType);
@@ -129,7 +135,7 @@ export async function exportMapGlb(input: ExportInput): Promise<Uint8Array> {
       }
       node.addChild(
         doc
-          .createNode(instance.ref.split('/').at(-1))
+          .createNode(instanceReference.instanceId)
           .setMesh(mesh)
           .setMatrix(multiplyMatrices(inverse, instance.transform) as mat4)
           .setExtras({
@@ -156,6 +162,9 @@ export async function exportMapGlb(input: ExportInput): Promise<Uint8Array> {
   const markers = doc.createNode('Markers');
   map.addChild(markers);
   for (const marker of scene.markers) {
+    const markerReference = parseObjectRef(marker.ref);
+    if (markerReference?.kind !== 'marker')
+      throw new Error(`Export refused: invalid Marker reference '${marker.ref}'.`);
     const position: Vec3 =
       marker.shape.kind === 'point' ? marker.shape.position : marker.shape.center;
     const extras = {
@@ -173,7 +182,7 @@ export async function exportMapGlb(input: ExportInput): Promise<Uint8Array> {
     };
     markers.addChild(
       doc
-        .createNode(marker.ref.slice('marker:'.length))
+        .createNode(markerReference.markerId)
         .setMatrix(transformMatrix(position, marker.shape.rotation) as mat4)
         .setExtras({ mapedit: extras }),
     );

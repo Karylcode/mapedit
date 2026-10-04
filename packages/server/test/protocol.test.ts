@@ -187,4 +187,22 @@ describe('protocol version 1 mock contract', () => {
     expect(await closed).toBe(1008);
     expect(state.scene.revision).toBe(0);
   });
+  it.each(['structure:house/extra', 'module:house/base.east', 'not-a-ref'])(
+    'F15 rejects malformed ObjectRef %s at the protocol boundary',
+    async (ref) => {
+      const { client, state } = await setup();
+      const closed = new Promise<number>((resolve) => client.once('close', resolve));
+      client.send(
+        JSON.stringify({
+          type: 'applyEdit',
+          requestId: 1,
+          baseRevision: 0,
+          edit: { kind: 'delete', ref },
+        }),
+      );
+      expect(await closed).toBe(1008);
+      expect(state.scene.revision).toBe(0);
+      expect(state.entries).toEqual([]);
+    },
+  );
 });

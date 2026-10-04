@@ -52,6 +52,7 @@ export async function runModel(source: string, options: ModelRunOptions): Promis
     ],
   });
   const quickjsEntry = fileURLToPath(import.meta.resolve('quickjs-emscripten'));
+  const protocolEntry = fileURLToPath(import.meta.resolve('@mapedit/protocol'));
   // Package exports resolve dist both in source-driven tests and installed packages.
   const workerPath = resolve(
     dirname(fileURLToPath(import.meta.resolve('@mapedit/server'))),
@@ -59,7 +60,7 @@ export async function runModel(source: string, options: ModelRunOptions): Promis
   );
   // pnpm links dependencies into .pnpm; allow reads only under installed package roots.
   const readRoots = new Set<string>();
-  for (const filename of [coreEntry, quickjsEntry, workerPath]) {
+  for (const filename of [coreEntry, protocolEntry, quickjsEntry, workerPath]) {
     const canonical = await realpath(filename);
     const parts = canonical.split(/[\\/]/);
     const nodeModules = parts.indexOf('node_modules');

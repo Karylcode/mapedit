@@ -6,6 +6,7 @@ import type {
   ViolationKind,
   ViolationView,
 } from '@mapedit/protocol';
+import { markerRef, moduleRef, structureRef } from '@mapedit/protocol';
 import type {
   Compilation,
   Bounds,
@@ -151,41 +152,43 @@ export function compileMap(
   };
   const grid = (
     values: number[],
-    ref: string,
+    ref: string | undefined,
     source: SourceRef,
     label: string,
     positive = false,
+    diagnostic: { params?: Record<string, unknown>; rule?: string } = {},
   ): void => {
     if (values.some((n) => !onGrid(n))) {
       const nearest = values.map((value) => (positive ? Math.max(0.5, snap(value)) : snap(value)));
       emit(
         'off_grid',
         `${label} must use multiples of 0.5 meters.`,
-        [ref],
+        ref ? [ref] : [],
         source,
         `Set ${label} to ${nearest.length === 1 ? nearest[0] : `[${nearest.join(', ')}]`} m (nearest legal 0.5 m values).`,
         undefined,
-        { values },
-        label,
+        { values, ...diagnostic.params },
+        diagnostic.rule ?? label,
       );
     }
   };
   const rotation = (
     value: number,
     step: number,
-    ref: string,
+    ref: string | undefined,
     source: SourceRef,
     rule = 'rotation',
+    params: Record<string, unknown> = {},
   ): void => {
     if (!onGrid(value, step))
       emit(
         'bad_rotation',
         `Rotation ${value} degrees must be a multiple of ${step}.`,
-        [ref],
+        ref ? [ref] : [],
         source,
         `Use ${snap(value, step)} degrees.`,
         undefined,
-        { rotation: value, step },
+        { rotation: value, step, ...params },
         rule,
       );
   };
@@ -211,14 +214,18 @@ export function compileMap(
   }
   for (const definition of Object.values(parsed.modules).sort((a, b) => compareText(a.id, b.id))) {
     const refs = structures.flatMap((s) =>
-      s.modules.filter((m) => m.module === definition.id).map((m) => `module:${s.id}/${m.id}`),
+      s.modules.filter((m) => m.module === definition.id).map((m) => moduleRef(s.id, m.id)),
     );
     grid(
       definition.size,
-      refs[0] ?? `moduleType:${definition.id}`,
+      refs[0],
       definition.source,
       `Module "${definition.id}" dimensions`,
       true,
+      {
+        params: { moduleType: definition.id },
+        ...(!refs.length ? { rule: `definition:${definition.id}:dimensions` } : {}),
+      },
     );
     if (definition.material && !parsed.project.materials.includes(definition.material))
       emit(
@@ -232,22 +239,25 @@ export function compileMap(
           'Choose an existing material id.',
         ),
         undefined,
-        { reference: definition.material },
-        `module:${definition.id}:material`,
+        { reference: definition.material, moduleType: definition.id },
+        refs.length ? `module:${definition.id}:material` : `definition:${definition.id}:material`,
       );
     for (const socket of definition.sockets) {
-      grid(
-        socket.position,
-        refs[0] ?? `moduleType:${definition.id}`,
-        socket.source,
-        `Socket "${socket.id}" position`,
-      );
+      grid(socket.position, refs[0], socket.source, `Socket "${socket.id}" position`, false, {
+        params: { moduleType: definition.id },
+        ...(!refs.length
+          ? { rule: `definition:${definition.id}:socket:${socket.id}:position` }
+          : {}),
+      });
       rotation(
         socket.rotation,
         90,
-        refs[0] ?? `moduleType:${definition.id}`,
+        refs[0],
         socket.source,
-        `socket:${definition.id}/${socket.id}:rotation`,
+        refs.length
+          ? `socket:${definition.id}/${socket.id}:rotation`
+          : `definition:${definition.id}:socket:${socket.id}:rotation`,
+        { moduleType: definition.id },
       );
       if (!parsed.project.socketTypes[socket.type])
         emit(
@@ -261,8 +271,10 @@ export function compileMap(
             `Correct the type or define socketTypes.${socket.type} in project.yaml.`,
           ),
           undefined,
-          {},
-          `socket:${definition.id}/${socket.id}:type`,
+          { moduleType: definition.id },
+          refs.length
+            ? `socket:${definition.id}/${socket.id}:type`
+            : `definition:${definition.id}:socket:${socket.id}:type`,
         );
     }
   }
@@ -345,23 +357,23 @@ export function compileMap(
   };
   const localByStructure = new Map<string, Map<string, LocalInstance>>();
   for (const structure of structures) {
-    const structureRef = `structure:${structure.id}`;
-    sourceRefs[structureRef] = structure.source;
+    const structureReference = structureRef(structure.id);
+    sourceRefs[structureReference] = structure.source;
     if (!structure.attach) {
       grid(
         structure.position,
-        structureRef,
+        structureReference,
         structure.source,
         `Structure "${structure.id}" position`,
       );
       if (structure.height !== 'auto')
         grid(
           [structure.height],
-          structureRef,
+          structureReference,
           structure.source,
           `Structure "${structure.id}" height`,
         );
-      rotation(structure.rotation, 15, structureRef, structure.source);
+      rotation(structure.rotation, 15, structureReference, structure.source);
     }
     const locals = new Map<string, LocalInstance>(),
       definitions = new Map(structure.modules.map((m) => [m.id, m])),
@@ -372,7 +384,7 @@ export function compileMap(
       if (failed.has(instanceId)) return;
       const instance = definitions.get(instanceId);
       if (!instance) return;
-      const ref = `module:${structure.id}/${instance.id}`;
+      const ref = moduleRef(structure.id, instance.id);
       sourceRefs[ref] = instance.source;
       if (visiting.has(instanceId)) {
         emit(
@@ -446,7 +458,7 @@ export function compileMap(
           failed.add(instanceId);
           return;
         }
-        attachTo = `module:${structure.id}/${target.instance.id}`;
+        attachTo = moduleRef(structure.id, target.instance.id);
         const own: PlacedSocket = {
             socket: ownSocket,
             transform: transformMatrix([0, 0, 0]),
@@ -497,14 +509,14 @@ export function compileMap(
       ? {
           socket,
           transform: local.transform,
-          instanceRef: `module:${structureId}/${local.instance.id}`,
+          instanceRef: moduleRef(structureId, local.instance.id),
         }
       : undefined;
   };
   const place = (structure: Structure): StructurePlacement | undefined => {
     if (placements.has(structure.id)) return placements.get(structure.id);
     if (failed.has(structure.id)) return;
-    const ref = `structure:${structure.id}`;
+    const ref = structureRef(structure.id);
     if (visiting.has(structure.id)) {
       emit(
         'missing_reference',
@@ -665,7 +677,7 @@ export function compileMap(
     if (!views.has(placement.root)) {
       const root = byId.get(placement.root)!;
       views.set(placement.root, {
-        ref: `structure:${root.id}`,
+        ref: structureRef(root.id),
         ...(root.name ? { name: root.name } : {}),
         file: root.source.file,
         transform: placements.get(root.id)!.transform,
@@ -675,7 +687,7 @@ export function compileMap(
     for (const local of [...localByStructure.get(structure.id)!.values()].sort((a, b) =>
       compareText(a.instance.id, b.instance.id),
     )) {
-      const ref = `module:${structure.id}/${local.instance.id}`;
+      const ref = moduleRef(structure.id, local.instance.id);
       const transform = multiplyMatrices(placement.transform, local.transform);
       const bounds = transformBounds(transform, local.definition.size);
       const compiled: CompiledInstance = {
@@ -702,9 +714,9 @@ export function compileMap(
         emit(
           'out_of_bounds',
           `Module "${ref}" extends outside the map.`,
-          [ref, `structure:${placement.root}`],
+          [ref, structureRef(placement.root)],
           local.instance.source,
-          boundsSuggestion(`structure:${placement.root}`, boundsForRoot(placement.root), map.size),
+          boundsSuggestion(structureRef(placement.root), boundsForRoot(placement.root), map.size),
           bounds.min,
           { bounds, size: map.size },
         );
@@ -724,7 +736,7 @@ export function compileMap(
   }
   scene.structures = [...views.values()].sort((a, b) => compareText(a.ref, b.ref));
   for (const marker of [...map.markers].sort((a, b) => compareText(a.id, b.id))) {
-    const ref = `marker:${marker.id}`,
+    const ref = markerRef(marker.id),
       shape = marker.shape,
       position = shape.kind === 'point' ? shape.position : shape.center;
     sourceRefs[ref] = marker.source;

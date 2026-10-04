@@ -1,48 +1,70 @@
-import { readdir, readFile, realpath } from 'node:fs/promises';
+import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { parseProject, type ParsedProject } from '@mapedit/core';
+import { containsPath } from './paths.js';
 
 /** Resolve an existing project file, rejecting links that escape the project. */
 export async function projectPath(root: string, relative: string): Promise<string> {
   const base = await realpath(root);
   const target = await realpath(path.resolve(base, relative));
-  const inside = path.relative(base, target);
-  if (inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
+  if (!containsPath(base, target)) {
     throw new Error(`File is outside the project: ${relative}`);
   }
   return target;
 }
 
-/** Only authoring inputs are read; outputs, dependencies, and arbitrary files are excluded. */
-export async function readProjectTexts(root: string): Promise<Record<string, string>> {
-  const files: Record<string, string> = {};
-  const read = async (relative: string) => {
-    files[relative] = await readFile(await projectPath(root, relative), 'utf8');
-  };
-  const walk = async (relative: string): Promise<void> => {
-    let entries;
+/** One authoring walker for parsing and history; unrelated outputs are never read. */
+export async function readProjectInputs(
+  root: string,
+  options: { formats?: 'yaml' | 'all'; previous?: ReadonlyMap<string, Buffer> } = {},
+): Promise<Map<string, Buffer>> {
+  const base = await realpath(root);
+  const files = new Map<string, Buffer>();
+  const metadata = async (name: string) => {
     try {
-      entries = await readdir(path.join(root, relative), { withFileTypes: true });
+      const result = await lstat(path.join(base, name));
+      if (result.isSymbolicLink())
+        throw new Error(`Symbolic links are not supported in authoring inputs: ${name}`);
+      return result;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
       throw error;
     }
+  };
+  const read = async (name: string) => {
+    const content = await readFile(await projectPath(base, name));
+    const previous = options.previous?.get(name);
+    files.set(name, previous?.equals(content) ? previous : content);
+  };
+  const walk = async (folder: string): Promise<void> => {
+    if (!(await metadata(folder))) return;
+    const directory = await projectPath(base, folder);
+    const entries = await readdir(directory, { withFileTypes: true });
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
-      const child = `${relative}/${entry.name}`;
+      const child = `${folder}/${entry.name}`;
       if (entry.isSymbolicLink())
-        throw new Error(`Symbolic links are not project inputs: ${child}`);
+        throw new Error(`Symbolic links are not supported in authoring inputs: ${child}`);
       if (entry.isDirectory()) await walk(child);
-      else if (entry.isFile() && /\.ya?ml$/i.test(entry.name)) await read(child);
+      else if (
+        entry.isFile() &&
+        (options.formats === 'yaml' ? /\.ya?ml$/i : /\.(?:ya?ml|ts|png)$/i).test(entry.name)
+      )
+        await read(child);
     }
   };
-  try {
-    await read('project.yaml');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
+  if (await metadata('project.yaml')) await read('project.yaml');
   await walk('modules');
   await walk('maps');
   return files;
+}
+
+export async function readProjectTexts(root: string): Promise<Record<string, string>> {
+  return Object.fromEntries(
+    [...(await readProjectInputs(root, { formats: 'yaml' }))].map(([file, content]) => [
+      file,
+      content.toString('utf8'),
+    ]),
+  );
 }
 
 export async function readProject(root: string): Promise<ParsedProject> {
