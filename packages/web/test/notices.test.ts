@@ -77,15 +77,46 @@ describe('violation text', () => {
     }
   });
 
-  it('shows objects, the backend message, its suggestion and source line', () => {
+  it('translates the message from params and keeps other advice and the source line', () => {
     const overlap = mockScene().violations.find((v) => v.kind === 'overlap')!;
     expect(violationText(overlap, index, tr('zh-TW'))).toEqual({
       title: '穿模',
       objects: 'overlap_a · base、overlap_b · base',
-      message: overlap.message,
+      message: '兩個模組互相重疊',
       suggestion: overlap.suggestion,
       source: 'maps/village/structures/overlap_a.yaml:3',
     });
+  });
+
+  it('translates every kind of mock violation from its params in both languages', () => {
+    const text = (kind: string, lang: Lang) =>
+      violationText(mockScene().violations.find((v) => v.kind === kind)!, index, tr(lang));
+    expect(text('off_grid', 'zh-TW')).toMatchObject({
+      message: '結構位置 (60.25, 10) 不在 0.5 公尺的格子上',
+      suggestion: '改成 (60.5, 10)',
+    });
+    expect(text('bad_rotation', 'en')).toMatchObject({
+      message: 'Structure rotation 7° is not a multiple of 15°',
+      suggestion: 'Use 0°',
+    });
+    expect(text('out_of_bounds', 'zh-TW')).toMatchObject({
+      message: '超出地圖東邊 1 公尺',
+      suggestion: '往西移 1 公尺，就會回到地圖裡',
+    });
+    expect(text('out_of_bounds', 'en')).toMatchObject({
+      message: 'Sticks out 1 m past the east edge',
+      suggestion: 'Move it 1 m west to fit inside the map',
+    });
+    expect(text('missing_reference', 'zh-TW').message).toBe('找不到模組 missing_block');
+    expect(text('incompatible_socket', 'zh-TW').message).toBe('插槽類型 roof 和 stair 不能接在一起');
+    expect(text('unsupported', 'en').message).toBe(
+      'Nothing holds it up all the way down to the ground',
+    );
+  });
+
+  it('falls back to the backend text when params do not match the protocol', () => {
+    const odd = { ...mockScene().violations[0]!, kind: 'off_grid' as const, params: { values: 'x' } };
+    expect(violationText(odd, index, tr('zh-TW')).message).toBe(odd.message);
   });
 
   it('shortens long object lists', () => {

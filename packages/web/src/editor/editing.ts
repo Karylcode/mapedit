@@ -12,7 +12,7 @@ import type { CursorNote } from './hud/cursor-note.js';
 import { PreviewThrottle } from './preview-throttle.js';
 import { movableOf } from './selection.js';
 import { normalizeAngle, turnAbout, turnXZ, yawOf } from './move-math.js';
-import { violationTitle } from './violations.js';
+import { violationMessage, violationTitle } from './violations.js';
 
 /** Degrees per press of R, matching the structure rotation step. */
 export const ROTATION_STEP = 15;
@@ -322,7 +322,7 @@ export class EditController {
   }
 
   private reasonOf(violation: ViolationView): string {
-    return `${violationTitle(violation, this.t)} — ${violation.message}`;
+    return `${violationTitle(violation, this.t)} — ${violationMessage(violation, this.t)}`;
   }
 
   private t = (key: MessageKey, params?: Params): string =>

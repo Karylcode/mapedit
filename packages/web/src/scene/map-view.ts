@@ -410,9 +410,6 @@ export class MapView {
     let shared = this.terrainMaterials.get(material.name);
     if (!shared) {
       shared = material.clone();
-      // Surfaces are never metal. Terrain glbs omit metallicFactor, whose glTF
-      // default of 1 would render the ground black wherever the sun does not reach.
-      if (shared instanceof MeshStandardMaterial) shared.metalness = 0;
       this.terrainMaterials.set(material.name, shared);
     }
     return shared;

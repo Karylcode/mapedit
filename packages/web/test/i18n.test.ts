@@ -2,20 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { detectLang, loadLang, saveLang, translate, STORAGE_KEY } from '../src/i18n/i18n.js';
 import { en, zhTW } from '../src/i18n/messages.js';
 
-/** Every placeholder any message uses. */
-const PARAMS = {
-  name: 'x',
-  names: 'a, b',
-  loaded: 1,
-  total: 2,
-  reason: 'r',
-  count: 3,
-  files: 'a.yaml',
-  more: 1,
-  objects: 'House',
-  file: 'a.yaml',
-  line: 4,
-};
+/**
+ * A value for every placeholder: those named in either dictionary's text,
+ * plus the ones function messages read.
+ */
+const PARAMS: Record<string, string | number> = { count: 3, more: 1, loaded: 1, total: 2 };
+for (const message of [...Object.values(zhTW), ...Object.values(en)])
+  if (typeof message === 'string')
+    for (const [, name] of message.matchAll(/\{(\w+)\}/g)) PARAMS[name!] ??= 'x';
+PARAMS.names = 'a, b';
+PARAMS.files = 'a.yaml';
 
 describe('interface language', () => {
   it('follows the browser: any Chinese locale gets Traditional Chinese', () => {
