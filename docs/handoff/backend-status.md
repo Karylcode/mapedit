@@ -803,6 +803,12 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
     `test-packed-cli.mjs` so the installed `mapedit dev` serves the editor at
     `/` and MCP `screenshot` returns a PNG (marked `TODO(F33)` there).
     Deviation: none.
+  - Follow-up (reported by the frontend session): `eslint.config.js` ignores
+    `packages/cli/web/**`, because after a local web build the copied, minified
+    bundles made `pnpm lint` fail. The template copy stays linted, since it is
+    the only lint coverage of the templates' `model.ts` files. Test:
+    `cli/test/package-assets.test.ts` asks ESLint which of the two paths it
+    ignores.
 - **F34 complete:** `docs/protocol.md` adds, as optional fields that this
   backend always sends:
   - `HistoryEntry.action` (`HistoryAction`: `move`, `delete`, `agent_change`)

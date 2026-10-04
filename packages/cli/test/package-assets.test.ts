@@ -77,3 +77,16 @@ it('F33 packs the editor build with the CLI package', async () => {
   const ignored = await readFile(new URL('../../../.gitignore', import.meta.url), 'utf8');
   expect(ignored.split(/\r?\n/)).toContain('packages/cli/web/');
 });
+
+it('F33 keeps the copied editor build out of lint, but still lints the template copy', async () => {
+  const { ESLint } = await import('eslint');
+  const root = fileURLToPath(new URL('../../../', import.meta.url));
+  const eslint = new ESLint({ cwd: root });
+  expect(await eslint.isPathIgnored(path.join(root, 'packages/cli/web/static/app.js'))).toBe(true);
+  // The template copy is the only lint coverage of the project templates' model.ts files.
+  expect(
+    await eslint.isPathIgnored(
+      path.join(root, 'packages/cli/templates/project/modules/wall/model.ts'),
+    ),
+  ).toBe(false);
+});
