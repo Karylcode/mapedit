@@ -78,7 +78,7 @@ pnpm e2e
 通過零違規檢查後匯出 GLB。輸出列出專案和 GLB 路徑。
 
 Unity 6 套件與安裝步驟見 [integrations/unity](integrations/unity/README.md)。
-Windows 可使用 `scripts/test-unity.ps1 -GlbPath <village.glb>` 實際驗證 UnityGLTF
+Windows PowerShell 5.1 或 PowerShell 7 可使用 `scripts/test-unity.ps1 -GlbPath <village.glb>` 實際驗證 UnityGLTF
 匯入、MeshCollider、Trigger 和出生點 prefab。`.cache` 中的測試專案與結果不提交。
 
 ## 文件

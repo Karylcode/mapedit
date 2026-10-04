@@ -174,6 +174,15 @@ recorded after all corrections are complete.
   lost support), `core/test/violation-identity.test.ts` (field uniqueness and order
   independence). Six related test files / 51 tests, typecheck and scoped lint pass.
   Deviation: none.
+- **F14 complete:** Unity verification updates JSON object properties with
+  PowerShell 5.1-compatible commands and explicit UTF-8 input/output, preserving
+  unrelated dependencies, scoped registries and Unicode. Both the actual script
+  and `cli/test/unity-script.test.ts` first reproduced the unsupported
+  `-AsHashtable` parameter under Windows PowerShell 5.1, then passed after the
+  fix. The automated test simulates only Unity process launch; real Unity 6 also
+  imported an existing GLB under 5.1 and verified 24 MeshColliders, two markers,
+  the spawn prefab and trigger. Scoped lint passes. Final fresh-village acceptance
+  follows after F16. Deviation: none.
 - **F2 complete:** marker moves preserve terrain-relative height, including a box's
   bottom clearance and point markers. Repeated moves use the latest saved position.
   `core/test/marker-move.test.ts` reproduces both reported box cases, elevated

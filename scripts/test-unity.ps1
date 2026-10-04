@@ -28,12 +28,12 @@ if (-not (Test-Path -LiteralPath (Join-Path $ProjectPath 'ProjectSettings\Projec
 }
 
 $manifestPath = Join-Path $ProjectPath 'Packages\manifest.json'
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable
-$manifest.dependencies['org.khronos.unitygltf'] = 'https://github.com/KhronosGroup/UnityGLTF.git#release/2.21.0'
+$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$manifest.dependencies | Add-Member -MemberType NoteProperty -Name 'org.khronos.unitygltf' -Value 'https://github.com/KhronosGroup/UnityGLTF.git#release/2.21.0' -Force
 $packagePath = (Join-Path $repositoryRoot 'integrations\unity').Replace('\', '/')
-$manifest.dependencies['com.mapedit.unity'] = "file:$packagePath"
-$manifest.dependencies['com.unity.shadergraph'] = '17.0.4'
-$manifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $manifestPath
+$manifest.dependencies | Add-Member -MemberType NoteProperty -Name 'com.mapedit.unity' -Value "file:$packagePath" -Force
+$manifest.dependencies | Add-Member -MemberType NoteProperty -Name 'com.unity.shadergraph' -Value '17.0.4' -Force
+[IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding($false)))
 $env:MAPEDIT_UNITY_GLB = $GlbPath
 $logFile = Join-Path $ProjectPath 'mapedit-import.log'
 $resultPath = Join-Path $ProjectPath 'mapedit-verification.json'
