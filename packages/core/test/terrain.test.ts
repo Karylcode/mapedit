@@ -104,3 +104,25 @@ describe('terrain geometry', () => {
     expect(bytes).toBeGreaterThan(1_000_000);
   }, 120000);
 });
+
+describe('terrain chunk materials', () => {
+  it('uses non-metallic materials for every Surface in a chunk GLB', async () => {
+    const terrain = createTerrain(10, 10);
+    for (let index = 0; index < terrain.surfaces.length; index++)
+      terrain.surfaces[index] = index % 5;
+    const io = new WebIO();
+    for (const chunk of terrainChunks(terrain)) {
+      const document = await io.readBinary(await terrainChunkGlb(chunk));
+      const materials = document.getRoot().listMaterials();
+      expect(materials.map((material) => material.getName()).sort()).toEqual([
+        'surface:dirt',
+        'surface:grass',
+        'surface:gravel',
+        'surface:sand',
+        'surface:stone',
+      ]);
+      // glTF defaults metallicFactor to 1, which renders terrain as polished metal.
+      for (const material of materials) expect(material.getMetallicFactor()).toBe(0);
+    }
+  });
+});

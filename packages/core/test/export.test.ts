@@ -96,6 +96,12 @@ it('round-trips hierarchy, world transforms, embedded material images and collid
         (node.getExtras().mapedit as { kind?: string })?.kind === 'terrain' && node.getMesh(),
     ),
   ).toBe(true);
+  const terrainMaterials = document
+    .getRoot()
+    .listMaterials()
+    .filter((item) => item.getName().startsWith('surface:'));
+  expect(terrainMaterials.length).toBeGreaterThan(0);
+  for (const item of terrainMaterials) expect(item.getMetallicFactor()).toBe(0);
 });
 
 it('rechecks physical overlap, Support and terrain even when the caller only ran the compiler', async () => {

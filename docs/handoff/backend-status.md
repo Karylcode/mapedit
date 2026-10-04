@@ -416,3 +416,11 @@ by Claude. Each entry records the change, the tests and any deviation.
   the real editor. Test: `server/test/protocol.test.ts` "F19 keeps the bottom
   clearance of a dragged mock box marker" (preview and apply over WebSocket);
   it failed first with `[30, 0, 30]`. Deviation: none.
+- **Extra (frontend request) – non-metallic terrain:** the 編輯器前端 session
+  reported that terrain chunk materials had no `metallicFactor`, so glTF's
+  default of 1 rendered terrain as metal (black in shadow in three.js, metallic in
+  Unity). `appendTerrainChunk` now sets `metallicFactor` 0 for every Surface
+  material, which covers both the editor chunk GLBs and the exported map GLB.
+  Tests: `core/test/terrain.test.ts` "terrain chunk materials" and an added check
+  in `core/test/export.test.ts`; both failed first with metallicFactor 1. The
+  frontend's temporary override of `surface:*` metalness is no longer needed.
