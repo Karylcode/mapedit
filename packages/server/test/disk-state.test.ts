@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -65,6 +67,60 @@ async function fixture() {
 }
 
 describe('disk state project history', () => {
+  it('keeps drag frames in memory and reads direct file changes before applying an edit', async () => {
+    const { root, state } = await fixture();
+    const server = await createServer({ port: 0, state });
+    servers.push(server);
+    const socket = new WebSocket(server.url.replace('http:', 'ws:') + '/ws');
+    await new Promise<void>((resolve) => socket.once('open', resolve));
+    let requestId = 0;
+    const request = async (message: Record<string, unknown>, type: ServerMessage['type']) => {
+      const id = ++requestId;
+      const response = new Promise<ServerMessage>((resolve) => {
+        const receive = (data: Buffer) => {
+          const value = JSON.parse(data.toString()) as ServerMessage;
+          if (value.type === type && (!('requestId' in value) || value.requestId === id)) {
+            socket.off('message', receive);
+            resolve(value);
+          }
+        };
+        socket.on('message', receive);
+      });
+      socket.send(JSON.stringify({ ...message, requestId: id }));
+      return response;
+    };
+    await request({ type: 'hello', protocolVersion: 1, client: 'editor' }, 'welcome');
+    await request({ type: 'openMap', mapId: 'village' }, 'scene');
+    const scan = vi.spyOn(fs, 'readdir');
+    syncBuiltinESMExports();
+    const edit = { kind: 'move', ref: 'structure:house', position: [15, 0, 15], rotation: 0 };
+    try {
+      for (let frame = 0; frame < 3; frame++)
+        expect(await request({ type: 'previewEdit', edit }, 'previewResult')).toMatchObject({
+          ok: true,
+        });
+      expect(scan).not.toHaveBeenCalled();
+      const file = join(root, 'maps/village/structures/house.yaml');
+      await writeFile(
+        file,
+        house.replace('id: house', 'id: house\n    name: Agent changed this while dragging'),
+      );
+      expect((await state.getScene('village')).structures[0]!.name).toBeUndefined();
+      expect(
+        await request({ type: 'applyEdit', edit, baseRevision: 0 }, 'editResult'),
+      ).toMatchObject({ ok: true });
+      expect(scan).toHaveBeenCalled();
+      expect(await readFile(file, 'utf8')).toContain('name: Agent changed this while dragging');
+      const scene = await state.getScene('village');
+      expect(scene.structures[0]!.name).toBe('Agent changed this while dragging');
+      expect(scene.structures[0]!.transform.slice(12, 15)).toEqual([15, 1, 15]);
+      expect(state.entries.map((entry) => entry.author)).toEqual(['agent', 'human']);
+    } finally {
+      scan.mockRestore();
+      syncBuiltinESMExports();
+      socket.terminate();
+    }
+  });
   it('previews under 30 ms on a village map, snaps, rejects bounds and preserves YAML comments', async () => {
     const { root, state } = await fixture();
     const edit = {

@@ -239,7 +239,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
             client.close(1008, 'Send hello first.');
             return;
           }
-          await state.flush();
+          // Drag frames use the latest compiled snapshot. The watcher refreshes it in the
+          // background; commits and other requests still establish a disk-read barrier.
+          if (message.type !== 'previewEdit') await state.flush();
           if (message.type === 'openMap') {
             const scene = await sceneFor(message.mapId);
             opened.set(client, message.mapId);

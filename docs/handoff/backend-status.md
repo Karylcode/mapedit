@@ -7,7 +7,7 @@ are complete. Start with `docs/protocol.md`, `docs/map-format.md`,
 Protocol stays at version 1; the only additive HTTP contract detail is CLI identity
 headers and a cheap HEAD discovery request. `packages/web` has not been created or
 modified. The mock remains available through `mapedit dev --mock`.
-On this Windows machine: 93 tests, strict typecheck and ESLint passed; the no-AI
+On this Windows machine: 94 tests, strict typecheck and ESLint passed; the no-AI
 village script reached zero violations and exported a GLB; real Unity 6 batchmode
 verified 40 MeshColliders, the spawn prefab and trigger. Frontend rendering and the
 two-agent/Unity Play experience remain the planned joint acceptance after the
@@ -16,7 +16,12 @@ frontend exists. GitHub publication and CI status are recorded below.
 ## 目前進度
 
 M0–M7 complete on `backend`, each with its own milestone commit.
-Next: publish the branch, create the PR to `main`, and verify the CI matrix.
+[PR #1](https://github.com/Karylcode/mapedit/pull/1) is open against `main`.
+Initial CI exposed filesystem scans on the preview hot path (up to 34.96 ms
+median against the unchanged 30 ms target). Drag frames now use the compiled
+snapshot; apply and MCP requests still refresh from disk. All 94 tests pass on
+Windows, including a regression for fresh Agent edits during a drag. The CI
+matrix is being rerun before completion.
 
 ## 每個里程碑完成了什麼、怎麼驗證
 
@@ -83,7 +88,7 @@ Next: publish the branch, create the PR to `main`, and verify the CI matrix.
   before writing. `scripts/e2e.mjs` uses the real CLI to initialize, author three
   houses (including 15/30-degree rotations), a mountain and a road, check zero
   violations, and export a self-contained 5 MB GLB. Final Windows acceptance:
-  **93 tests across 16 test files**, `pnpm typecheck`, `pnpm lint`, `pnpm e2e` and
+  **94 tests across 16 test files**, `pnpm typecheck`, `pnpm lint`, `pnpm e2e` and
   the Unity batchmode test all passed. Final audit added JSON-safe marker properties,
   locale-independent ordering, exact project/process stdio discovery, concurrent
   terrain transactions, and map IDs independent of their source-directory names.
@@ -104,7 +109,10 @@ Next: publish the branch, create the PR to `main`, and verify the CI matrix.
 - Terrain gentler than one meter blends neighboring corner heights; larger height
   changes retain plateaus and receive cliff faces. Commands select tile centers.
 - Model builds run at most four children concurrently. A pure cached build path
-  handles previews without rereading models or re-encoding terrain.
+  handles previews without scanning disk, rereading models or re-encoding terrain.
+  Applying an edit always refreshes from disk first, preserving concurrent Agent edits.
+  CI runs test files serially so performance checks do not compete with browser
+  launches or the million-tile terrain test; performance thresholds are unchanged.
 - The export core is introduced with the MCP export tool; M6 adds the formal
   engine contract and Unity adapter. Exports independently rerun geometry checks.
 - Explicit structure height takes precedence over per-module terrain following.
@@ -142,4 +150,5 @@ None. GitHub authentication, system Edge and licensed Unity 6 were available.
   screenshot transport/render contract has passed using the test renderer.
 - UnityGLTF emits optional URP/VisualScripting assembly-reference warnings in the
   minimal built-in-renderer test project; compilation and actual import pass.
-- GitHub PR and CI verification are the remaining publication step for this run.
+- GitHub PR #1 is open; final CI verification is in progress after the preview
+  performance correction. CI performance tests run without competing test files.

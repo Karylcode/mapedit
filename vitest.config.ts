@@ -15,6 +15,8 @@ export default defineConfig({
     include: ['packages/**/test/**/*.test.ts'],
     testTimeout: 30000,
     hookTimeout: 30000,
-    maxWorkers: 4,
+    // Performance acceptance should not compete with the million-tile mesh test
+    // and several browser processes on a shared, small CI runner.
+    maxWorkers: process.env.CI ? 1 : 4,
   },
 });
