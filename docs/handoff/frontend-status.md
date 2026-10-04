@@ -227,6 +227,9 @@ is not modified here.
   - `test/notices.test.ts`：改用協定的清單，並確認每個種類和代碼都有翻譯。
   - `test/connection.test.ts`：`openMap` 的回覆順序。修正前停在被拒絕的地圖。
   - `test/maps-browser.test.ts`：真專案刪掉一張還沒開過的地圖，再從選單選它。結果是出現提示，選單、網址和畫面都回到原本的地圖，而且仍然可以點選。拿掉退回的步驟後，這個測試失敗。
+- **FE14 完成**：地圖選單選完後立刻失去焦點，方向鍵和 WASD 回到移動鏡頭。
+  測試：`test/maps-browser.test.ts` 先讓選單取得焦點再換地圖，接著按住 W 和下方向鍵：鏡頭移動，地圖和選單都沒變
+  （修正前按 W 鏡頭不動）。
 
 ## 自行決定的事
 

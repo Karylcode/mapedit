@@ -144,4 +144,23 @@ describe.skipIf(!executable)('switching maps in a real two-map project', () => {
     await page.mouse.click(house.x, house.y);
     await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:house');
   });
+
+  it('gives the keyboard back to the map once a map is chosen (FE14)', async () => {
+    const select = page.locator('.tb-select');
+    const other = (await select.inputValue()) === 'second' ? 'village' : 'second';
+    // Like picking from the list with the mouse: the list has focus when it changes.
+    await select.focus();
+    await select.selectOption(other);
+    await poll(() => editorState(page, (e) => e.store.state.scene?.map.id)).toBe(other);
+    const target = () => editorState(page, (e) => e.viewport.overview.target.toArray());
+    for (const key of ['KeyW', 'ArrowDown']) {
+      const before: number[] = await target();
+      await page.keyboard.down(key);
+      await page.waitForTimeout(250);
+      await page.keyboard.up(key);
+      expect(await target(), key).not.toEqual(before);
+      expect(await editorState(page, (e) => e.store.state.mapId)).toBe(other);
+      expect(await select.inputValue()).toBe(other);
+    }
+  });
 });

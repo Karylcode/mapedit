@@ -25,7 +25,11 @@ export class TitleBlock {
       this.labels[key] = label;
       return h('div', { class: `tb-cell ${extra}` }, label, value);
     };
-    this.mapSelect.addEventListener('change', () => this.actions.openMap(this.mapSelect.value));
+    this.mapSelect.addEventListener('change', () => {
+      this.actions.openMap(this.mapSelect.value);
+      // Hand the keyboard back to the map: arrows and WASD move the camera, not the choice.
+      this.mapSelect.blur();
+    });
     const langSwitch = h('div', { class: 'tb-lang', role: 'group' });
     for (const lang of LANGS) {
       const button = h('button', { type: 'button', class: 'tb-lang-option', lang });
