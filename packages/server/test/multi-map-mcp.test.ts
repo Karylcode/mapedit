@@ -63,7 +63,17 @@ describe('all-map MCP reports', () => {
     expect(check.maps[1]).toMatchObject({
       map: 'b_invalid',
       ok: false,
-      violations: { items: [expect.objectContaining({ kind: 'off_grid' })] },
+      violations: {
+        items: [
+          expect.objectContaining({
+            kind: 'off_grid',
+            params: expect.objectContaining({
+              file: 'maps/b_invalid/structures/house.yaml',
+              line: 2,
+            }),
+          }),
+        ],
+      },
     });
     const overview = await call('overview');
     expect(overview.maps).toHaveLength(2);

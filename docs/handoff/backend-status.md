@@ -207,3 +207,8 @@ recorded after all corrections are complete.
   heights and suggestions applied back to the map. Related geometry, compiler,
   dragging and server tests pass; 30 ms preview and 2-second/2,000-module bounds
   remain passing. Deviation: none.
+- **F6 complete:** CLI text diagnostics prepend `file:line: kind:` and keep the
+  message plus suggestion. Core diagnostics already carry authoritative source
+  metadata, preserved by MCP. `cli/test/diagnostics.test.ts` reproduces the missing
+  prefix before the fix; the MCP multi-map test checks the exact file and line.
+  Five related CLI/MCP tests, typecheck and scoped lint pass. Deviation: none.

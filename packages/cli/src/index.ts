@@ -86,10 +86,15 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         process.stdout.write(`Map ${map}:\n`);
         for (const error of fileErrors)
           process.stdout.write(`${error.file}:${error.line ?? 1}: ${error.message}\n`);
-        for (const violation of violations)
+        for (const violation of violations) {
+          const source =
+            typeof violation.params.file === 'string'
+              ? `${violation.params.file}:${typeof violation.params.line === 'number' ? violation.params.line : 1}: `
+              : '';
           process.stdout.write(
-            `${violation.kind}: ${violation.message}${violation.suggestion ? ` ${violation.suggestion}` : ''}\n`,
+            `${source}${violation.kind}: ${violation.message}${violation.suggestion ? ` ${violation.suggestion}` : ''}\n`,
           );
+        }
         for (const instance of floating)
           process.stdout.write(
             `canFloat: ${instance.ref} ${instance.moduleType} at [${instance.position.join(', ')}] m\n`,
