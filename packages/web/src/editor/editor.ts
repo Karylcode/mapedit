@@ -283,10 +283,11 @@ export function start(root: HTMLElement = document.body): void {
       { class: 'hud-column hud-right' },
       new HistoryPanel(store, index, { undo: () => edits.undo(), redo: () => edits.redo() })
         .element,
+      // Wide windows show toasts between the columns; narrow ones under the change log.
+      toasts.element,
     ),
     new ActionBar(store, index).element,
     new StatusCard(store).element,
-    toasts.element,
     new Tooltip(store, index).element,
     note.element,
   );

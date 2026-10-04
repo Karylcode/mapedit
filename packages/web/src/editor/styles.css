@@ -32,6 +32,9 @@
   --tag-edge: 0 2px 0 var(--ink);
   --tag-lift: 0 2px 0 var(--ink), 0 10px 24px -12px rgba(23, 32, 28, 0.45);
   --gutter: 16px;
+  --gap: 12px;
+  /* Side columns: full width on a wide screen, narrower beside a terminal. */
+  --column: clamp(260px, 30vw, 360px);
 }
 
 * {
@@ -78,9 +81,22 @@ select {
   touch-action: none;
 }
 
+/*
+ * The HUD is a grid, so its parts cannot cover one another: panels in the side
+ * columns, toasts between them, the action bar in a row of its own. The map
+ * stays reachable wherever no panel is.
+ */
 .hud {
   position: absolute;
   inset: 0;
+  display: grid;
+  grid-template-columns: var(--column) minmax(0, 1fr) var(--column);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'left middle right'
+    'bar bar bar';
+  gap: var(--gap);
+  padding: var(--gutter);
   pointer-events: none;
 }
 
@@ -88,17 +104,12 @@ select {
   pointer-events: auto;
 }
 
-/* Title block ------------------------------------------------------------ */
-
-/* Left and right columns hold the panels; the map stays reachable between them. */
 .hud-column {
-  position: absolute;
-  top: var(--gutter);
-  bottom: 84px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  width: min(360px, calc(100vw - 2 * var(--gutter)));
+  gap: var(--gap);
+  min-width: 0;
+  min-height: 0;
   pointer-events: none;
 }
 
@@ -107,16 +118,36 @@ select {
 }
 
 .hud-left {
-  left: var(--gutter);
+  grid-area: left;
 }
 
+/* Wide: the change log sits in the right column and the toasts in the middle. */
 .hud-right {
-  right: var(--gutter);
-  align-items: flex-end;
+  display: contents;
 }
+
+/* Beside a terminal there is no room between the columns: toasts go under the change log. */
+@media (max-width: 899px) {
+  .hud-right {
+    grid-area: right;
+    display: flex;
+  }
+}
+
+/* A phone: one column of panels above the action bar; toasts float over the top. */
+@media (max-width: 599px) {
+  .hud {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas: 'left' 'right' 'bar';
+  }
+}
+
+/* Title block ------------------------------------------------------------ */
 
 .title-block {
   align-self: flex-start;
+  max-width: 100%;
   display: grid;
   grid-template-columns: minmax(150px, 260px) minmax(92px, auto);
   background: var(--chalk-raised);
@@ -370,13 +401,11 @@ select {
 /* Action bar: what is selected and the keys that act on it ----------------- */
 
 .action-bar {
-  position: absolute;
-  left: 50%;
-  bottom: var(--gutter);
+  grid-area: bar;
+  justify-self: center;
   display: flex;
   align-items: stretch;
-  max-width: calc(100vw - 2 * var(--gutter));
-  transform: translateX(-50%);
+  max-width: 100%;
   background: var(--chalk-raised);
   border: 1px solid var(--ink);
   box-shadow: var(--tag-lift);
@@ -444,9 +473,7 @@ kbd {
 
 @media (max-width: 720px) {
   .action-bar {
-    left: var(--gutter);
-    right: var(--gutter);
-    transform: none;
+    justify-self: stretch;
     flex-direction: column;
   }
 
@@ -470,8 +497,25 @@ kbd {
 }
 
 .history {
+  grid-area: right;
+  justify-self: end;
+  align-self: start;
   width: min(340px, 100%);
   max-height: min(46vh, 420px);
+  container-type: inline-size;
+}
+
+@media (max-width: 899px) {
+  .history {
+    width: 100%;
+  }
+}
+
+/* A narrow change log keeps Undo and Redo on one line by dropping their keycaps. */
+@container (max-width: 339px) {
+  .history .chip-button kbd {
+    display: none;
+  }
 }
 
 .issues {
@@ -679,6 +723,7 @@ kbd {
   border-radius: 2px;
   background: transparent;
   font-size: 12px;
+  white-space: nowrap;
   color: var(--ink-soft);
   cursor: pointer;
 }
@@ -770,16 +815,33 @@ kbd {
 /* Toasts ------------------------------------------------------------------- */
 
 .toasts {
-  position: absolute;
-  top: var(--gutter);
-  left: 50%;
+  grid-area: middle;
+  justify-self: center;
+  align-self: start;
   display: flex;
+  flex: none;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  width: min(440px, calc(100vw - 2 * var(--gutter)));
-  transform: translateX(-50%);
+  width: min(440px, 100%);
   pointer-events: none;
+}
+
+@media (max-width: 899px) {
+  .toasts {
+    width: 100%;
+  }
+}
+
+@media (max-width: 599px) {
+  .toasts {
+    position: absolute;
+    top: var(--gutter);
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    z-index: 10;
+  }
 }
 
 .toast {

@@ -156,7 +156,10 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
   });
 
   it('stops reconnecting when the server cannot read hello (FE15)', async () => {
-    const other = await browser.newPage({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
+    const other = await browser.newPage({
+      viewport: { width: 1280, height: 800 },
+      locale: 'en-US',
+    });
     let connections = 0;
     // A server that speaks another protocol version closes on hello, as the real one does.
     await other.routeWebSocket(/\/ws$/, (socket) => {
@@ -172,6 +175,78 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     await other.waitForTimeout(1500);
     expect(connections).toBe(1);
     await other.close();
+  });
+
+  it('keeps the panels and toasts apart in narrow windows (FE16)', async () => {
+    const narrow = await openEditor(browser, server.url);
+    // A busy moment: violations listed, a long change log open and three toasts.
+    await editorState(narrow, (e) => {
+      const time = new Date().toISOString();
+      const entries = Array.from({ length: 14 }, (_, i) => ({
+        id: i + 1,
+        author: i % 2 ? 'agent' : 'human',
+        time,
+        summary: 'Move structure:house',
+        files: ['maps/village/structures/house.yaml'],
+      }));
+      e.store.set({ history: { entries, cursor: entries.length } });
+      e.toasts.show({ level: 'info', text: 'The Agent changed House', key: 'a', seconds: 60 });
+      e.toasts.show({
+        level: 'warning',
+        text: "The Agent's later change replaced your edit to House",
+        detail: 'Agent changes overwrite recent human edits.',
+        key: 'b',
+        seconds: 60,
+      });
+      e.toasts.show({
+        level: 'error',
+        text: 'A file could not be read',
+        detail: 'maps/village/structures/broken.yaml:2: close the opening bracket on line 2.',
+        key: 'c',
+        seconds: 60,
+      });
+    });
+    if ((await narrow.locator('.history').getAttribute('data-open')) !== 'true')
+      await narrow.locator('.history .panel-toggle').click();
+
+    for (const size of [
+      { width: 960, height: 720 },
+      { width: 700, height: 600 },
+    ]) {
+      await narrow.setViewportSize(size);
+      await narrow.waitForTimeout(100);
+      const boxes = await narrow.evaluate(() =>
+        ['.title-block', '.issues', '.history', '.action-bar', '.toast'].flatMap((selector) =>
+          [...document.querySelectorAll(selector)].map((element, i) => {
+            const { left, top, right, bottom } = element.getBoundingClientRect();
+            return { name: `${selector} ${i}`, left, top, right, bottom };
+          }),
+        ),
+      );
+      expect(boxes.map((box) => box.name.split(' ')[0])).toEqual([
+        '.title-block',
+        '.issues',
+        '.history',
+        '.action-bar',
+        '.toast',
+        '.toast',
+        '.toast',
+      ]);
+      for (const [i, a] of boxes.entries()) {
+        const where = `${size.width}x${size.height}: ${a.name}`;
+        expect(a.bottom - a.top, `${where} has height`).toBeGreaterThan(20);
+        expect(
+          a.left >= 0 && a.top >= 0 && a.right <= size.width && a.bottom <= size.height,
+          `${where} is inside the window`,
+        ).toBe(true);
+        for (const b of boxes.slice(i + 1))
+          expect(
+            a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom,
+            `${where} overlaps ${b.name}`,
+          ).toBe(false);
+      }
+    }
+    await narrow.close();
   });
 
   it('reports no page errors', () => {
