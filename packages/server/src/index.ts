@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMessage, Edit, ServerMessage } from '@mapedit/protocol';
-import { MemoryState, type StateStore } from './state.js';
+import { MemoryState, canTriggerMockNotices, type StateStore } from './state.js';
 import { DiskState } from './disk-state.js';
 import { buildProject, buildFromParsed } from './build-project.js';
 import { ScreenshotService } from './screenshot.js';
@@ -20,7 +20,7 @@ import { containsPath } from './paths.js';
 export { projectIdentity } from './project-identity.js';
 export { MemoryState } from './state.js';
 export { mockScene } from './mock.js';
-export type { StateStore } from './state.js';
+export type { StateStore, MockNoticeTrigger } from './state.js';
 export { readProject, readProjectTexts, projectPath } from './project-files.js';
 export { buildProject, buildProjects, buildFromParsed } from './build-project.js';
 export { exportProject } from './export-project.js';
@@ -149,12 +149,12 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       response.setHeader('X-Mapedit-Pid', String(process.pid));
       const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
       if (url.pathname === '/api/mock/trigger') {
-        const trigger = state.triggerMockNotice?.bind(state);
-        if (!options.mock || !trigger) return json(response, 404, { error: 'Not found.' });
+        const trigger = options.mock && canTriggerMockNotices(state) ? state : undefined;
+        if (!trigger) return json(response, 404, { error: 'Not found.' });
         if (request.method !== 'POST') return json(response, 405, { error: 'Method not allowed.' });
         try {
           const code = parseMockNotice(await readMockTrigger(request));
-          const triggered = queue.then(() => trigger(code));
+          const triggered = queue.then(() => trigger.triggerMockNotice(code));
           queue = triggered.catch(() => {});
           await triggered;
           return json(response, 200, { ok: true });

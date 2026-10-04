@@ -4,6 +4,8 @@ import { parseProject } from '../src/format.js';
 import { checkGeometry } from '../src/geometry.js';
 import { buildModel } from '../src/model.js';
 import { box } from '../src/model-api.js';
+import { parseObjectRef } from '@mapedit/protocol';
+import { stringify } from 'yaml';
 
 describe('stable violation identities', () => {
   it('keeps physical overlap identity when its two Module refs arrive in the opposite order', async () => {
@@ -58,4 +60,55 @@ describe('stable violation identities', () => {
     for (const violation of after)
       expect(violation.id).toBe(before.find((value) => value.message === violation.message)?.id);
   });
+});
+
+it('F26 violation ids use fixed rule ids, not display labels or ObjectRef-like text', () => {
+  const compiled = compileMap(
+    parseProject({
+      'project.yaml': 'name: Rules\n',
+      'modules/odd/module.yaml': stringify({
+        size: [1.25, 2, 2],
+        material: 'unobtainium',
+        sockets: [{ id: 'edge', type: 'wall', position: [0.25, 1, 1], rotation: 45 }],
+      }),
+      'maps/test/map.yaml': 'size: {x: 100, z: 100}\n',
+      'maps/test/structures/test.yaml': stringify({
+        structures: [
+          {
+            id: 'house',
+            position: [10.25, 10],
+            height: 0.25,
+            rotation: 7,
+            modules: [{ id: 'base', module: 'odd', at: [0.25, 0, 0], rotation: 45 }],
+          },
+        ],
+      }),
+    }),
+    'test',
+  );
+  const rules = compiled.scene.violations.map((violation) => {
+    const [, rule] = JSON.parse(violation.id.slice(violation.kind.length + 1)) as [
+      string[],
+      string,
+    ];
+    return rule;
+  });
+  expect(rules.sort()).toEqual(
+    [
+      'definition:odd:material',
+      'definition:odd:size',
+      'definition:odd:socket:edge:position',
+      'definition:odd:socket:edge:rotation',
+      'module',
+      'module_position',
+      'structure',
+      'structure_height',
+      'structure_position',
+    ].sort(),
+  );
+  for (const rule of rules) {
+    expect(rule, 'labels contain spaces and quotes').not.toMatch(/[\s"]/);
+    expect(parseObjectRef(rule), rule).toBeUndefined();
+    expect(rule.startsWith('module:'), rule).toBe(false);
+  }
 });

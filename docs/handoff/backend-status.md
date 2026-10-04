@@ -555,3 +555,29 @@ by Claude. Each entry records the change, the tests and any deviation.
   `server/test/shared-helpers.test.ts` cover the new helpers; existing compiler,
   geometry, CLI, MCP, mock and packed-CLI tests cover the call sites (all 304
   tests pass). Deviation: none.
+- **F26 complete:** (1) The brief geometry suggestions set when overlap,
+  terrain-overlap and unsupported violations are created are no longer dead
+  code: since F20 they are what violations after the first 50 keep, so they stay
+  (the F20 test asserts them). (2) Violation ids no longer use display labels:
+  grid and rotation rules are the fixed `field` ids from F23 (for example
+  `structure_position`), and Module definition rules are
+  `definition:<module>:size`, `:material`, and `:socket:<socket>:position`,
+  `:rotation` or `:type`, whether or not the Module is used. (3) The material
+  rule no longer looks like an ObjectRef (`module:<id>:material` became
+  `definition:<id>:material`). (4) `triggerMockNotice` left the shared
+  `StateStore`; the mock implements the separate `MockNoticeTrigger`, and the
+  server enables `/api/mock/trigger` only in mock mode for a state that passes
+  `canTriggerMockNotices`. (5) Undo and redo live in `ProjectHistory.travel()`,
+  which moves the now read-only `cursor` only after the state's restore callback
+  succeeds; both states pass their own restore step. (6) Suggestion text moved
+  from `compiler.ts` into `core/src/compiler-suggestions.ts`
+  (`createCompilerAdvice`), mirroring the geometry advice; the compiler keeps
+  compilation and violation identity. Tests: `core/test/violation-identity.test.ts`
+  "F26" (fixed rule ids, none label-like or ObjectRef-like),
+  `server/test/history.test.ts` (cursor moves after restore, failed restore keeps
+  it, cursor cannot be assigned, `StateStore` lacks `triggerMockNotice`) and
+  `core/test/terminology.test.ts` "F26" (every compiler suggestion comes from
+  the advice module); each failed before its change. Existing suggestion and
+  golden tests confirm the text is unchanged, and the F15 identity test now
+  expects the fixed rule. Deviation: item (1) keeps the lines because F20 made
+  them live.

@@ -44,3 +44,21 @@ it('F24 the map format describes map-space coordinates', async () => {
   const text = await readFile(new URL('../../../docs/map-format.md', import.meta.url), 'utf8');
   expect(text).not.toMatch(/world[- ]space/i);
 });
+
+it('F26 the compiler takes every suggestion text from compiler-suggestions', async () => {
+  const text = await readFile(new URL('../src/compiler.ts', import.meta.url), 'utf8');
+  const source = ts.createSourceFile('compiler.ts', text, ts.ScriptTarget.Latest, true);
+  const suggestions: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isPropertyAssignment(node) &&
+      node.name.getText(source) === 'suggestion' &&
+      !/^advice\.\w+\(/.test(node.initializer.getText(source))
+    )
+      suggestions.push(node.initializer.getText(source));
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  expect(suggestions).toEqual([]);
+  expect(text).toContain("from './compiler-suggestions.js'");
+});
