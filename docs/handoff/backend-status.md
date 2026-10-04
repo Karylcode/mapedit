@@ -269,3 +269,13 @@ recorded after all corrections are complete.
   preparation nonmutation test, init, guide and end-to-end tests (10 tests),
   typecheck and lint pass. All packages remain private; npm naming/scope and
   account selection are recorded under human follow-up. Deviation: none.
+- **F13 complete:** the disposable model worker is an ordinary TypeScript entry
+  point covered by strict compilation and ESLint, with shared typed stdin/stdout
+  messages. The runner resolves the installed server package's compiled worker,
+  launches its file directly and retains Node permissions, QuickJS isolation,
+  memory limits and the parent timeout. No executable bootstrap string or Node
+  `--eval` remains. `server/test/model-worker.test.ts` first failed for direct
+  worker execution and the string bootstrap, then passed from an unrelated working
+  directory. Existing model execution/security tests and actual packed CLI
+  initialization/check acceptance pass (6 tests); typecheck and scoped lint pass.
+  Deviation: none.

@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import { dirname, resolve, parse } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { BUILTIN_MATERIALS, type ModelGeometry } from '@mapedit/core';
 import type { Vec3 } from '@mapedit/protocol';
-import { modelWorkerSource } from './model-worker.js';
+import type { ModelWorkerRequest, ModelWorkerResponse } from './worker-request.js';
 
 export interface ModelRunOptions {
   size: Vec3;
@@ -52,9 +52,14 @@ export async function runModel(source: string, options: ModelRunOptions): Promis
     ],
   });
   const quickjsEntry = fileURLToPath(import.meta.resolve('quickjs-emscripten'));
+  // Package exports resolve dist both in source-driven tests and installed packages.
+  const workerPath = resolve(
+    dirname(fileURLToPath(import.meta.resolve('@mapedit/server'))),
+    'model-worker.js',
+  );
   // pnpm links dependencies into .pnpm; allow reads only under installed package roots.
   const readRoots = new Set<string>();
-  for (const filename of [coreEntry, quickjsEntry]) {
+  for (const filename of [coreEntry, quickjsEntry, workerPath]) {
     const canonical = await realpath(filename);
     const parts = canonical.split(/[\\/]/);
     const nodeModules = parts.indexOf('node_modules');
@@ -68,9 +73,7 @@ export async function runModel(source: string, options: ModelRunOptions): Promis
     '--permission',
     '--max-old-space-size=256',
     ...[...readRoots].map((root) => `--allow-fs-read=${root}`),
-    '--input-type=module',
-    '--eval',
-    modelWorkerSource(pathToFileURL(coreEntry).href, pathToFileURL(quickjsEntry).href),
+    workerPath,
   ];
   return new Promise((resolveResult, reject) => {
     const child = spawn(process.execPath, args, {
@@ -107,13 +110,9 @@ export async function runModel(source: string, options: ModelRunOptions): Promis
     child.on('close', () => {
       if (settled) return;
       try {
-        const response = JSON.parse(output) as {
-          ok: boolean;
-          geometry?: ModelGeometry;
-          error?: string;
-        };
-        if (!response.ok || !response.geometry)
-          throw new Error(response.error ?? 'Model execution failed.');
+        const response = JSON.parse(output) as ModelWorkerResponse;
+        if (!response.ok) throw new Error(response.error);
+        if (!response.geometry) throw new Error('Model execution failed.');
         finish(undefined, response.geometry);
       } catch (error) {
         finish(
@@ -130,7 +129,7 @@ export async function runModel(source: string, options: ModelRunOptions): Promis
         size: options.size,
         material: options.material ?? 'white',
         timeoutMs,
-      }),
+      } satisfies ModelWorkerRequest),
     );
   });
 }
