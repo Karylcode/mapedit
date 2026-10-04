@@ -154,8 +154,30 @@ export class DiskState extends EventEmitter implements StateStore {
     code: Extract<ServerMessage, { type: 'notice' }>['code'],
     message: string,
     refs?: string[],
+    mapId?: string,
   ): void {
-    this.emit('message', noticeMessage(code, message, refs));
+    this.emit('message', noticeMessage(code, message, refs, mapId));
+  }
+  /** One notice per map for refs keyed by `<mapId>\0<ref>`, so each names its map. */
+  private noticePerMap(
+    code: 'agent_changed' | 'overwritten_by_agent',
+    message: string,
+    refs: Iterable<[string, string]>,
+  ): void {
+    const byMap = new Map<string, string[]>();
+    for (const [key, ref] of refs) {
+      const mapId = key.split('\0')[0]!;
+      byMap.set(mapId, [...(byMap.get(mapId) ?? []), ref]);
+    }
+    if (!byMap.size) this.notice(code, message, []);
+    for (const [mapId, mapRefs] of byMap) this.notice(code, message, mapRefs, mapId);
+  }
+  private noticeFileErrors(): void {
+    for (const error of this.scene.fileErrors)
+      this.notice(
+        'file_error',
+        `${error.file}${error.line ? `:${error.line}` : ''}: ${error.message}`,
+      );
   }
   private broadcast(): void {
     for (const build of this.builds.values())
@@ -208,16 +230,18 @@ export class DiskState extends EventEmitter implements StateStore {
       refs: [...refs.values()],
     });
     for (const key of refs.keys()) this.lastAgent.set(key, this.revision);
-    this.notice('agent_changed', 'Agent updated project files.', [...refs.values()]);
-    const overwritten = [...refs].filter(([key]) => this.lastHuman.has(key)).map(([, ref]) => ref);
+    const overwritten = [...refs].filter(([key]) => this.lastHuman.has(key));
+    for (const key of refs.keys()) this.lastHuman.delete(key);
+    // The new scenes come first, so editors find the refs in the snapshot that has them.
+    this.broadcast();
+    this.noticePerMap('agent_changed', 'Agent updated project files.', refs);
     if (overwritten.length)
-      this.notice(
+      this.noticePerMap(
         'overwritten_by_agent',
         'Agent changes overwrite recent human edits.',
         overwritten,
       );
-    for (const key of refs.keys()) this.lastHuman.delete(key);
-    this.broadcast();
+    this.noticeFileErrors();
   }
   private async rebuild(): Promise<void> {
     const ids = [...this.builds.keys()];
@@ -228,11 +252,6 @@ export class DiskState extends EventEmitter implements StateStore {
     }
     const build = this.builds.get(selected) ?? (await this.builder.build(undefined, this.revision));
     this.install(build);
-    for (const error of this.scene.fileErrors)
-      this.notice(
-        'file_error',
-        `${error.file}${error.line ? `:${error.line}` : ''}: ${error.message}`,
-      );
   }
   async getScene(id?: string): Promise<SceneSnapshot> {
     const mapId = id ?? this.scene.map.id;
@@ -389,7 +408,7 @@ export class DiskState extends EventEmitter implements StateStore {
           failure === 'file_errors'
             ? this.fileErrorReason(build)
             : (preview.violations[0]?.message ?? 'Edit rejected.');
-        this.notice('edit_rejected', reason, [edit.ref]);
+        this.notice('edit_rejected', reason, [edit.ref], mapId);
         return { reason, failure };
       }
       const normalized = normalizeEdit(build.parsed, mapId, edit, build.heightAt);
@@ -398,7 +417,7 @@ export class DiskState extends EventEmitter implements StateStore {
         changed = applySourceEdit(build.parsed, mapId, normalized);
       } catch (error) {
         if (!(error instanceof EditError)) throw error;
-        this.notice('edit_rejected', error.message, [edit.ref]);
+        this.notice('edit_rejected', error.message, [edit.ref], mapId);
         return { reason: error.message, failure: error.failure };
       }
       for (const [file, content] of Object.entries(changed))
@@ -406,6 +425,7 @@ export class DiskState extends EventEmitter implements StateStore {
       this.baseline = await this.readInputs();
       this.revision++;
       await this.rebuild();
+      this.noticeFileErrors();
       this.record({
         author: 'human',
         summary: `${edit.kind === 'move' ? 'Move' : 'Delete'} ${edit.ref}`,
@@ -418,6 +438,7 @@ export class DiskState extends EventEmitter implements StateStore {
           'agent_change_overridden',
           'Your edit overrides an Agent change made while dragging.',
           [edit.ref],
+          mapId,
         );
       this.lastHuman.add(`${mapId}\0${edit.ref}`);
       return undefined;
@@ -435,6 +456,7 @@ export class DiskState extends EventEmitter implements StateStore {
       if (reason) return reason;
       this.revision++;
       await this.rebuild();
+      this.noticeFileErrors();
       return undefined;
     });
   }
