@@ -2,8 +2,8 @@
 
 ## 目前進度
 
-M0–M4 complete on `backend`. M5 acceptance has passed and is being documented.
-Next: commit MCP integration, then Unity/export and templates.
+M0–M5 complete on `backend`. Unity and template acceptance has passed.
+Next: commit M6/M7 and finish the GitHub PR/CI verification.
 
 ## 每個里程碑完成了什麼、怎麼驗證
 
@@ -46,7 +46,16 @@ Next: commit MCP integration, then Unity/export and templates.
   affected objects and distinguish maps even when IDs match. Host, Origin, static
   path traversal and symlink checks are enforced. Acceptance covers all protocol
   flows plus actual 24-module village previews under 30 ms median roundtrip.
-- M5–M7: pending milestone documentation/commits.
+- M5: fixed ten-tool MCP interface over Streamable HTTP and stdio; CLI stdio
+  discovers this project's live server or starts one. Responses are paginated and
+  bounded. Screenshots and isolated new-module previews return image content with
+  no structuredContent. A system-browser service calls the unchanged `/render`
+  ready/function/minRevision contract; the fake renderer stays in test fixtures.
+  SDK clients exercise every tool over both transports, including actual file
+  changes, six terrain operations and GLB export/rejection. Installed Edge produced
+  the montage PNG. Browser execution also validates core modelling/PNG/GLB/compiler.
+  Full Windows suite reached 78 passing tests, with typecheck and lint passing.
+- M6–M7: pending milestone documentation/commits.
 
 ## 自行決定的事
 
@@ -65,6 +74,8 @@ Next: commit MCP integration, then Unity/export and templates.
   changes retain plateaus and receive cliff faces. Commands select tile centers.
 - Model builds run at most four children concurrently. A pure cached build path
   handles previews without rereading models or re-encoding terrain.
+- The export core is introduced with the MCP export tool; M6 adds the formal
+  engine contract and Unity adapter. Exports independently rerun geometry checks.
 
 ## 偏離設計
 

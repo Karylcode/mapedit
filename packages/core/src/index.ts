@@ -9,3 +9,4 @@ export * from './materials.js';
 export * from './glb.js';
 export * from './geometry.js';
 export * from './terrain.js';
+export * from './export.js';

@@ -8,6 +8,7 @@
 
 - `mapedit dev` 啟動一個本機伺服器，預設網址 `http://127.0.0.1:4790`（可以用 `--port` 改）。
 - 只綁定 127.0.0.1。HTTP 和 WebSocket 都要檢查 `Host`（只接受 `127.0.0.1` 或 `localhost` 加上這個連接埠）和 `Origin`（必須同源，或沒有 `Origin`），防止其他網站透過瀏覽器連進來。
+- HTTP 回應另帶 `X-Mapedit-Instance`（每次啟動的新識別碼）、`X-Mapedit-Project`（專案實體路徑的 SHA-256）與 `X-Mapedit-Pid`。CLI 使用這些標頭驗證本機連線紀錄，避免連到同一連接埠上後來啟動的其他專案；前端不需要使用。
 - 正式版：後端直接提供 `packages/web/dist` 的靜態檔；`/render` 這類前端路徑一律回 `index.html`。
 - 開發時：前端用 Vite 開發伺服器，把 `/api`、`/assets`、`/ws` 轉給後端。
 - `mapedit dev --mock`：後端用一張固定的測試場景回應所有請求，拖動和刪除只改記憶體。讓前端不用等編譯器完成就能開發。

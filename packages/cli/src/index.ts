@@ -1,9 +1,31 @@
 #!/usr/bin/env node
-import { createServer, buildProject } from '@mapedit/server';
+import { createServer, buildProject, connectStdio } from '@mapedit/server';
 import { spawn } from 'node:child_process';
+import { discoverServer, registerServer } from './discovery.js';
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
   const [command, ...flags] = args;
+  if (command === 'mcp') {
+    const serverIndex = flags.indexOf('--server');
+    let url = serverIndex >= 0 ? flags[serverIndex + 1] : await discoverServer(process.cwd());
+    if (serverIndex >= 0) {
+      if (!url) throw new Error('--server requires a local backend URL.');
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' || !['127.0.0.1','localhost'].includes(parsed.hostname) || parsed.username || parsed.password) throw new Error('--server must refer to a local HTTP backend.');
+    }
+    let cleanup: (() => Promise<void>) | undefined;
+    if (!url) {
+      const server = await createServer({root:process.cwd(),port:0});
+      url = server.url;
+      const unregister = await registerServer(process.cwd(),url);
+      cleanup = async () => { await server.close(); await unregister(); };
+    }
+    let close: () => Promise<void>;
+    try { close = await connectStdio(url, cleanup); }
+    catch (error) { await cleanup?.(); throw error; }
+    for (const signal of ['SIGINT','SIGTERM'] as const) process.once(signal,()=>void close().then(()=>process.exit(0)));
+    return;
+  }
   if (command === 'check') {
     const mapIndex = flags.indexOf('--map');
     if (mapIndex >= 0 && !flags[mapIndex + 1]) throw new Error('--map requires a map ID.');
@@ -30,6 +52,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       mock: flags.includes('--mock'),
       root: process.cwd(),
     });
+    const unregister = await registerServer(process.cwd(),server.url);
     process.stderr.write(`mapedit listening at ${server.url}\n`);
     if (flags.includes('--open')) {
       const platform = process.platform;
@@ -46,12 +69,12 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       child.unref();
     }
     for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-      process.once(signal, () => void server.close().then(() => process.exit(0)));
+      process.once(signal, () => void server.close().then(unregister).then(() => process.exit(0)));
     }
     return;
   }
   if (command === '--help' || command === undefined) {
-    process.stdout.write('mapedit dev [--port <port>] [--mock] [--open]\nmapedit check [--map <id>] [--json]\n');
+    process.stdout.write('mapedit dev [--port <port>] [--mock] [--open]\nmapedit check [--map <id>] [--json]\nmapedit mcp\n');
     return;
   }
   throw new Error(`Unknown command: ${command}. Run mapedit --help.`);

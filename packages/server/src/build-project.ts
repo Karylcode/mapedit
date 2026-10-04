@@ -162,7 +162,7 @@ export async function buildProject(
     }),
   );
   let terrain = createTerrain(initial.scene.map.size.x, initial.scene.map.size.z);
-  const terrainBase = `maps/${selectedId}/terrain`;
+  const terrainBase = path.posix.join(path.posix.dirname(parsed.maps[selectedId]?.source.file ?? `maps/${selectedId}/map.yaml`), 'terrain');
   try {
     const readOptional = async (file: string) => {
       try {

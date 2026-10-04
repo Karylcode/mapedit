@@ -6,17 +6,24 @@ import {
 import { readFile, stat, realpath } from 'node:fs/promises';
 import { resolve, sep, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMessage, Edit, ServerMessage } from '@mapedit/protocol';
 import { boxGlb } from './mock.js';
 import { MemoryState, type StateStore } from './state.js';
 import { DiskState } from './disk-state.js';
 import { buildProject, buildFromParsed } from './build-project.js';
+import { ScreenshotService } from './screenshot.js';
+import { createMcpHttpHandler, type AgentServices } from './mcp.js';
+import { createAgentServices } from './services.js';
+import { createMockServices } from './mock-services.js';
 export { MemoryState } from './state.js';
 export { mockScene } from './mock.js';
 export type { StateStore } from './state.js';
 export { readProject, readProjectTexts, projectPath } from './project-files.js';
 export { buildProject, buildFromParsed } from './build-project.js';
+export { exportProject } from './export-project.js';
+export { connectStdio } from './mcp.js';
 export { DiskState } from './disk-state.js';
 
 export interface ServerOptions {
@@ -25,6 +32,8 @@ export interface ServerOptions {
   root?: string;
   webRoot?: string;
   state?: StateStore;
+  browserPath?: string;
+  services?: AgentServices;
 }
 export interface MapeditServer {
   url: string;
@@ -77,6 +86,11 @@ function json(response: ServerResponse, status: number, value: unknown): void {
 
 export async function createServer(options: ServerOptions = {}): Promise<MapeditServer> {
   const root = resolve(options.root ?? process.cwd());
+  const canonicalRoot = await realpath(root);
+  const projectIdentity = createHash('sha256')
+    .update(process.platform === 'win32' ? canonicalRoot.toLowerCase() : canonicalRoot)
+    .digest('hex');
+  const instanceIdentity = randomUUID();
   const state: StateStore =
     options.state ??
     (options.mock
@@ -107,8 +121,14 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
     void (async () => {
       if (!validRequest(request))
         return json(response, 403, { error: 'Host or Origin is not allowed.' });
+      response.setHeader('X-Mapedit-Instance', instanceIdentity);
+      response.setHeader('X-Mapedit-Project', projectIdentity);
+      response.setHeader('X-Mapedit-Pid', String(process.pid));
       const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
-      if (url.pathname === '/mcp') return json(response,501,{error:'MCP will be available in milestone M5.'});
+      if (url.pathname === '/mcp') {
+        await mcp.handle(request, response);
+        return;
+      }
       if (request.method !== 'GET') return json(response, 405, { error: 'Method not allowed.' });
       if (url.pathname.startsWith('/api/')) await state.flush();
       if (url.pathname === '/api/project') return json(response, 200, state.project);
@@ -269,12 +289,22 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Unable to bind local server.');
   port = address.port;
+  const screenshots = new ScreenshotService(`http://127.0.0.1:${port}`, options.browserPath);
+  const mcp = createMcpHttpHandler(
+    options.services ??
+      (state instanceof DiskState
+        ? createAgentServices(state, screenshots)
+        : createMockServices(state, screenshots)),
+    screenshots,
+  );
   return {
     url: `http://127.0.0.1:${port}`,
     port,
     state,
     async close() {
       await queue;
+      await mcp?.close();
+      await screenshots?.close();
       await state.close();
       for (const client of sockets.clients) client.terminate();
       await new Promise<void>((resolveClose) => sockets.close(() => resolveClose()));

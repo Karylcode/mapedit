@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { readFile, writeFile, readdir, mkdir, rm, realpath, lstat } from 'node:fs/promises';
-import { resolve, relative, sep, dirname, isAbsolute } from 'node:path';
+import { resolve, relative, sep, dirname, isAbsolute, posix } from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
 import { parseProject, applySourceEdit, normalizeEdit, type ParsedProject } from '@mapedit/core';
 import type {
@@ -89,6 +89,18 @@ export class DiskState extends EventEmitter implements StateStore {
     if (projectStat?.isSymbolicLink())
       throw new Error('Symbolic links are not supported in authoring inputs: project.yaml');
     const walk = async (folder: string): Promise<void> => {
+      const directory = resolve(this.root, folder);
+      const metadata = await lstat(directory).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+        throw error;
+      });
+      if (!metadata) return;
+      if (metadata.isSymbolicLink())
+        throw new Error(`Symbolic links are not supported in authoring inputs: ${folder}`);
+      const physical = await realpath(directory),
+        inside = relative(this.root, physical);
+      if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside))
+        throw new Error(`Authoring input directory is outside the project: ${folder}`);
       const entries = await readdir(resolve(this.root, folder), { withFileTypes: true }).catch(
         (error) => {
           if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
@@ -137,7 +149,10 @@ export class DiskState extends EventEmitter implements StateStore {
       if (
         files.some(
           (file) =>
-            file.startsWith('modules/') || file.startsWith(`maps/${build.scene.map.id}/terrain/`),
+            file.startsWith('modules/') ||
+            file.startsWith(
+              `${posix.dirname(build.parsed.maps[build.scene.map.id]?.source.file ?? `maps/${build.scene.map.id}/map.yaml`)}/terrain/`,
+            ),
         )
       )
         for (const structure of build.scene.structures) {
@@ -204,40 +219,38 @@ export class DiskState extends EventEmitter implements StateStore {
     return result;
   }
   async flush(): Promise<void> {
-    return this.serial(async () => {
-      if (this.closed) return;
-      const current = await this.readInputs();
-      const changed = this.changed(this.baseline, current);
-      if (!changed.length) return;
-      const candidates = this.refsFor(changed);
-      const before = this.objectSignatures();
-      this.baseline = current;
-      this.revision++;
-      await this.rebuild();
-      const after = this.objectSignatures();
-      const refs = new Map(
-        [...candidates].filter(
-          ([key]) =>
-            before.get(key) !== after.get(key) ||
-            changed.some((file) => file.startsWith('modules/')),
-        ),
+    return this.serial(() => this.refresh());
+  }
+  private async refresh(): Promise<void> {
+    if (this.closed) return;
+    const current = await this.readInputs();
+    const changed = this.changed(this.baseline, current);
+    if (!changed.length) return;
+    const candidates = this.refsFor(changed);
+    const before = this.objectSignatures();
+    this.baseline = current;
+    this.revision++;
+    await this.rebuild();
+    const after = this.objectSignatures();
+    const refs = new Map(
+      [...candidates].filter(
+        ([key]) =>
+          before.get(key) !== after.get(key) || changed.some((file) => file.startsWith('modules/')),
+      ),
+    );
+    for (const key of after.keys()) if (!before.has(key)) refs.set(key, key.split('\0')[1]!);
+    this.record('agent', 'Update project files', changed);
+    for (const key of refs.keys()) this.lastAgent.set(key, this.revision);
+    this.notice('agent_changed', 'Agent updated project files.', [...refs.values()]);
+    const overwritten = [...refs].filter(([key]) => this.lastHuman.has(key)).map(([, ref]) => ref);
+    if (overwritten.length)
+      this.notice(
+        'overwritten_by_agent',
+        'Agent changes overwrite recent human edits.',
+        overwritten,
       );
-      for (const key of after.keys()) if (!before.has(key)) refs.set(key, key.split('\0')[1]!);
-      this.record('agent', 'Update project files', changed);
-      for (const key of refs.keys()) this.lastAgent.set(key, this.revision);
-      this.notice('agent_changed', 'Agent updated project files.', [...refs.values()]);
-      const overwritten = [...refs]
-        .filter(([key]) => this.lastHuman.has(key))
-        .map(([, ref]) => ref);
-      if (overwritten.length)
-        this.notice(
-          'overwritten_by_agent',
-          'Agent changes overwrite recent human edits.',
-          overwritten,
-        );
-      for (const key of refs.keys()) this.lastHuman.delete(key);
-      this.broadcast();
-    });
+    for (const key of refs.keys()) this.lastHuman.delete(key);
+    this.broadcast();
   }
   private async rebuild(): Promise<void> {
     const ids = [...this.builds.keys()];
@@ -371,6 +384,7 @@ export class DiskState extends EventEmitter implements StateStore {
     mapId = this.scene.map.id,
   ): Promise<string | undefined> {
     return this.serial(async () => {
+      await this.refresh();
       const preview = await this.preview(edit, 0, mapId);
       if (!preview.ok) {
         const reason = preview.violations[0]?.message ?? 'Edit rejected.';
@@ -409,6 +423,7 @@ export class DiskState extends EventEmitter implements StateStore {
   }
   async travel(direction: -1 | 1): Promise<string | undefined> {
     return this.serial(async () => {
+      await this.refresh();
       const target = this.cursor + direction;
       if (target < 0 || target > this.entries.length)
         return direction < 0 ? 'Nothing to undo.' : 'Nothing to redo.';
@@ -423,15 +438,22 @@ export class DiskState extends EventEmitter implements StateStore {
     });
   }
   async writeAgentFiles(files: Record<string, Uint8Array | string>): Promise<void> {
-    await this.flush();
+    await this.updateAgentFiles(async () => files);
+  }
+  /** Calculate from the latest build and commit both PNGs inside one project transaction. */
+  async updateAgentFiles(
+    update: () => Promise<Record<string, Uint8Array | string>>,
+  ): Promise<void> {
     await this.serial(async () => {
+      await this.refresh();
+      const files = await update();
       for (const [file, content] of Object.entries(files))
         await this.safeWrite(
           file,
           typeof content === 'string' ? Buffer.from(content) : Buffer.from(content),
         );
+      await this.refresh();
     });
-    await this.flush();
   }
   async close(): Promise<void> {
     this.closed = true;

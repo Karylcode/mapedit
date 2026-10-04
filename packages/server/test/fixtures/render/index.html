@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Render contract test fixture</title>
+  </head>
+  <body>
+    <script>
+      // Test-only renderer. The production front end will implement this contract with three.js.
+      window.mapeditRenderReady = false;
+      const map = new URL(location.href).searchParams.get('map');
+      let scene;
+      fetch('/api/scene?map=' + encodeURIComponent(map))
+        .then((response) => response.json())
+        .then((value) => {
+          scene = value;
+          window.mapeditRenderReady = true;
+        });
+      window.mapeditRender = async (spec) => {
+        while (scene.revision < (spec.minRevision || 0)) {
+          scene = await (await fetch('/api/scene?map=' + encodeURIComponent(map))).json();
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = spec.tileSize * spec.views.length;
+        canvas.height = spec.tileSize;
+        const context = canvas.getContext('2d');
+        spec.views.forEach((view, index) => {
+          context.fillStyle = ['#557a46', '#93a97a', '#6b835e', '#adc290', '#627b58'][index];
+          context.fillRect(index * spec.tileSize, 0, spec.tileSize, spec.tileSize);
+          context.fillStyle = '#fff';
+          context.font = '20px sans-serif';
+          context.fillText(view + (view === 'top' ? ' N ↑' : ''), index * spec.tileSize + 10, 30);
+          context.fillText('revision ' + scene.revision, index * spec.tileSize + 10, 60);
+          if (spec.focus)
+            context.fillText('focus ' + spec.focus.radius, index * spec.tileSize + 10, 90);
+        });
+        return canvas.toDataURL('image/png');
+      };
+    </script>
+  </body>
+</html>

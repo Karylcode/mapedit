@@ -128,6 +128,7 @@ export async function checkGeometry(
     return value;
   };
   const result: GeometryCheck = { violations: [], generated: [] };
+  const instancesByRef = new Map(compilation.instances.map((instance) => [instance.ref, instance]));
   const supported = new Set<string>();
   const supportLinks = new Map<string, Set<string>>();
   const link = (from: string, to: string): void => {
@@ -142,13 +143,14 @@ export async function checkGeometry(
     suggestion: string,
     params: Record<string, unknown> = {},
   ): void => {
+    const source = instancesByRef.get(refs[0]!)?.source;
     result.violations.push({
       id: `${kind}:${refs.join(':')}`,
       kind,
       refs,
       message,
       suggestion,
-      params,
+      params: { ...(source ? { file: source.file, line: source.line } : {}), ...params },
     });
   };
   try {
