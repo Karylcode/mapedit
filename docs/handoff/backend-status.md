@@ -240,3 +240,15 @@ recorded after all corrections are complete.
   and external GLTF/math terminology. `core/test/terminology.test.ts` checks the
   actual TypeScript identifiers; 38 terminology/compiler/golden tests, typecheck
   and scoped lint pass. Deviation: none.
+- **F11 complete:** all MCP tool text, including schema/runtime errors and module
+  build summaries, passes through a common 24,000-character response boundary.
+  Oversized results return exact text fragments with same-tool cursor continuation;
+  continuation reads a captured result and never repeats mutations. Images remain
+  on the first page without structured content. Captures have five-minute expiry,
+  a 64-entry LRU limit and an 8 MiB aggregate budget, retaining a single larger
+  result when needed to keep it pageable. The 10,000-element input guard remains.
+  `server/test/mcp-paging.test.ts` first reproduced discarded/oversized results,
+  then covers all ten tools, escaping, errors, schemas, expiry, isolation, HTTP and
+  stdio continuations, and mutation counts. All 47 related MCP/server/guide tests,
+  typecheck, scoped lint and generated-guide freshness checks pass. The shared
+  authoring guide documents continuation and expiry. Deviation: none.

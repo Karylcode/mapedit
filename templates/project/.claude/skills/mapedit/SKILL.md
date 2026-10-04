@@ -45,6 +45,17 @@ Screenshots require the editor frontend and Edge or Chrome. When `/render` is no
 available, report that visual verification is pending; a successful check alone
 does not establish visual quality. Inspect screenshots through MCP image output.
 
+MCP tools keep ordinary response shapes and limit each response's text to 24,000
+characters. Oversized results and errors return
+`{"paging":{"fragment":"...","nextCursor":"...","totalCharacters":12345}}`.
+Call the same tool with only `{"cursor":"..."}` until `nextCursor` is `null`,
+then concatenate the fragments in order to recover the original text (normally
+JSON). Continuations read the captured result, so terrain changes, exports and
+module builds run only once; images appear on the first page. Captures expire
+after five minutes and may be evicted when the cache fills. If a cursor expires,
+inspect current state before deciding whether to repeat a modifying tool.
+Collection `offset` and `limit` arguments still select which items to inspect.
+
 ## File format
 
 `project.yaml` defines the project name, socket compatibility and marker types.

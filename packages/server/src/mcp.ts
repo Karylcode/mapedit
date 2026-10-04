@@ -1,4 +1,3 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -8,12 +7,14 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   type CallToolResult,
+  type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { listFloatingInstances, type Compilation, type ModuleDefinition } from '@mapedit/core';
 import type { InstanceView, SceneSnapshot } from '@mapedit/protocol';
 import { ScreenshotService } from './screenshot.js';
+import { resultPager, closeResultPager } from './mcp-paging.js';
 
 export interface AgentServices {
   flush(): Promise<void>;
@@ -64,18 +65,7 @@ const terrainCommand = z.discriminatedUnion('operation', [
   }),
 ]);
 const textResult = (value: unknown): CallToolResult => {
-  const text = JSON.stringify(value);
-  return text.length <= 30_000
-    ? { content: [{ type: 'text', text }] }
-    : {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: 'This result exceeds the response budget. Request a smaller limit or a specific structure.',
-          },
-        ],
-      };
+  return { content: [{ type: 'text', text: JSON.stringify(value) }] };
 };
 const page = <T>(values: T[], offset: number, limit: number) => ({
   items: values.slice(offset, offset + limit),
@@ -140,19 +130,80 @@ function floorPlan(instances: InstanceView[], scene: SceneSnapshot) {
   };
 }
 
-export function createMcpServer(
-  services: AgentServices,
-  screenshots: ScreenshotService,
-): McpServer {
-  const server = new McpServer(
+function checkInputSize(value: unknown): void {
+  const pending = [value];
+  let visited = 0;
+  while (pending.length) {
+    const current = pending.pop();
+    visited++;
+    const children = Array.isArray(current)
+      ? current
+      : current && typeof current === 'object'
+        ? Object.values(current)
+        : [];
+    if (visited + pending.length + children.length > 10_000)
+      throw new Error('Tool arguments exceed the 10000 element input limit.');
+    pending.push(...children);
+  }
+}
+
+export function createMcpServer(services: AgentServices, screenshots: ScreenshotService): Server {
+  const server = new Server(
     { name: 'mapedit', version: '0.1.0' },
     {
       instructions:
         'Edit project files, check, screenshot, then fix violations. All coordinates are metres; +X east and -Z north. Tool lists are fixed.',
-      maxToolInputElements: 10_000,
+      capabilities: { tools: {} },
     },
   );
-  server.registerTool(
+  const pager = resultPager(services);
+  const tools = new Map<
+    string,
+    { definition: Tool; run(args: unknown): Promise<CallToolResult> }
+  >();
+  function registerTool<S extends z.ZodRawShape>(
+    name: string,
+    config: { description: string; inputSchema: S },
+    handler: (args: z.output<z.ZodObject<S>>) => Promise<CallToolResult>,
+  ): void {
+    const input = z.object(config.inputSchema).strict();
+    const cursor = z.object({ cursor: z.string().max(128) }).strict();
+    tools.set(name, {
+      definition: {
+        name,
+        description:
+          config.description +
+          ' Oversized text uses paging.fragment and paging.nextCursor. Continue with only {"cursor":"..."} on this same tool; do not repeat the original arguments.',
+        inputSchema: {
+          type: 'object',
+          anyOf: [z.toJSONSchema(input, { io: 'input' }), z.toJSONSchema(cursor, { io: 'input' })],
+        },
+      },
+      async run(args) {
+        if (args && typeof args === 'object' && 'cursor' in args)
+          return pager.continue(name, cursor.parse(args).cursor);
+        return handler(input.parse(args ?? {}));
+      },
+    });
+  }
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [...tools.values()].map((tool) => tool.definition),
+  }));
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const name = request.params.name;
+    try {
+      checkInputSize(request.params.arguments);
+      const tool = tools.get(name);
+      if (!tool) throw new Error('Unknown tool. Use tools/list to see the fixed tool names.');
+      return pager.bound(name, await tool.run(request.params.arguments));
+    } catch (error) {
+      return pager.bound(name, {
+        isError: true,
+        content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }],
+      });
+    }
+  });
+  registerTool(
     'overview',
     {
       description:
@@ -184,7 +235,7 @@ export function createMcpServer(
       });
     },
   );
-  server.registerTool(
+  registerTool(
     'check',
     {
       description:
@@ -207,7 +258,7 @@ export function createMcpServer(
       });
     },
   );
-  server.registerTool(
+  registerTool(
     'screenshot',
     {
       description:
@@ -267,7 +318,7 @@ export function createMcpServer(
       return { content: [{ type: 'image', mimeType: 'image/png', data: png.toString('base64') }] };
     },
   );
-  server.registerTool(
+  registerTool(
     'floor_plan',
     {
       description:
@@ -302,7 +353,7 @@ export function createMcpServer(
       });
     },
   );
-  server.registerTool(
+  registerTool(
     'query',
     {
       description:
@@ -315,7 +366,7 @@ export function createMcpServer(
       return textResult(await services.query(map, x, z));
     },
   );
-  server.registerTool(
+  registerTool(
     'free_sockets',
     {
       description:
@@ -351,7 +402,7 @@ export function createMcpServer(
       return textResult(page(values, offset, limit));
     },
   );
-  server.registerTool(
+  registerTool(
     'modules',
     {
       description:
@@ -385,7 +436,7 @@ export function createMcpServer(
       );
     },
   );
-  server.registerTool(
+  registerTool(
     'build_module',
     {
       description:
@@ -412,7 +463,7 @@ export function createMcpServer(
       };
     },
   );
-  server.registerTool(
+  registerTool(
     'terrain',
     {
       description:
@@ -425,7 +476,7 @@ export function createMcpServer(
       return textResult(await services.terrain(map, command));
     },
   );
-  server.registerTool(
+  registerTool(
     'export',
     {
       description:
@@ -442,7 +493,7 @@ export function createMcpServer(
 }
 
 export function createMcpHttpHandler(services: AgentServices, screenshots: ScreenshotService) {
-  const active = new Set<McpServer>();
+  const active = new Set<Server>();
   return {
     async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
       const server = createMcpServer(services, screenshots);
@@ -460,6 +511,7 @@ export function createMcpHttpHandler(services: AgentServices, screenshots: Scree
     },
     async close(): Promise<void> {
       await Promise.all([...active].map((server) => server.close()));
+      closeResultPager(services);
     },
   };
 }
