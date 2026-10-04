@@ -1,8 +1,8 @@
 import './styles.css';
-import { Vector3 } from 'three';
+import { Box3, Vector3 } from 'three';
 import type { ObjectRef, SceneSnapshot } from '@mapedit/protocol';
 import { Connection, socketUrl } from '../net/connection.js';
-import { initialLang, saveLang, translate, type Lang } from '../i18n/i18n.js';
+import { initialLang, saveLang, translate, type Lang, type Translator } from '../i18n/i18n.js';
 import { AssetCache } from '../scene/assets.js';
 import { MapView } from '../scene/map-view.js';
 import { OverviewControls } from '../scene/overview-controls.js';
@@ -14,19 +14,25 @@ import { Viewport } from './viewport.js';
 import { OverviewInput } from './input.js';
 import { clickSelection, keepSelection } from './selection.js';
 import { EditController } from './editing.js';
+import { FileErrorFilter, noticeToast } from './notices.js';
 import { TitleBlock } from './hud/title-block.js';
 import { StatusCard } from './hud/status-card.js';
 import { Tooltip } from './hud/tooltip.js';
 import { ActionBar } from './hud/action-bar.js';
 import { HistoryPanel } from './hud/history-panel.js';
+import { IssuesPanel } from './hud/issues-panel.js';
 import { Toasts } from './hud/toasts.js';
 import { CursorNote } from './hud/cursor-note.js';
 
 const reducedMotion = (): boolean =>
   globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
+/** How long the outline around objects the Agent just changed stays, in milliseconds. */
+const FLASH_MS = 1600;
+
 export function start(root: HTMLElement = document.body): void {
   const store = new Store<EditorState>(initialState(initialLang()));
+  const t: Translator = (key, params) => translate(store.state.lang, key, params);
   const connection = new Connection({ url: socketUrl(location), client: 'editor' });
   const map = new MapView(new AssetCache());
   const index = () => map.index;
@@ -46,6 +52,7 @@ export function start(root: HTMLElement = document.body): void {
       loadingMap: true,
       selection: undefined,
       hover: undefined,
+      focusedViolation: undefined,
     });
     const url = new URL(location.href);
     url.searchParams.set('map', mapId);
@@ -57,28 +64,46 @@ export function start(root: HTMLElement = document.body): void {
     store.set({ lang });
   };
 
-  /** Fly to the selection, or to the whole map when nothing is selected. */
-  const focus = (): void => {
+  /** Fly so a box fills the view. */
+  const flyToBox = (bounds: Box3, minRadius = 2): void => {
     const { fov, aspect } = viewport.camera;
-    const ref = store.state.selection;
-    const bounds = ref ? map.boundsOf(ref) : undefined;
-    const duration = reducedMotion() ? 0 : 0.35;
-    if (bounds) {
-      const radius = Math.max(bounds.getSize(new Vector3()).length() / 2, 2);
-      controls.flyTo(
-        bounds.getCenter(new Vector3()),
-        fitDistance(radius * 1.3, fov, aspect),
-        duration,
-      );
-    } else {
-      const framing = viewport.overview.mapFraming(fov, aspect);
-      framing.target.y = map.heightAt(framing.target.x, framing.target.z) ?? 0;
-      controls.flyTo(framing.target, framing.distance, duration);
-    }
+    const radius = Math.max(bounds.getSize(new Vector3()).length() / 2, minRadius);
+    controls.flyTo(
+      bounds.getCenter(new Vector3()),
+      fitDistance(radius * 1.3, fov, aspect),
+      reducedMotion() ? 0 : 0.35,
+    );
     viewport.invalidate();
   };
 
-  const toasts = new Toasts();
+  /** Fly to the selection, or to the whole map when nothing is selected. */
+  const focus = (): void => {
+    const ref = store.state.selection;
+    const bounds = ref ? map.boundsOf(ref) : undefined;
+    if (bounds) return flyToBox(bounds);
+    const { fov, aspect } = viewport.camera;
+    const framing = viewport.overview.mapFraming(fov, aspect);
+    framing.target.y = map.heightAt(framing.target.x, framing.target.z) ?? 0;
+    controls.flyTo(framing.target, framing.distance, reducedMotion() ? 0 : 0.35);
+    viewport.invalidate();
+  };
+
+  /** Pick a violation in the list: fly to it and outline what it names; again to let go. */
+  const focusViolation = (id: string): void => {
+    const next = store.state.focusedViolation === id ? undefined : id;
+    store.set({ focusedViolation: next });
+    const violation = store.state.scene?.violations.find((v) => v.id === next);
+    if (!violation) return;
+    const bounds = new Box3();
+    for (const ref of violation.refs) {
+      const box = map.boundsOf(ref);
+      if (box) bounds.union(box);
+    }
+    if (violation.location) bounds.expandByPoint(new Vector3(...violation.location));
+    if (!bounds.isEmpty()) flyToBox(bounds, 4);
+  };
+
+  const toasts = new Toasts(t);
   const note = new CursorNote();
   const edits = new EditController(connection, store, map, viewport, toasts, note);
 
@@ -98,7 +123,8 @@ export function start(root: HTMLElement = document.body): void {
     },
     focus,
     escape() {
-      store.set({ selection: undefined });
+      if (store.state.focusedViolation) store.set({ focusedViolation: undefined });
+      else store.set({ selection: undefined });
     },
     dragStart: (hit, pointer, client) => edits.beginDrag(hit, pointer, client),
     dragMove: (pointer, client) => edits.dragMove(pointer, client),
@@ -135,7 +161,7 @@ export function start(root: HTMLElement = document.body): void {
 
   store.subscribe((state, previous) => {
     if (changed(state, previous, 'selection'))
-      map.setSelection(state.selection ? [state.selection] : []);
+      map.setOutlines('selection', state.selection ? [state.selection] : []);
     if (changed(state, previous, 'selection', 'hover', 'scene')) {
       // Outline what a click would select, unless it is already selected.
       const current = map.index;
@@ -144,8 +170,11 @@ export function start(root: HTMLElement = document.body): void {
           ? clickSelection(state.selection, state.hover.ref, current)
           : undefined;
       const outlined: ObjectRef[] = target && target !== state.selection ? [target] : [];
-      map.setHover(outlined);
+      map.setOutlines('hover', outlined);
     }
+    if (changed(state, previous, 'focusedViolation')) map.focusViolation(state.focusedViolation);
+    if (changed(state, previous, 'lang'))
+      toasts.setTranslator((key, params) => translate(state.lang, key, params));
   });
 
   const updateProgress = (): void => {
@@ -156,6 +185,7 @@ export function start(root: HTMLElement = document.body): void {
   };
   map.onChange(updateProgress);
 
+  const fileErrors = new FileErrorFilter();
   const showScene = (scene: SceneSnapshot): void => {
     if (scene.map.id !== store.state.mapId) return;
     const first = store.state.scene?.map.id !== scene.map.id;
@@ -171,15 +201,19 @@ export function start(root: HTMLElement = document.body): void {
         viewport.invalidate();
       });
     }
+    const focused = store.state.focusedViolation;
     store.set({
       scene,
       revision: scene.revision,
       selection: keepSelection(store.state.selection, map.index!),
+      focusedViolation: scene.violations.some((v) => v.id === focused) ? focused : undefined,
     });
+    fileErrors.update(scene);
     updateProgress();
     input.refreshHover();
   };
 
+  let flash: number | undefined;
   connection.on('status', (status) => store.set({ status }));
   connection.on('welcome', (project) => {
     store.set({ project });
@@ -191,21 +225,37 @@ export function start(root: HTMLElement = document.body): void {
     if (message.type === 'scene') showScene(message.scene);
     else if (message.type === 'history')
       store.set({ history: { entries: message.entries, cursor: message.cursor } });
+    else if (message.type === 'notice') {
+      if (message.code === 'file_error' && !fileErrors.admit(message.message)) return;
+      toasts.show(noticeToast(message, map.index));
+      if (message.code === 'agent_changed' && message.refs?.length) {
+        // Briefly outline what the Agent touched, so a watching human can spot it.
+        map.setOutlines('flash', message.refs);
+        window.clearTimeout(flash);
+        flash = window.setTimeout(() => map.setOutlines('flash', []), FLASH_MS);
+      }
+    }
   });
 
   hud.append(
-    new TitleBlock(store, { openMap, setLang }).element,
-    new HistoryPanel(store, index, { undo: () => edits.undo(), redo: () => edits.redo() }).element,
+    h(
+      'div',
+      { class: 'hud-column hud-left' },
+      new TitleBlock(store, { openMap, setLang }).element,
+      new IssuesPanel(store, index, { focusViolation }).element,
+    ),
+    h(
+      'div',
+      { class: 'hud-column hud-right' },
+      new HistoryPanel(store, index, { undo: () => edits.undo(), redo: () => edits.redo() })
+        .element,
+    ),
     new ActionBar(store, index).element,
     new StatusCard(store).element,
     toasts.element,
     new Tooltip(store, index).element,
     note.element,
   );
-  const syncToasts = (state: EditorState) =>
-    toasts.setDismissLabel(translate(state.lang, 'notice.dismiss'));
-  store.subscribe(syncToasts);
-  syncToasts(store.state);
 
   const syncDocument = (state: EditorState) => {
     document.documentElement.lang = state.lang;

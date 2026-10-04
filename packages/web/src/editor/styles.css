@@ -90,10 +90,33 @@ select {
 
 /* Title block ------------------------------------------------------------ */
 
-.title-block {
+/* Left and right columns hold the panels; the map stays reachable between them. */
+.hud-column {
   position: absolute;
   top: var(--gutter);
+  bottom: 84px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100vw - 2 * var(--gutter)));
+  pointer-events: none;
+}
+
+.hud-column > * {
+  pointer-events: auto;
+}
+
+.hud-left {
   left: var(--gutter);
+}
+
+.hud-right {
+  right: var(--gutter);
+  align-items: flex-end;
+}
+
+.title-block {
+  align-self: flex-start;
   display: grid;
   grid-template-columns: minmax(150px, 260px) minmax(92px, auto);
   background: var(--chalk-raised);
@@ -436,17 +459,151 @@ kbd {
 
 /* Side panels (change log, violations) ------------------------------------ */
 
-.history {
-  position: absolute;
-  top: var(--gutter);
-  right: var(--gutter);
+.history,
+.issues {
   display: flex;
   flex-direction: column;
-  width: min(320px, calc(100vw - 2 * var(--gutter)));
-  max-height: min(46vh, 420px);
+  min-height: 0;
   background: var(--chalk-raised);
   border: 1px solid var(--ink);
   box-shadow: var(--tag-lift);
+}
+
+.history {
+  width: min(320px, 100%);
+  max-height: min(46vh, 420px);
+}
+
+.issues {
+  width: 100%;
+  max-height: 60vh;
+  flex: 0 1 auto;
+}
+
+.issues[data-open='true'] .panel-header {
+  border-bottom: 1px solid var(--rule);
+}
+
+.issues .panel-title::after {
+  background: var(--flag);
+  color: #fff;
+}
+
+.issues-error-count {
+  padding: 0 6px;
+  border: 1px solid var(--flag-ink);
+  border-radius: 2px;
+  font: 600 11px/1.5 var(--font-label);
+  color: var(--flag-ink);
+}
+
+.issues-body {
+  overflow-y: auto;
+  padding: 2px 0 4px;
+}
+
+.issue {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px 8px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.issue:hover {
+  background: var(--chalkline-wash);
+}
+
+.issue[aria-pressed='true'] {
+  background: var(--flag-wash);
+  box-shadow: inset 3px 0 0 var(--flag);
+}
+
+.issue-number {
+  align-self: start;
+  width: 24px;
+  padding: 1px 6px 1px 3px;
+  background: var(--flag);
+  clip-path: polygon(0 0, 100% 0, 78% 50%, 100% 100%, 0 100%);
+  font: 700 11px/1.5 var(--font-label);
+  color: #fff;
+}
+
+.issue-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.issue-title {
+  font: 600 13px/1.3 var(--font-label);
+  overflow-wrap: anywhere;
+}
+
+.issue-title strong {
+  color: var(--flag-ink);
+}
+
+.issue-message,
+.issue-suggestion {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.issue-suggestion em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.issue-source {
+  font: 11px/1.4 var(--font-mono);
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+
+.issues-subtitle {
+  margin: 8px 12px 2px;
+  font: 600 11px/1.4 var(--font-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--flag-ink);
+}
+
+.file-error {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 12px 7px;
+  border-bottom: 1px solid var(--rule);
+  box-shadow: inset 3px 0 0 var(--flag-ink);
+}
+
+.issues-none {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  font: 600 13px/1.3 var(--font-label);
+  color: var(--moss);
+}
+
+.issues-none::before {
+  content: '';
+  width: 12px;
+  height: 7px;
+  border-left: 2.5px solid var(--moss);
+  border-bottom: 2.5px solid var(--moss);
+  transform: translateY(-2px) rotate(-45deg);
 }
 
 .panel-header {

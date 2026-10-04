@@ -5,6 +5,7 @@ import { en, zhTW } from '../src/i18n/messages.js';
 /** Every placeholder any message uses. */
 const PARAMS = {
   name: 'x',
+  names: 'a, b',
   loaded: 1,
   total: 2,
   reason: 'r',

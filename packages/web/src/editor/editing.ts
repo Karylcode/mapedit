@@ -282,17 +282,19 @@ export class EditController {
       this.toasts.show({
         level: 'warning',
         key: `edit:${pending.ref}`,
-        text: this.t(key, { name }),
+        text: (t) => t(key, { name }),
         detail: reason,
       });
     } else {
       const nothing = /^Nothing to (undo|redo)/i.test(reason);
+      const undo = pending.kind === 'undo';
       this.toasts.show({
         level: nothing ? 'info' : 'warning',
         key: 'history',
-        text: nothing
-          ? this.t(pending.kind === 'undo' ? 'history.nothingToUndo' : 'history.nothingToRedo')
-          : this.t(pending.kind === 'undo' ? 'history.undoFailed' : 'history.redoFailed'),
+        text: (t) =>
+          nothing
+            ? t(undo ? 'history.nothingToUndo' : 'history.nothingToRedo')
+            : t(undo ? 'history.undoFailed' : 'history.redoFailed'),
         detail: nothing ? undefined : reason,
       });
     }
@@ -327,6 +329,6 @@ export class EditController {
     translate(this.store.state.lang, key, params);
 
   private say(level: 'info' | 'warning', key: MessageKey): void {
-    this.toasts.show({ level, key, text: this.t(key) });
+    this.toasts.show({ level, key, text: (t) => t(key) });
   }
 }

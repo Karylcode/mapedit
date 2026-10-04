@@ -7,7 +7,9 @@ import {
   findBrowser,
   launch,
   openEditor,
+  projectPoint,
   screenPoint,
+  type EditorHandle,
 } from './browser/harness.js';
 
 const executable = await findBrowser();
@@ -82,16 +84,29 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
   });
 
   it('selects markers and clears the selection on empty ground', async () => {
+    // The spawn point sits in the map's corner, under the side panels from the default view.
+    await page.evaluate(() => {
+      const editor = (globalThis as unknown as { mapeditEditor: EditorHandle }).mapeditEditor;
+      editor.viewport.overview.target.set(8, 0, 8);
+      editor.viewport.overview.distance = 30;
+      editor.viewport.invalidate();
+    });
     const zone = await screenPoint(page, 'marker:spawn');
     await page.mouse.click(zone.x, zone.y);
     await expect.poll(() => editorState(page, (e) => e.store.state.selection)).toBe('marker:spawn');
     expect(await page.locator('.action-kind').innerText()).toMatch(/spawn point/i);
-    const empty = await screenPoint(page, 'structure:out_of_bounds');
-    await page.mouse.click(empty.x - 200, empty.y + 200);
+    const empty = await projectPoint(page, [14, 0, 2]);
+    await page.mouse.click(empty.x, empty.y);
     await expect.poll(() => editorState(page, (e) => e.store.state.selection)).toBeUndefined();
   });
 
   it('focuses the selection with F', async () => {
+    await page.evaluate(() => {
+      const editor = (globalThis as unknown as { mapeditEditor: EditorHandle }).mapeditEditor;
+      editor.viewport.overview.target.set(30, 0, 30);
+      editor.viewport.overview.distance = 60;
+      editor.viewport.invalidate();
+    });
     const before = await editorState(page, (e) => e.viewport.overview.distance);
     const target = await screenPoint(page, 'module:raised_foundation/base');
     await page.mouse.click(target.x, target.y);

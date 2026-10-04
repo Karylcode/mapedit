@@ -26,6 +26,8 @@ export interface EditorState {
   selection?: ObjectRef;
   /** Object under the pointer, with the pointer's page position. */
   hover?: { ref: ObjectRef; x: number; y: number };
+  /** The violation picked in the list, outlined on the map. */
+  focusedViolation?: string;
 }
 
 export const initialState = (lang: Lang): EditorState => ({

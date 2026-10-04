@@ -30,6 +30,8 @@ import { palette } from './palette.js';
 import { sunDirection } from './sun.js';
 import { BoxOutlines, GlassBoxes, type OrientedBox } from './outline.js';
 
+export type OutlineLayer = 'selection' | 'hover' | 'focus' | 'flash';
+
 export interface PickHit {
   ref: ObjectRef;
   point: Vector3;
@@ -61,8 +63,13 @@ export class MapView {
   /** Red glass and outlines around objects in violation, like an invalid placement. */
   readonly violationGlass = new GlassBoxes(palette.flag, 0.3);
   readonly violationLines = new BoxOutlines(palette.flag, 2, { xray: false });
-  readonly selectionLines = new BoxOutlines(palette.chalkline, 3);
-  readonly hoverLines = new BoxOutlines(palette.chalkline, 2, { opacity: 0.55 });
+  /** Chalk-line outlines, drawn over everything so they stay visible. */
+  readonly outlines: Record<OutlineLayer, { lines: BoxOutlines; refs: readonly ObjectRef[] }> = {
+    selection: { lines: new BoxOutlines(palette.chalkline, 3), refs: [] },
+    hover: { lines: new BoxOutlines(palette.chalkline, 2, { opacity: 0.55 }), refs: [] },
+    focus: { lines: new BoxOutlines(palette.flag, 4), refs: [] },
+    flash: { lines: new BoxOutlines(palette.chalkline, 2, { opacity: 0.8 }), refs: [] },
+  };
   index?: SnapshotIndex;
   /** Whether violations get red tints and flags (the render page may turn this off). */
   showViolations = true;
@@ -79,10 +86,7 @@ export class MapView {
   private markerSignature = '';
   private readonly failed = new Set<string>();
   private readonly pending = new Set<Promise<unknown>>();
-  private emphasized?: string;
-  private extraTints = new Map<ObjectRef, Color>();
-  private selected: readonly ObjectRef[] = [];
-  private hovered: readonly ObjectRef[] = [];
+  private focusedViolation?: string;
   private generation = 0;
   private mapId?: string;
   private readonly changeListeners = new Set<() => void>();
@@ -108,28 +112,24 @@ export class MapView {
       this.flags,
       this.violationGlass,
       this.violationLines,
-      this.selectionLines,
-      this.hoverLines,
+      ...Object.values(this.outlines).map((layer) => layer.lines),
     );
   }
 
-  /** Outline the selected objects in chalk-line blue. */
-  setSelection(refs: readonly ObjectRef[]): void {
-    this.selected = refs;
-    this.selectionLines.setBoxes(refs.flatMap((ref) => this.boxesFor(ref)));
-    this.changed();
-  }
-
-  setHover(refs: readonly ObjectRef[]): void {
-    this.hovered = refs;
-    this.hoverLines.setBoxes(refs.flatMap((ref) => this.boxesFor(ref)));
+  /**
+   * Outline objects: the selection, what a click would select, the violation
+   * picked in the list, or what the Agent just changed.
+   */
+  setOutlines(layer: OutlineLayer, refs: readonly ObjectRef[]): void {
+    this.outlines[layer].refs = refs;
+    this.outlines[layer].lines.setBoxes(refs.flatMap((ref) => this.boxesFor(ref)));
     this.changed();
   }
 
   /** Line widths are in pixels, so outlines need the drawing buffer size. */
   setResolution(width: number, height: number): void {
-    for (const lines of [this.violationLines, this.selectionLines, this.hoverLines])
-      lines.setResolution(width, height);
+    this.violationLines.setResolution(width, height);
+    for (const layer of Object.values(this.outlines)) layer.lines.setResolution(width, height);
   }
 
   get scene(): SceneSnapshot | undefined {
@@ -173,10 +173,9 @@ export class MapView {
     return { loaded, total: urls.size };
   }
 
-  /** Emphasize one violation (its flag grows) and extra per-object tints, e.g. for hover. */
-  setEmphasis(violationId: string | undefined, tints = new Map<ObjectRef, Color>()): void {
-    this.emphasized = violationId;
-    this.extraTints = tints;
+  /** Single out one violation: its flag grows and the objects it names get a thick red outline. */
+  focusViolation(id: string | undefined): void {
+    this.focusedViolation = id;
     this.refresh();
   }
 
@@ -296,19 +295,13 @@ export class MapView {
           max: this.sizeOf(instance),
         },
       ];
-    const marker = index.markers.get(ref);
-    if (marker) {
-      const shape = marker.shape;
-      const position = shape.kind === 'point' ? shape.position : shape.center;
-      const matrix = new Matrix4()
-        .makeRotationY((shape.rotation * Math.PI) / 180)
-        .setPosition(...position);
-      if (shape.kind === 'point')
-        return [{ matrix, min: new Vector3(-0.7, 0, -0.7), max: new Vector3(0.7, 2.3, 0.7) }];
-      const half = new Vector3(...shape.size).multiplyScalar(0.5);
-      return [{ matrix, min: half.clone().negate(), max: half }];
-    }
-    return [];
+    const shape = index.markers.get(ref)?.shape;
+    const matrix = this.frameOf(ref);
+    if (!shape || !matrix) return [];
+    if (shape.kind === 'point')
+      return [{ matrix, min: new Vector3(-0.7, 0, -0.7), max: new Vector3(0.7, 2.3, 0.7) }];
+    const half = new Vector3(...shape.size).multiplyScalar(0.5);
+    return [{ matrix, min: half.clone().negate(), max: half }];
   }
 
   /** Map-space bounds of an object, for focusing the camera. */
@@ -463,8 +456,7 @@ export class MapView {
     const violating: Set<ObjectRef> = this.showViolations
       ? violatingRefs(index, scene.violations)
       : new Set();
-    const tint = (ref: ObjectRef): Color =>
-      this.extraTints.get(ref) ?? (violating.has(ref) ? VIOLATION_TINT : WHITE);
+    const tint = (ref: ObjectRef): Color => (violating.has(ref) ? VIOLATION_TINT : WHITE);
 
     const byType = new Map<string, InstanceView[]>();
     for (const structure of scene.structures)
@@ -527,12 +519,15 @@ export class MapView {
         this.markerGroup.add(marker.root);
       }
     }
-    this.flags.update(this.showViolations ? scene.violations : [], this.emphasized);
+    const focused = scene.violations.find((v) => v.id === this.focusedViolation);
+    if (!focused) this.focusedViolation = undefined;
+    this.flags.update(this.showViolations ? scene.violations : [], this.focusedViolation);
     const violationBoxes = [...violating].flatMap((ref) => this.boxesFor(ref));
     this.violationGlass.setBoxes(violationBoxes);
     this.violationLines.setBoxes(violationBoxes);
-    this.selectionLines.setBoxes(this.selected.flatMap((ref) => this.boxesFor(ref)));
-    this.hoverLines.setBoxes(this.hovered.flatMap((ref) => this.boxesFor(ref)));
+    this.outlines.focus.refs = focused?.refs ?? [];
+    for (const layer of Object.values(this.outlines))
+      layer.lines.setBoxes(layer.refs.flatMap((ref) => this.boxesFor(ref)));
     this.changed();
   }
 

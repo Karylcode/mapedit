@@ -40,6 +40,36 @@ export function describeObject(
   };
 }
 
+/**
+ * Names for a list of objects, such as "House、Watchtower 等 5 個". Modules
+ * show their structure as well; refs that no longer exist show their id.
+ */
+export function objectNames(
+  refs: readonly ObjectRef[],
+  index: SnapshotIndex | undefined,
+  t: Translator,
+  limit = 3,
+): string {
+  const names = [
+    ...new Set(
+      refs.map((ref) => {
+        if (!index?.has(ref)) return idOf(ref);
+        const structure = index.structureOf(ref);
+        if (parseObjectRef(ref)?.kind === 'module' && structure)
+          return `${index.label(structure.ref)} · ${idOf(ref)}`;
+        return index.label(ref);
+      }),
+    ),
+  ];
+  const separator = t('list.separator');
+  if (names.length <= limit) return names.join(separator);
+  return t('list.more', {
+    names: names.slice(0, limit).join(separator),
+    count: names.length,
+    more: names.length - limit,
+  });
+}
+
 /** Violations that mention an object, including through its structure or modules. */
 export function violationCount(ref: ObjectRef, index: SnapshotIndex): number {
   const related = new Set([ref, ...index.instancesOf(ref)]);
