@@ -110,4 +110,21 @@ describe('MapView while module models load', () => {
     expect(meshes[0]!.count).toBe(40);
     expect(meshes[0]!.instanceMatrix.count).toBe(capacity);
   });
+
+  it('retries a model that failed to load when the next snapshot arrives (FE20)', async () => {
+    const network = controlledFetcher();
+    const view = new MapView(new AssetCache(network.fetcher));
+    const url = '/assets/fe20/flaky.glb';
+    view.apply(snapshot([url]));
+    // The backend restarted while the model was on its way.
+    await network.fail(url);
+    await view.settled();
+    expect(batches(view)[0]!.userData.placeholder).toBe(true);
+    view.apply(snapshot([url], 1, 1));
+    // The failure box stays while the model is asked for again.
+    expect(batches(view)[0]!.userData.placeholder).toBe(true);
+    await network.release(url);
+    await view.settled();
+    expect(batches(view)[0]!.userData.placeholder).toBe(false);
+  });
 });

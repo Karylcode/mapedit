@@ -15,6 +15,9 @@ import { fitScreenSprites } from '../scene/screen-sprite.js';
 
 type FrameTask = (seconds: number) => boolean | void;
 
+/** Device pixels per CSS pixel, capped at 2 to keep large screens fast. */
+const pixelRatio = () => Math.min(globalThis.devicePixelRatio || 1, 2);
+
 /** The editor's WebGL view. It renders on demand: only after something changed. */
 export class Viewport {
   readonly renderer: WebGLRenderer;
@@ -32,7 +35,7 @@ export class Viewport {
     readonly map: MapView,
   ) {
     this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(pixelRatio());
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
     // Keeps material base colors recognizable while softening bright sunlit faces.
@@ -44,7 +47,24 @@ export class Viewport {
     this.scene.add(map.root);
     map.onChange(() => this.invalidate());
     new ResizeObserver(() => this.resize()).observe(element);
+    this.watchPixelRatio();
     this.resize();
+  }
+
+  /**
+   * A move to a screen with another scale changes the pixel density without
+   * resizing anything. Ask for a frame then; each frame checks the density.
+   */
+  private watchPixelRatio(): void {
+    const query = globalThis.matchMedia?.(`(resolution: ${globalThis.devicePixelRatio || 1}dppx)`);
+    query?.addEventListener(
+      'change',
+      () => {
+        this.invalidate();
+        this.watchPixelRatio();
+      },
+      { once: true },
+    );
   }
 
   /** Run `task` before each frame; it keeps frames coming while it returns true. */
@@ -67,6 +87,7 @@ export class Viewport {
     const width = Math.max(1, this.element.clientWidth);
     const height = Math.max(1, this.element.clientHeight);
     this.size.set(width, height);
+    if (this.renderer.getPixelRatio() !== pixelRatio()) this.renderer.setPixelRatio(pixelRatio());
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     const ratio = this.renderer.getPixelRatio();
@@ -77,6 +98,8 @@ export class Viewport {
 
   private render(time: number): void {
     this.frame = undefined;
+    // Browser zoom or another screen changed the pixel density: draw sharp at the new one.
+    if (this.renderer.getPixelRatio() !== pixelRatio()) this.resize();
     const seconds = this.last ? Math.min(0.1, (time - this.last) / 1000) : 0;
     let animating = false;
     for (const task of [...this.tasks]) if (task(seconds)) animating = true;

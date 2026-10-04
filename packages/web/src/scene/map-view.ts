@@ -152,6 +152,8 @@ export class MapView {
     if (scene.map.id !== this.mapId) this.clear();
     this.mapId = scene.map.id;
     this.generation++;
+    // Each snapshot asks again for models that failed, such as during a backend restart.
+    this.failed.clear();
     this.index = new SnapshotIndex(scene);
     this.applyTerrain(scene.terrain);
     this.applyGenerated(scene.generated);
@@ -513,14 +515,11 @@ export class MapView {
         asset = this.assets.get(type.url);
         if (!asset) {
           this.loadModuleType(type.url);
-          // Keep drawing the previous model of this type until the new one arrives.
-          asset = this.batches.get(typeId)?.asset;
-          if (!asset) {
-            const previous = this.batches.get(typeId);
-            if (previous) this.removeBatch(previous);
-            this.batches.delete(typeId);
-            continue;
-          }
+          // Keep drawing what this type showed until the model arrives: its previous
+          // model, or the box of one that failed and is being asked for again.
+          const previous = this.batches.get(typeId);
+          if (!previous) continue;
+          asset = previous.asset;
         }
       }
       const batch = this.batchFor(typeId, asset, instances.length, type?.size);

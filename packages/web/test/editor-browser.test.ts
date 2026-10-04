@@ -261,6 +261,29 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     await fresh.close();
   });
 
+  it('follows the screen pixel density after it changes (FE20)', async () => {
+    const fresh = await openEditor(browser, server.url);
+    const pixels = () =>
+      editorState(fresh, (e) => ({
+        ratio: e.viewport.renderer.getPixelRatio(),
+        width: e.viewport.renderer.domElement.width,
+      }));
+    expect(await pixels()).toEqual({ ratio: 1, width: 1280 });
+    // Like moving the window to a 200% screen: same CSS size, twice the pixels.
+    const cdp = await fresh.context().newCDPSession(fresh);
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1280,
+      height: 800,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    // Nothing is resized; the next frame, here from moving the pointer, picks it up.
+    await fresh.mouse.move(640, 400);
+    await fresh.mouse.move(660, 410);
+    await poll(pixels).toEqual({ ratio: 2, width: 2560 });
+    await fresh.close();
+  });
+
   it('reports no page errors', () => {
     expect((page as Page & { errors: string[] }).errors).toEqual([]);
   });

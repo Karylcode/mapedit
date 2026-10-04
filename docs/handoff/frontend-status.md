@@ -289,6 +289,18 @@ is not modified here.
   - `test/toasts.test.ts`：測挑選要移掉哪一則的 `overflowVictim`。
   - `test/editor-browser.test.ts`：先顯示一則警告，再來四則一般資訊，警告還在，被移掉的是第一則資訊
     （修正前警告被擠掉）。
+- **FE20 完成**：
+  - 載入失敗的模組模型，下一份快照到達時會重新載入。重新載入期間，先繼續顯示紅色方塊。
+    地形和地基延伸原本就會重試。
+  - 每次畫面更新都會檢查像素比例，和 renderer 不同時重新設定大小。瀏覽器縮放會觸發 ResizeObserver；
+    移到不同縮放比例的螢幕時，`resolution` 媒體查詢會要求畫一次。
+  - 測試：
+    - `test/map-view-loading.test.ts`：模型第一次載入失敗後，下一份快照再要一次，成功後紅色方塊換成模型
+      （修正前不會再要）。
+    - `test/editor-browser.test.ts`：用 CDP 把像素比例從 1 改成 2（CSS 大小不變），移動滑鼠之後，
+      畫布變成 2560 像素寬（修正前停在 1280）。
+    - 備註：headless Edge 用 CDP 改像素比例時，不會觸發 `resolution` 媒體查詢的 `change` 事件，
+      所以測試走的是「下一次畫面更新」這條路。
 
 ## 自行決定的事
 
