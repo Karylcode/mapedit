@@ -146,13 +146,16 @@ export function start(root: HTMLElement = document.body): void {
         input.cancelGesture();
         return true;
       }
+      // Undo and redo act on the whole project, Agent edits included: a held key
+      // must not repeat them.
       if (command && event.code === 'KeyZ') {
+        if (event.repeat) return true;
         if (event.shiftKey) edits.redo();
         else edits.undo();
         return true;
       }
       if (command && event.code === 'KeyY') {
-        edits.redo();
+        if (!event.repeat) edits.redo();
         return true;
       }
       if (command || event.altKey) return false;

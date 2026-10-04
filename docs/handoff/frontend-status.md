@@ -181,6 +181,9 @@ is not modified here.
   測試：`test/edit-controller.test.ts`（用假連線直接測 `EditController`）：快速按三次 R 送出 15、30、45 度
   （修正前三次都是 15 度）；按兩次 Delete、回覆成功但快照未到時再按一次，都只送一個刪除、沒有錯誤提示；
   等回覆期間拖曳回傳 `blocked` 並顯示提示。
+- **FE6 完成**：Ctrl+Z、Ctrl+Y（和 Ctrl+Shift+Z）忽略按住不放時的重複按鍵，只作用一次；這樣 W3 寫的
+  「按住鍵不放不會重複套用」才是真的。測試：`test/keys-browser.test.ts` 在瀏覽器裡送出重複的按鍵事件，
+  只送出一個 `undo`（修正前是三個）。
 
 ## 自行決定的事
 
