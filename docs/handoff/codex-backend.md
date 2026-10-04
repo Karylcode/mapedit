@@ -2,11 +2,13 @@
 
 你負責這個專案的**全部後端**。前端（`packages/web`）由 Claude 負責，請不要修改它。
 
+**請從 M0 一路做到 M7，中間不要停下來等人確認。** 工作方式見第 9 節。全部做完之後，Claude 會先檢查你的成果，再開始寫前端。
+
 ## 0. 開工前先讀
 
 1. [docs/design.md](../design.md)：整體設計，必讀。
 2. [CONTEXT.md](../../CONTEXT.md)：用語表。程式裡的命名一律用這裡的英文詞（`Module`、`Socket`、`SocketType`、`Structure`、`Grid`、`Snap`、`Foundation`、`Support`、`Terrain`、`Tile`、`Surface`、`WaterLevel`、`Marker`、`Violation`、`Project`、`Map`、`Material`），不要另外發明同義詞。
-3. [docs/adr/](../adr/)：每個重要決定的理由。如果你想推翻其中任何一項，先停下來問。
+3. [docs/adr/](../adr/)：每個重要決定的理由。不要推翻其中任何一項；如果某一項真的做不到，選最接近的可行做法繼續做，並在 `backend-status.md` 的「偏離設計」段落寫清楚原因。
 4. [docs/protocol.md](../protocol.md)：你和前端之間的契約。
 
 ## 1. 你負責的範圍
@@ -26,15 +28,15 @@
 
 ## 2. 里程碑
 
-照順序做。每個里程碑結束時，測試要全部通過、CI 要綠燈，並更新 `backend-status.md`。
+照順序一路做完。每個里程碑結束時，測試要全部通過、commit，並更新 `backend-status.md`，然後直接開始下一個。
 
-### M0：骨架與契約（最優先，前端靠它開工）
+### M0：骨架與契約
 
 - pnpm workspace、TypeScript strict、ESM、Vitest、ESLint 和 Prettier。
 - GitHub Actions：在 `windows-latest` 和 `ubuntu-latest` 上跑型別檢查和測試。
 - `packages/protocol`：照 protocol.md 寫出全部型別。
 - `mapedit dev --mock`：用一張固定的測試場景回應 protocol.md 的所有訊息和網址。模組和地形用簡單的方塊 glb；拖動和刪除只改記憶體。
-- **驗收**：前端可以連上 mock，開始開發。
+- **驗收**：用 WebSocket 測試客戶端連上 mock，protocol.md 的每一種訊息都有測試。
 
 ### M1：地圖檔與編譯
 
@@ -74,15 +76,15 @@
 - 拖動預覽與套用：對齊格子、高度自動貼合地形、會造成違規就拒絕；寫回 YAML 時保留註解。
 - 修改紀錄、復原與重做，人和 Agent 的修改都算；同時修改時送出提示。
 - 提供 `packages/web/dist` 的靜態檔；檢查 `Host` 和 `Origin`。
-- **驗收**：前端可以用真的伺服器取代 mock；一般村莊大小的地圖，拖動預覽來回在 30 毫秒內。
+- **驗收**：WebSocket 測試涵蓋 protocol.md 第 4 節的所有流程（拖動預覽、套用、拒絕、刪除、復原、同時修改的提示）；一般村莊大小的地圖，拖動預覽來回在 30 毫秒內。
 
 ### M5：Agent 介面
 
 - MCP 伺服器：Streamable HTTP（`/mcp`）和 stdio（`mapedit mcp`：連到正在執行的伺服器，沒有的話就自己啟動一個）。
 - 工具：見第 4 節。
-- 截圖服務：用 `playwright-core` 打開前端的 `/render` 頁面（契約見 protocol.md 第 6 節）。優先使用系統已經安裝的 Edge 或 Chrome，避免另外下載瀏覽器。
+- 截圖服務：用 `playwright-core` 打開前端的 `/render` 頁面（契約見 protocol.md 第 6 節）。優先使用系統已經安裝的 Edge 或 Chrome，避免另外下載瀏覽器。前端要等後端完成後才會做，所以先用一個測試專用的假頁面（放在測試資料夾，不要放進 `packages/web`）實作 protocol.md 第 6 節的介面，驗證整條截圖流程。
 - 文字版平面圖、違規修正建議、查詢。
-- **驗收**：在 Windows 上，Claude Code 和 Codex 都能呼叫全部工具，而且兩者都看得到截圖。
+- **驗收**：用 MCP SDK 的客戶端測試全部工具，stdio 和 HTTP 兩種連法都要測；截圖流程用假頁面跑通。在真的 Claude Code 和 Codex 裡實際使用的部分，等前端完成後再一起驗收。
 
 ### M6：匯出與 Unity
 
@@ -92,7 +94,7 @@
   - 碰撞體資訊變成 Collider。
   - 觸發區變成 Trigger Collider。
   - 標記依對應表換成 prefab，對應表是一個 ScriptableObject。
-- **驗收**：範例地圖在 Unity 6 匯入後有正確的碰撞體，出生點換成指定的 prefab。
+- **驗收**：範例地圖在 Unity 6 匯入後有正確的碰撞體，出生點換成指定的 prefab。如果這台電腦有 Unity 6，就用 batchmode 自動跑這個測試；沒有的話，把手動驗證步驟寫進 `backend-status.md`，然後繼續做下去。
 
 ### M7：專案範本與端到端驗收
 
@@ -103,7 +105,7 @@
   - `AGENTS.md` 和 `.claude/skills/mapedit/SKILL.md`
   - Claude Code（`.mcp.json`）和 Codex（`.codex/config.toml`）的 MCP 設定
 - AGENTS.md 和 skill 用英文寫，內容包括：地圖檔格式、工作流程（改檔 → `check` → `screenshot` → 修正）、常見錯誤。
-- **驗收**：設計文件的完成標準。Claude Code 和 Codex 都能只靠一句話，做出一個零違規的小村莊；匯出到 Unity 後按 Play 就能走進房子。
+- **驗收**：寫一個不靠 AI 的端到端腳本：用 `mapedit init` 建立專案，寫出範例小村莊的地形和結構檔，跑 `check` 得到零違規，再匯出成 glb。設計文件的完整完成標準（兩個 Agent 只靠一句話蓋出村莊，在 Unity 按 Play 走進房子），等前端完成後再一起驗收。
 
 ## 3. 地圖檔格式的要求
 
@@ -166,7 +168,7 @@
 
 - 以 docs/protocol.md 為準。需要改契約時，先改文件，再改型別。只是新增不用改版本號；會讓舊程式壞掉的修改，要把 `protocolVersion` 加 1。
 - 不要修改 `packages/web`。需要前端配合的事（例如截圖頁面要加新參數），寫在 `backend-status.md` 的「需要前端配合」段落。
-- M0 的 mock 要最先完成，前端要靠它開工。
+- 前端會在後端全部完成、檢查過之後才開始，所以後端的測試不能依賴前端。mock 要留著，之後前端開發和測試會用到。
 
 ## 8. 第一版不要做
 
@@ -175,15 +177,24 @@
 - Unreal、Godot、Blender 的匯入腳本
 - 任何雲端功能、帳號系統、內建 AI
 
-## 9. 進度回報
+## 9. 工作方式與進度回報
 
-每完成一個里程碑，更新 `docs/handoff/backend-status.md`，寫下：
-
-- 完成了什麼、怎麼驗證
-- 已知問題
-- 需要前端配合的事
-
-遇到設計文件沒寫清楚的地方，或你認為設計有問題，先記在 `backend-status.md` 並提出來，不要自己改設計。
+- 從 M0 一路做到 M7，中間不要停下來等人確認。唯一可以停下來的時候，是全部做完。
+- 在 `backend` 分支上工作，每個里程碑至少一個 commit。
+- 設計文件沒寫清楚的地方，照設計文件和 ADR 的精神選最合理的做法，記在「自行決定的事」，然後繼續。
+- 只有人能處理的事（例如要登入帳號、要安裝付費軟體），跳過那一項，記在「需要人處理」，然後繼續做其他部分。
+- `docs/handoff/backend-status.md` 隨時保持最新，它也是你的進度紀錄。如果對話被壓縮，或換了新的工作階段，先讀它再接著做。內容分成這幾段：
+  - 目前進度：做到哪個里程碑、下一步是什麼
+  - 每個里程碑完成了什麼、怎麼驗證
+  - 自行決定的事
+  - 偏離設計
+  - 需要人處理
+  - 需要前端配合
+  - 已知問題
+- 全部做完後：
+  - 確認所有測試在這台 Windows 電腦上通過。
+  - 把 `backend` 分支推上 GitHub，開一個 PR 到 `main`，PR 說明附上 `backend-status.md` 的重點；推上去之後 CI 要綠燈。如果沒辦法連網，就留在本機分支。
+  - 在 `backend-status.md` 最上面寫一段總結，讓 Claude 檢查時知道從哪裡看起。
 
 ## 10. 已經查證過的坑
 
