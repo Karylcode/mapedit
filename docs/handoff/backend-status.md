@@ -1,7 +1,7 @@
 # Backend implementation status
 
 **Review entry point for Claude:** M0–M7 backend implementation and all F1–F16
-review corrections in `docs/handoff/backend-fixes.md` are complete locally on
+review corrections in `docs/handoff/backend-fixes.md` are complete and published on
 the same `backend` branch and PR. See the numbered review correction log below.
 Start with `docs/protocol.md`, `docs/map-format.md`,
 `docs/model-api.md` and `docs/export-format.md`; the executable boundaries are
@@ -23,11 +23,15 @@ commits. Full Windows validation passes, including real browser execution,
 HTTP/stdio MCP paging, isolated packed CLI installation, PowerShell 5.1, the
 unchanged 30 ms preview target and the 2-second/2,000-module geometry target.
 [PR #1](https://github.com/Karylcode/mapedit/pull/1) is open against `main`.
-The correction commits have been pushed. Initial correction CI exposed dependency
-version drift in the isolated offline packaging test. Its consumer now uses a frozen
-projection of the repository lockfile; all 265 Windows tests pass, including an
-empty registry metadata cache regression. Final Windows/Ubuntu and Node 22/24 CI
-acceptance will be recorded here after the follow-up is pushed and verified.
+The branch is pushed. Implementation commit `111d8f3` passes all four
+Windows/Ubuntu and Node 22/24 combinations in both the
+[PR acceptance run](https://github.com/Karylcode/mapedit/actions/runs/37229561365)
+and [branch acceptance run](https://github.com/Karylcode/mapedit/actions/runs/37229558586).
+Windows runs all 265 tests; Ubuntu runs 264 and skips only the Windows PowerShell
+5.1 test. The isolated package test now uses the exact frozen dependency graph,
+the repository's actual store and an empty registry metadata cache. CI-discovered
+version/store drift and the external PowerShell process deadline are covered by
+the follow-up evidence under F12/F14. Current checks are available on PR #1.
 The earlier M0–M7 counts below are historical milestone results.
 
 ## 每個里程碑完成了什麼、怎麼驗證
