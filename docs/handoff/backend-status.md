@@ -715,12 +715,112 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   `map` answer a tool error; the mock state and `POST /api/mock/trigger` support
   the new code. A map that was open when the Agent deleted it keeps its cached
   build, so its editors see the "does not exist" file error in the next scene.
+  A map whose `map.yaml` cannot be read still counts as a project map (a
+  `maps/<id>/map.yaml` that produced no map), so `openMap` and MCP calls show its
+  file errors instead of `unknown_map`.
   Tests: `server/test/request-replies.test.ts` makes `getBuild` and `flush`
   reject on a real server and checks one `internal_error` answer per request
   (previews and applies got no answer before), checks the `unknown_map` notice,
   the kept open map and that `builds` never gains the unknown id over
-  WebSocket, HTTP and MCP (it was cached before), and covers mock mode;
+  WebSocket, HTTP and MCP (it was cached before), opens and checks a map with a
+  broken `map.yaml` while a directory whose valid `map.yaml` sets another id
+  stays unknown, and covers mock mode;
   `server/test/mock-coverage.test.ts` triggers `unknown_map`, and
   `protocol/test/catalogs.test.ts` now compares `VIOLATION_KINDS`,
   `NOTICE_CODES` and `EDIT_FAILURES` with their unions in `docs/protocol.md`.
+  Deviation: none.
+- **F31 complete:** `ScreenshotService` races the render page's
+  `mapeditRender` call against a 60 second limit. When the limit passes, the
+  capture fails with "The render page did not finish within 60 seconds and was
+  closed…", the `finally` block closes the page (which also ends the pending
+  evaluate call), and the browser stays usable for the next capture. The
+  limit is a constructor option and `ServerOptions.screenshotTimeoutMs`, so
+  tests use 0.5 seconds. Relayed render page errors keep their first line and
+  are cut at 1,000 characters with "… (N more characters)". Tests:
+  `server/test/screenshot.test.ts` "F31" uses new fixture modes: `hang`
+  (`mapeditRender` never resolves while the page holds a request open; the
+  capture fails in time, the held request is closed, and a later capture
+  works; before, it waited forever), `verbose` (a 20,000-character page error
+  is capped), and an MCP `screenshot` call on a real server whose web root is
+  the fixture, which answers the timeout error. Deviation: none.
+- **F32 complete:** three changes keep dense non-box overlaps within two seconds:
+  - Every placed solid also gets an oriented box: its model bounds placed along
+    its own axes (the map-axis bounds for a Foundation with an extension). Two
+    solids whose oriented boxes are more than 1e-7 m apart cannot meet, so
+    `overlapLocation` and `restsOn` skip the Boolean for them. This changes no
+    result: a test compares both functions with and without the boxes for
+    turned walls that are apart, touching, sunk 0.00005 m into each other,
+    crossing and stacked.
+  - After `EXACT_OVERLAP_LIMIT` (200) exact overlaps in one check, the
+    remaining non-box pairs are estimated from the oriented boxes (box pairs
+    stay exact). `docs/protocol.md` section 3 adds the optional overlap param
+    `estimated: true`; such a violation says it is "estimated from bounding
+    boxes" and asks to fix the first 200 overlaps and check again. Ids do not
+    change, because params are not part of them.
+  - Suggestion searches for the first 50 violations share a budget of 1,000
+    Boolean operations, counted in `overlapLocation` and in terrain contact.
+    When it runs out, the remaining violations keep the brief suggestion, whose
+    text now says the search is limited.
+
+  Measured on this machine before → after, compile plus check: cylinders
+  3.8 s → 0.75 s, door walls turned 30° and 0.5 m apart 3.3 s → 0.4 s, boxes
+  with a hole 1.3 s → 0.5 s. Tests: `core/test/geometry.test.ts` "F32" checks
+  2,000 densely overlapping cylinders, door walls turned 30° and boxes with a
+  hole: each must finish within 2 s, report exact first overlaps and marked
+  estimates after them, and give params that `violationParamsProblems`
+  accepts. All three failed before the change. `core/test/solid.test.ts`
+  "F32" covers the equivalence and that the boxes move with `moveSolid`.
+  Deviation: the spec suggested axis-aligned bounds for the estimate; this
+  uses oriented boxes because axis-aligned bounds of a turned wall are several
+  times larger than the wall.
+- **F33 mechanism complete; packed acceptance pending PR #2:**
+  - `scripts/prepare-cli.mjs` (run by `pnpm build`, `typecheck` and the CLI's
+    `prepack`) now copies `packages/web/dist` into `packages/cli/web` through
+    the new `scripts/sync-tree.mjs`. The CLI's `files` list includes `web`
+    (gitignored like the templates). An identical copy is left untouched, and
+    without a web build the copy is removed so a package never carries an old
+    editor.
+  - `mapedit dev` and the stdio `mapedit mcp` fallback pass
+    `webRoot = findWebRoot(SERVER_WEB_ROOT, <cli>/web)`. The repository's fresh
+    `packages/web/dist` (or an installed `@mapedit/web`) comes first, then the
+    packed copy, otherwise `null`.
+  - `ServerOptions.webRoot` accepts `null` for "no editor". A web root now
+    needs an `index.html` to count. `ScreenshotService` receives the same
+    `webRoot`; without a built editor, `screenshot` fails at once with "The
+    editor web build is missing; run pnpm build." and `build_module` reports it
+    as `previewError`. Before, both waited 30 seconds for
+    `mapeditRenderReady`.
+  - Tests: `server/test/web-root.test.ts` serves a fake editor build at `/`,
+    `/render` and `/static/…`; with `webRoot: null` it checks both MCP tools
+    answer within seconds (before: a 30 s timeout) and the lookup order of
+    `findWebRoot`. `cli/test/package-assets.test.ts` "F33" copies a fake dist,
+    leaves an identical copy untouched, replaces a rebuilt one, drops it when
+    the dist is gone, and checks the `files` list and `.gitignore`.
+    `scripts/test-packed-cli.mjs` asserts the packed CLI carries
+    `web/index.html` exactly when `packages/web/dist/index.html` exists (on
+    this branch it does not).
+  - Still to do after PR #2 merges into `backend`: extend
+    `test-packed-cli.mjs` so the installed `mapedit dev` serves the editor at
+    `/` and MCP `screenshot` returns a PNG (marked `TODO(F33)` there).
+    Deviation: none.
+- **F34 complete:** `docs/protocol.md` adds, as optional fields that this
+  backend always sends:
+  - `HistoryEntry.action` (`HistoryAction`: `move`, `delete`, `agent_change`)
+    and `HistoryEntry.refs`: the moved or deleted object, or the objects an
+    Agent change affected. These are the same refs as that change's
+    `agent_changed` notice.
+  - `MapInfo.kind`: `'map'` for project maps, `'module_preview'` for the
+    one-Module scene that MCP `build_module` renders through `/render`
+    (section 6 now says to use it instead of the `__module_` id prefix).
+
+  `editResult.failure` codes for nothing to undo or redo, rejection, unknown
+  objects and file errors came with F28. `packages/protocol` exports
+  `HISTORY_ACTIONS`/`HistoryAction`. `ProjectHistory.record` takes the new
+  fields, and both `DiskState` and the mock state fill them. Tests:
+  `server/test/structured-fields.test.ts` records a move, a delete and an
+  Agent file change on a real project and in mock mode, and captures the
+  `build_module` preview scene through a stub screenshot service to check
+  `kind: 'module_preview'` (project and mock maps are `'map'`).
+  `protocol/test/catalogs.test.ts` compares `HISTORY_ACTIONS` with the
+  documented union, and the golden compiler snapshot gained `kind: 'map'`.
   Deviation: none.

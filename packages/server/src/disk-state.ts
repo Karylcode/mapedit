@@ -166,8 +166,10 @@ export class DiskState extends EventEmitter implements StateStore {
       cursor: this.cursor,
     } satisfies ServerMessage);
   }
-  private record(author: 'human' | 'agent', summary: string, files: string[]): void {
-    this.history.record({ author, summary, files }, { files: new Map(this.baseline) });
+  private record(
+    entry: Pick<HistoryEntry, 'author' | 'summary' | 'files' | 'action' | 'refs'>,
+  ): void {
+    this.history.record(entry, { files: new Map(this.baseline) });
   }
   private serial<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.busy.then(operation);
@@ -198,7 +200,13 @@ export class DiskState extends EventEmitter implements StateStore {
       ),
     );
     for (const key of after.keys()) if (!before.has(key)) refs.set(key, key.split('\0')[1]!);
-    this.record('agent', 'Update project files', changed);
+    this.record({
+      author: 'agent',
+      summary: 'Update project files',
+      files: changed,
+      action: 'agent_change',
+      refs: [...refs.values()],
+    });
     for (const key of refs.keys()) this.lastAgent.set(key, this.revision);
     this.notice('agent_changed', 'Agent updated project files.', [...refs.values()]);
     const overwritten = [...refs].filter(([key]) => this.lastHuman.has(key)).map(([, ref]) => ref);
@@ -233,11 +241,23 @@ export class DiskState extends EventEmitter implements StateStore {
     let build = this.builds.get(mapId);
     if (!build) {
       // Only maps of the project are built and cached (protocol section 4, flow 2).
-      if (!this.project.maps.some((map) => map.id === mapId)) throw new UnknownMapError(mapId);
+      if (!this.isProjectMap(mapId)) throw new UnknownMapError(mapId);
       build = await this.builder.build(mapId, this.revision);
       this.builds.set(mapId, build);
     }
     return build.scene;
+  }
+  /** A listed map, or the directory of a map.yaml that cannot be read, whose scene shows why. */
+  private isProjectMap(mapId: string): boolean {
+    if (this.project.maps.some((map) => map.id === mapId)) return true;
+    const parsed = this.builds.get(this.scene.map.id)?.parsed;
+    if (!parsed) return false;
+    const files = [`maps/${mapId}/map.yaml`, `maps/${mapId}/map.yml`].filter((file) =>
+      Object.hasOwn(parsed.files, file),
+    );
+    return (
+      files.length > 0 && !Object.values(parsed.maps).some((map) => files.includes(map.source.file))
+    );
   }
   async getBuild(id?: string): Promise<BuiltProject> {
     await this.getScene(id);
@@ -386,11 +406,13 @@ export class DiskState extends EventEmitter implements StateStore {
       this.baseline = await this.readInputs();
       this.revision++;
       await this.rebuild();
-      this.record(
-        'human',
-        `${edit.kind === 'move' ? 'Move' : 'Delete'} ${edit.ref}`,
-        Object.keys(changed),
-      );
+      this.record({
+        author: 'human',
+        summary: `${edit.kind === 'move' ? 'Move' : 'Delete'} ${edit.ref}`,
+        files: Object.keys(changed),
+        action: edit.kind,
+        refs: [edit.ref],
+      });
       if ((this.lastAgent.get(`${mapId}\0${edit.ref}`) ?? -1) > baseRevision)
         this.notice(
           'agent_change_overridden',

@@ -155,8 +155,10 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
       ...(violations.length ? { failure: 'violations' as const } : {}),
     };
   }
-  protected record(author: 'human' | 'agent', summary: string, files: string[]): void {
-    this.history.record({ author, summary, files }, structuredClone(this.scene));
+  protected record(
+    entry: Pick<HistoryEntry, 'author' | 'summary' | 'files' | 'action' | 'refs'>,
+  ): void {
+    this.history.record(entry, structuredClone(this.scene));
   }
   async apply(edit: Edit, baseRevision: number): Promise<EditRefusal | undefined> {
     const preview = await this.preview(edit, 0);
@@ -203,9 +205,13 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
       marker.shape.rotation = snapMove(edit, {}, mockTerrainHeight).rotation;
     }
     this.scene.revision++;
-    this.record('human', `${edit.kind === 'move' ? 'Move' : 'Delete'} ${edit.ref}`, [
-      structure?.file ?? `maps/${this.scene.map.id}/markers.yaml`,
-    ]);
+    this.record({
+      author: 'human',
+      summary: `${edit.kind === 'move' ? 'Move' : 'Delete'} ${edit.ref}`,
+      files: [structure?.file ?? `maps/${this.scene.map.id}/markers.yaml`],
+      action: edit.kind,
+      refs: [edit.ref],
+    });
     if ((this.lastAgent.get(edit.ref) ?? -1) > baseRevision)
       this.notice(
         'agent_change_overridden',
@@ -231,7 +237,13 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
     const revision = this.scene.revision + 1;
     this.scene = structuredClone(scene);
     this.scene.revision = revision;
-    this.record('agent', 'Update project files', files);
+    this.record({
+      author: 'agent',
+      summary: 'Update project files',
+      files,
+      action: 'agent_change',
+      refs,
+    });
     for (const ref of refs) this.lastAgent.set(ref, revision);
     this.notice('agent_changed', 'Agent updated project files.', refs);
     const overwritten = refs.filter((ref) => this.lastHuman.has(ref));

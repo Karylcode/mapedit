@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright-core';
 import type { RenderSpec, RenderWindow } from '@mapedit/protocol';
+import { findWebRoot } from './paths.js';
 
 export async function findBrowser(): Promise<string | undefined> {
   const candidates =
@@ -45,21 +46,45 @@ export async function findBrowser(): Promise<string | undefined> {
  */
 export const SCREENSHOT_BROWSER_ARGS = ['--disable-dev-shm-usage', '--enable-unsafe-swiftshader'];
 
-/** The render page's own error text, without Playwright's call prefix and stack. */
+/** How long one render may take before its page is closed. */
+const RENDER_TIMEOUT_MS = 60_000;
+/** The longest render page error text relayed to the Agent. */
+const RENDER_ERROR_LENGTH = 1_000;
+
+/** The render page's own error text, without Playwright's call prefix and stack, capped. */
 function renderPageError(error: unknown): string {
   const text = error instanceof Error ? error.message : String(error);
-  return (text.split('\n')[0] ?? text).replace(/^page\.evaluate: /, '').replace(/^Error: /, '');
+  const line = (text.split('\n')[0] ?? text)
+    .replace(/^page\.evaluate: /, '')
+    .replace(/^Error: /, '');
+  return line.length > RENDER_ERROR_LENGTH
+    ? `${line.slice(0, RENDER_ERROR_LENGTH)}… (${line.length - RENDER_ERROR_LENGTH} more characters)`
+    : line;
 }
+class RenderTimeout extends Error {}
 
 /** The front end owns rendering; the backend only calls the documented page contract. */
 export class ScreenshotService {
   private browser?: Browser;
   private launch?: Promise<Browser>;
+  private readonly renderTimeoutMs: number;
+  private readonly webRoot: string | null | undefined;
+  /**
+   * `webRoot` is the editor build that serves /render: null when there is none, so captures
+   * fail at once instead of waiting for a page that never loads. Leave it out when the
+   * base URL serves its own render page.
+   */
   constructor(
     private readonly baseUrl: string,
     private readonly executablePath?: string,
-  ) {}
+    options: { renderTimeoutMs?: number; webRoot?: string | null } = {},
+  ) {
+    this.renderTimeoutMs = options.renderTimeoutMs ?? RENDER_TIMEOUT_MS;
+    this.webRoot = options.webRoot;
+  }
   async capture(mapId: string, spec: RenderSpec): Promise<Buffer> {
+    if (this.webRoot !== undefined && !(this.webRoot && (await findWebRoot(this.webRoot))))
+      throw new Error('The editor web build is missing; run pnpm build.');
     if (!this.launch)
       this.launch = (async () => {
         const executablePath = this.executablePath ?? (await findBrowser());
@@ -97,12 +122,26 @@ export class ScreenshotService {
         undefined,
         { timeout: 30_000 },
       );
-      // The page reports problems such as missing WebGL or an unknown map as errors.
-      const data = await page
-        .evaluate(async (value) => (window as unknown as RenderWindow).mapeditRender(value), spec)
+      // The page reports problems such as missing WebGL or an unknown map as errors. A render
+      // that never finishes is abandoned; closing the page below also ends its evaluate call.
+      const rendering = page.evaluate(
+        async (value) => (window as unknown as RenderWindow).mapeditRender(value),
+        spec,
+      );
+      rendering.catch(() => undefined);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new RenderTimeout()), this.renderTimeoutMs);
+      });
+      const data = await Promise.race([rendering, timeout])
         .catch((error: unknown) => {
-          throw new Error(`Render page error: ${renderPageError(error)}`);
-        });
+          throw new Error(
+            error instanceof RenderTimeout
+              ? `The render page did not finish within ${this.renderTimeoutMs / 1000} seconds and was closed. Try again, or ask for fewer views or a smaller tileSize.`
+              : `Render page error: ${renderPageError(error)}`,
+          );
+        })
+        .finally(() => clearTimeout(timer));
       if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(data))
         throw new Error('The render page did not return a PNG data URL.');
       const png = Buffer.from(data.slice('data:image/png;base64,'.length), 'base64');

@@ -16,7 +16,7 @@ import { ScreenshotService } from './screenshot.js';
 import { createMcpHttpHandler, type AgentServices } from './mcp.js';
 import { parseMockNotice } from './mock-services.js';
 import { projectIdentity } from './project-identity.js';
-import { containsPath } from './paths.js';
+import { containsPath, findWebRoot } from './paths.js';
 import { UnknownMapError, noticeMessage } from './notice.js';
 export { projectIdentity } from './project-identity.js';
 export { MemoryState } from './state.js';
@@ -28,14 +28,20 @@ export { exportProject } from './export-project.js';
 export { connectStdio } from './mcp.js';
 export { DiskState } from './disk-state.js';
 export { findBrowser, SCREENSHOT_BROWSER_ARGS } from './screenshot.js';
+export { findWebRoot } from './paths.js';
+/** The editor build beside the server package: packages/web/dist, or an installed @mapedit/web. */
+export const SERVER_WEB_ROOT = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 export interface ServerOptions {
   port?: number;
   mock?: boolean;
   root?: string;
-  webRoot?: string;
+  /** The editor build to serve; null serves none. Defaults to SERVER_WEB_ROOT when it is built. */
+  webRoot?: string | null;
   state?: StateStore;
   browserPath?: string;
+  /** How long a screenshot waits for the render page; 60 seconds unless a test shortens it. */
+  screenshotTimeoutMs?: number;
   services?: AgentServices;
 }
 export interface MapeditServer {
@@ -129,13 +135,10 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
           build: (id, revision) => buildProject(root, id, revision),
           preview: buildFromParsed,
         }));
-  const defaultWebRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
   const webRoot =
-    options.webRoot ??
-    (await stat(defaultWebRoot).then(
-      (value) => (value.isDirectory() ? defaultWebRoot : undefined),
-      () => undefined,
-    ));
+    options.webRoot === null
+      ? undefined
+      : (options.webRoot ?? (await findWebRoot(SERVER_WEB_ROOT)));
   /** A map's scene, or the error for an id that is not a project map (protocol section 4, flow 2). */
   const sceneOrUnknown = (mapId?: string): Promise<SceneSnapshot | UnknownMapError> =>
     state.getScene(mapId).catch((error: unknown) => {
@@ -368,7 +371,10 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Unable to bind local server.');
   port = address.port;
-  const screenshots = new ScreenshotService(`http://127.0.0.1:${port}`, options.browserPath);
+  const screenshots = new ScreenshotService(`http://127.0.0.1:${port}`, options.browserPath, {
+    ...(options.screenshotTimeoutMs ? { renderTimeoutMs: options.screenshotTimeoutMs } : {}),
+    webRoot: webRoot ?? null,
+  });
   const mcp = createMcpHttpHandler(
     options.services ?? state.createAgentServices(screenshots),
     screenshots,

@@ -25,7 +25,7 @@ const files: Record<string, string> = {
     'structures:\n  - id: a\n    position: [10, 10]\n    modules:\n      - {id: base, module: block, at: [0, 0, 0]}\n',
 };
 
-async function realServer(options: { mock?: boolean } = {}) {
+async function realServer(options: { mock?: boolean; extra?: Record<string, string> } = {}) {
   if (options.mock) {
     const server = await createServer({ mock: true, port: 0 });
     cleanup.push(() => server.close());
@@ -33,7 +33,7 @@ async function realServer(options: { mock?: boolean } = {}) {
   }
   const root = await mkdtemp(join(tmpdir(), 'mapedit-replies-'));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
-  for (const [file, text] of Object.entries(files)) {
+  for (const [file, text] of Object.entries({ ...files, ...options.extra })) {
     await mkdir(dirname(join(root, file)), { recursive: true });
     await writeFile(join(root, file), text);
   }
@@ -177,6 +177,36 @@ describe('F30 unknown maps are never built or cached', () => {
       );
     }
     expect([...state.builds.keys()]).toEqual(['village']);
+  });
+
+  it('still opens a map whose map.yaml has errors, so its scene shows them', async () => {
+    const server = await realServer({
+      extra: {
+        'maps/broken/map.yaml': 'size: {x: 100\n',
+        // A valid map whose id differs from its directory name is known only by its id.
+        'maps/folder/map.yaml': 'id: renamed\nsize: {x: 100, z: 100}\n',
+      },
+    });
+    const state = server.state as DiskState;
+    const client = await connect(server);
+    client.send({ type: 'openMap', mapId: 'broken' });
+    const scene = (await client.next('scene')).scene;
+    expect(scene.map.id).toBe('broken');
+    expect(scene.fileErrors.map((error) => error.file)).toContain('maps/broken/map.yaml');
+    const mcp = new Client({ name: 'replies-test', version: '1' });
+    await mcp.connect(new StreamableHTTPClientTransport(new URL('/mcp', server.url)));
+    cleanup.push(() => mcp.close());
+    const check = (await mcp.callTool({
+      name: 'check',
+      arguments: { map: 'broken' },
+    })) as CallToolResult;
+    expect(check.isError).toBeFalsy();
+    expect((check.content[0] as { text: string }).text).toContain('maps/broken/map.yaml');
+    client.send({ type: 'openMap', mapId: 'folder' });
+    expect(await client.next('notice')).toMatchObject({ code: 'unknown_map' });
+    client.send({ type: 'openMap', mapId: 'renamed' });
+    expect((await client.next('scene')).scene.map.id).toBe('renamed');
+    expect(state.builds.has('folder')).toBe(false);
   });
 
   it('answers an unknown map the same way in mock mode', async () => {

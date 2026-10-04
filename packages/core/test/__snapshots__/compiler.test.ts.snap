@@ -6,6 +6,7 @@ exports[`project format and deterministic compilation > compiles a stable golden
   "generated": [],
   "map": {
     "id": "village",
+    "kind": "map",
     "name": "Village",
     "size": {
       "x": 100,

@@ -66,6 +66,7 @@ interface MapInfo {
   name: string;
   size: { x: number; z: number };              // 公尺；地圖範圍是 x 從 0 到 size.x、z 從 0 到 size.z
   sun: { azimuth: number; elevation: number }; // 度
+  kind?: 'map' | 'module_preview';             // 新增：一般地圖是 'map'；'module_preview' 是 MCP build_module 給 /render 用的暫時場景，只有一個模組（見第 6 節）
 }
 
 interface TerrainView {
@@ -166,6 +167,7 @@ interface ProjectInfo {
 | | `socketA`、`socketB` | `string` | 兩個插槽，格式是 `module:<structureId>/<instanceId>.<socketId>` |
 | | `typeA`、`typeB` | `string` | 兩個插槽各自的插槽類型 |
 | `overlap` | `target` | `'module' \| 'terrain'` | 和另一個模組重疊（`refs` 有兩個模組），或埋進地形（`refs` 只有一個模組） |
+| | `estimated` | `true`（選填） | 新增：一次檢查只精確比對到第 200 個重疊，之後的模組重疊改用外框估算，這時才帶這個欄位。估算可能多報，修好前面的重疊再檢查一次就會是精確結果 |
 | `unsupported` | （無） | | 只有共同的 `file`、`line` |
 
 `OffGridField`：
@@ -239,7 +241,15 @@ interface HistoryEntry {
   time: string;    // ISO 8601
   summary: string; // 英文；前端可以只顯示作者和時間
   files: string[];
+  action?: HistoryAction; // 新增：修改的種類，前端用它顯示，不必解析 summary
+  refs?: ObjectRef[];     // 新增：相關的物件；Agent 改檔時是受影響的物件，可能是空的
 }
+
+// 新增
+type HistoryAction =
+  | 'move'          // 人移動了 refs 裡的結構或標記
+  | 'delete'        // 人刪除了 refs 裡的物件
+  | 'agent_change'; // Agent 改了 files 裡的檔案
 
 type NoticeCode =
   | 'agent_changed'           // Agent 改了檔案，refs 是受影響的物件
@@ -266,7 +276,7 @@ type EditFailure =
 
 1. 連線後，前端送 `hello`，後端回 `welcome`。
 2. 前端送 `openMap`，後端回 `scene` 和 `history`。之後只要地圖有變動（Agent 改檔、人的修改、復原或重做），後端就再送一次 `scene`。
-   - `mapId` 不是專案裡的地圖時（例如 Agent 剛刪掉它），後端不會建置這張地圖，只回 `notice { level: 'error', code: 'unknown_map' }`，`message` 是英文說明；這條連線原本開著的地圖不變。已經開著的地圖之後被 Agent 刪掉時，則是下一份 `scene` 的 `fileErrors` 說明它不存在。
+   - `mapId` 不是專案裡的地圖時（例如 Agent 剛刪掉它），後端不會建置這張地圖，只回 `notice { level: 'error', code: 'unknown_map' }`，`message` 是英文說明；這條連線原本開著的地圖不變。`map.yaml` 有錯誤的地圖仍然算專案裡的地圖，照常回 `scene`，錯誤寫在 `fileErrors`。已經開著的地圖之後被 Agent 刪掉時，則是下一份 `scene` 的 `fileErrors` 說明它不存在。
 3. **拖動中**：
    - 前端每個畫面最多送一個 `previewEdit`。還沒收到回覆前，只保留最新的一個，舊的直接丟掉。
    - 後端回 `previewResult`：`transform` 是對齊後的位置，`violations` 是放在那裡會造成的違規。`ok` 為 false 時，前端把預覽畫成紅色。
@@ -297,7 +307,7 @@ type EditFailure =
 
 ## 6. 截圖頁面 `/render`
 
-後端用無頭瀏覽器打開 `/render?map=<mapId>`。
+後端用無頭瀏覽器打開 `/render?map=<mapId>`。MCP `build_module` 的預覽也用這個頁面，這時的地圖是只有一個模組的暫時場景，`map.kind` 是 `'module_preview'`（新增）；頁面依這個欄位決定怎麼取景，不要依地圖 id 判斷。
 
 - 頁面載入場景（WebSocket `hello` 時帶 `client: 'render'`，或用 `GET /api/scene`），準備好之後設定 `window.mapeditRenderReady = true`。
 - 頁面上只有 3D 畫面，不顯示任何介面元素。

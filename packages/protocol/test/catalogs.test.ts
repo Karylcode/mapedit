@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import {
   EDIT_FAILURES,
+  HISTORY_ACTIONS,
   NOTICE_CODES,
   VIOLATION_KINDS,
   violationParamsProblems,
@@ -35,5 +36,6 @@ it('keeps every catalog identical to its union in docs/protocol.md', () => {
   expect(VIOLATION_KINDS).toEqual(documentedUnion('ViolationKind'));
   expect(NOTICE_CODES).toEqual(documentedUnion('NoticeCode'));
   expect(EDIT_FAILURES).toEqual(documentedUnion('EditFailure'));
+  expect(HISTORY_ACTIONS).toEqual(documentedUnion('HistoryAction'));
   expect(NOTICE_CODES).toContain('unknown_map');
 });

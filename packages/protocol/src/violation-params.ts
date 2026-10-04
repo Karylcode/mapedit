@@ -63,7 +63,8 @@ export interface ViolationParamsByKind {
     typeA: string;
     typeB: string;
   };
-  overlap: ViolationSourceParams & { target: 'module' | 'terrain' };
+  /** `estimated` marks a module overlap estimated from bounding boxes after 200 exact ones. */
+  overlap: ViolationSourceParams & { target: 'module' | 'terrain'; estimated?: true };
   unsupported: ViolationSourceParams;
 }
 /** A ViolationView whose params are typed by its kind; narrow it with `switch (kind)`. */
@@ -154,7 +155,10 @@ const fields: { [K in ViolationKind]: Record<string, [Check, 'required' | 'optio
     typeA: [isString, 'required'],
     typeB: [isString, 'required'],
   },
-  overlap: { target: [oneOf('module', 'terrain'), 'required'] },
+  overlap: {
+    target: [oneOf('module', 'terrain'), 'required'],
+    estimated: [oneOf(true), 'optional'],
+  },
   unsupported: {},
 };
 
