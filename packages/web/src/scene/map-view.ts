@@ -10,10 +10,10 @@ import {
   Mesh,
   MeshStandardMaterial,
   Plane,
+  Raycaster,
   Vector3,
   type Material,
   type Object3D,
-  type Raycaster,
 } from 'three';
 import type {
   GeneratedMeshView,
@@ -89,6 +89,10 @@ export class MapView {
 
   constructor(private readonly assets: AssetCache) {
     this.root.name = 'map';
+    this.terrainGroup.name = 'terrain';
+    this.moduleGroup.name = 'modules';
+    this.generatedGroup.name = 'generated';
+    this.markerGroup.name = 'markers';
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0004;
@@ -225,6 +229,12 @@ export class MapView {
     return (
       raycaster.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), 0), new Vector3()) ?? undefined
     );
+  }
+
+  /** Terrain height at a map position, if terrain is drawn there. */
+  heightAt(x: number, z: number): number | undefined {
+    const down = new Raycaster(new Vector3(x, 1e4, z), new Vector3(0, -1, 0));
+    return down.intersectObjects(this.terrainGroup.children, false)[0]?.point.y;
   }
 
   /** Oriented boxes outlining an object: one box for a structure, module or marker. */

@@ -39,7 +39,13 @@ describe('interface language', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(zhTW).sort());
     for (const lang of ['zh-TW', 'en'] as const)
       for (const key of Object.keys(zhTW) as (keyof typeof zhTW)[]) {
-        const text = translate(lang, key, { name: 'x', loaded: 1, total: 2, reason: 'r' });
+        const text = translate(lang, key, {
+          name: 'x',
+          loaded: 1,
+          total: 2,
+          reason: 'r',
+          count: 3,
+        });
         expect(text, `${lang} ${key}`).not.toBe('');
         expect(text, `${lang} ${key}`).not.toMatch(/\{\w+\}/);
       }

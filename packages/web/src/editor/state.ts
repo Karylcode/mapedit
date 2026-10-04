@@ -1,4 +1,4 @@
-import type { HistoryEntry, ProjectInfo, SceneSnapshot } from '@mapedit/protocol';
+import type { HistoryEntry, ObjectRef, ProjectInfo, SceneSnapshot } from '@mapedit/protocol';
 import type { Lang } from '../i18n/i18n.js';
 import type { ConnectionStatus } from '../net/connection.js';
 
@@ -22,6 +22,10 @@ export interface EditorState {
   progress: Progress;
   /** True from opening a map until its first snapshot is fully drawn. */
   loadingMap: boolean;
+  /** Selected structure, module or marker. */
+  selection?: ObjectRef;
+  /** Object under the pointer, with the pointer's page position. */
+  hover?: { ref: ObjectRef; x: number; y: number };
 }
 
 export const initialState = (lang: Lang): EditorState => ({

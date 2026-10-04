@@ -30,12 +30,25 @@ export class OverviewCamera {
     this.clamp();
   }
 
+  get mapSize(): MapSize {
+    return this.size;
+  }
+
+  /** Target and distance that show the whole map. */
+  mapFraming(fov: number, aspect = 1): { target: Vector3; distance: number } {
+    return {
+      target: new Vector3(this.size.x / 2, 0, this.size.z / 2),
+      distance: fitDistance(Math.hypot(this.size.x, this.size.z) / 2, fov, aspect) * 0.8,
+    };
+  }
+
   /** Look at the whole map from the south, north at the top of the screen. */
   frameMap(fov: number, aspect = 1): void {
-    this.target.set(this.size.x / 2, 0, this.size.z / 2);
+    const framing = this.mapFraming(fov, aspect);
+    this.target.copy(framing.target);
+    this.distance = framing.distance;
     this.bearing = 180;
     this.pitch = 55;
-    this.distance = fitDistance(Math.hypot(this.size.x, this.size.z) / 2, fov, aspect) * 0.8;
     this.clamp();
   }
 

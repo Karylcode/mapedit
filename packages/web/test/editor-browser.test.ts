@@ -1,0 +1,151 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Browser, Page } from 'playwright-core';
+import { createServer, type MapeditServer } from '@mapedit/server';
+import {
+  buildWeb,
+  editorState,
+  findBrowser,
+  launch,
+  openEditor,
+  screenPoint,
+} from './browser/harness.js';
+
+const executable = await findBrowser();
+
+describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
+  let web: Awaited<ReturnType<typeof buildWeb>>;
+  let server: MapeditServer;
+  let browser: Browser;
+  let page: Page;
+
+  beforeAll(async () => {
+    web = await buildWeb();
+    server = await createServer({ mock: true, port: 0, webRoot: web.dir });
+    browser = await launch(executable!);
+    page = await openEditor(browser, server.url);
+  }, 120_000);
+
+  afterAll(async () => {
+    await browser?.close();
+    await server?.close();
+    await web?.dispose();
+  });
+
+  it('shows the project, map and live link in the title block', async () => {
+    const text = await page.locator('.title-block').innerText();
+    expect(text).toMatch(/Mock project/);
+    expect(text).toMatch(/Mock village/);
+    expect(await page.locator('.tb-link').getAttribute('data-status')).toBe('open');
+    expect(page.url()).toMatch(/\?map=village$/);
+  });
+
+  it('draws every kind of mock data', async () => {
+    const drawn = await editorState(page, (e) => {
+      const types: Record<string, number> = {};
+      for (const mesh of e.map.root.getObjectByName('modules').children)
+        types[mesh.name] = mesh.count;
+      return {
+        types,
+        terrain: e.map.root.getObjectByName('terrain').children.length,
+        generated: e.map.root.getObjectByName('generated').children.length,
+        markers: e.map.root.getObjectByName('markers').children.length,
+        flags: e.map.flags.children.length,
+        progress: e.store.state.progress,
+        violationBoxes: e.map.violationGlass.count,
+      };
+    });
+    expect(drawn.types).toEqual({ block: 9, foundation: 1, missing_block: 1 });
+    expect(drawn.terrain).toBe(1);
+    expect(drawn.generated).toBe(1);
+    expect(drawn.flags).toBe(7);
+    expect(drawn.markers).toBe(2);
+    expect(drawn.progress).toEqual({ loaded: 4, total: 4 });
+    expect(drawn.violationBoxes).toBeGreaterThan(0);
+  });
+
+  it('names what is under the pointer and selects structure, then module; Esc clears', async () => {
+    const house = await screenPoint(page, 'module:house/base');
+    await page.mouse.move(house.x, house.y);
+    await expect.poll(() => page.locator('.tooltip').isVisible()).toBe(true);
+    expect(await page.locator('.tooltip').innerText()).toMatch(/House/);
+    await page.mouse.click(house.x, house.y);
+    await expect
+      .poll(() => editorState(page, (e) => e.store.state.selection))
+      .toBe('structure:house');
+    expect(await page.locator('.action-name').innerText()).toBe('House');
+    await page.mouse.click(house.x, house.y);
+    await expect
+      .poll(() => editorState(page, (e) => e.store.state.selection))
+      .toBe('module:house/base');
+    await page.keyboard.press('Escape');
+    await expect.poll(() => editorState(page, (e) => e.store.state.selection)).toBeUndefined();
+  });
+
+  it('selects markers and clears the selection on empty ground', async () => {
+    const zone = await screenPoint(page, 'marker:spawn');
+    await page.mouse.click(zone.x, zone.y);
+    await expect.poll(() => editorState(page, (e) => e.store.state.selection)).toBe('marker:spawn');
+    expect(await page.locator('.action-kind').innerText()).toMatch(/spawn point/i);
+    const empty = await screenPoint(page, 'structure:out_of_bounds');
+    await page.mouse.click(empty.x - 200, empty.y + 200);
+    await expect.poll(() => editorState(page, (e) => e.store.state.selection)).toBeUndefined();
+  });
+
+  it('focuses the selection with F', async () => {
+    const before = await editorState(page, (e) => e.viewport.overview.distance);
+    const target = await screenPoint(page, 'module:raised_foundation/base');
+    await page.mouse.click(target.x, target.y);
+    await page.keyboard.press('f');
+    await expect
+      .poll(() => editorState(page, (e) => e.controls.moving), { timeout: 3000 })
+      .toBe(false);
+    const after = await editorState(page, (e) => ({
+      target: e.viewport.overview.target.toArray(),
+      distance: e.viewport.overview.distance,
+    }));
+    expect(after.distance).toBeLessThan(before);
+    expect(after.target[0]).toBeCloseTo(21, 0);
+    expect(after.target[2]).toBeCloseTo(21, 0);
+    await page.keyboard.press('Escape');
+  });
+
+  it('orbits with the right button, pans with the middle button and WASD, zooms with the wheel', async () => {
+    const camera = () =>
+      editorState(page, (e) => ({
+        bearing: e.viewport.overview.bearing,
+        pitch: e.viewport.overview.pitch,
+        target: e.viewport.overview.target.toArray(),
+        distance: e.viewport.overview.distance,
+      }));
+    const start = await camera();
+    await page.mouse.move(640, 400);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(700, 380, { steps: 4 });
+    await page.mouse.up({ button: 'right' });
+    const orbited = await camera();
+    expect(orbited.bearing).not.toBeCloseTo(start.bearing, 1);
+
+    await page.mouse.move(640, 400);
+    await page.mouse.down({ button: 'middle' });
+    await page.mouse.move(560, 460, { steps: 4 });
+    await page.mouse.up({ button: 'middle' });
+    const panned = await camera();
+    expect(panned.target).not.toEqual(orbited.target);
+    expect(panned.distance).toBeCloseTo(orbited.distance);
+
+    await page.mouse.wheel(0, -400);
+    await expect.poll(async () => (await camera()).distance).toBeLessThan(panned.distance);
+
+    const beforeKeys = (await camera()).target;
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(250);
+    await page.keyboard.up('KeyW');
+    const afterKeys = (await camera()).target;
+    expect(afterKeys).not.toEqual(beforeKeys);
+    expect(await camera()).toMatchObject({ bearing: orbited.bearing });
+  });
+
+  it('reports no page errors', () => {
+    expect((page as Page & { errors: string[] }).errors).toEqual([]);
+  });
+});
