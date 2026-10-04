@@ -1,5 +1,5 @@
 import { Document, WebIO, type mat4, type Mesh } from '@gltf-transform/core';
-import { markerPosition, parseObjectRef, type Mat4 } from '@mapedit/protocol';
+import { markerPosition, parseObjectRef } from '@mapedit/protocol';
 import type { Compilation } from './domain.js';
 import type { ModelGeometry } from './model.js';
 import { appendGeometry } from './glb.js';
@@ -10,7 +10,7 @@ import {
   terrainTriangles,
   type TerrainData,
 } from './terrain.js';
-import { multiplyMatrices, transformMatrix } from './math.js';
+import { inverseRigid, multiplyMatrices, transformMatrix } from './math.js';
 import { checkGeometry, GEOMETRY_TOLERANCE } from './geometry.js';
 
 export interface ExportInput {
@@ -20,34 +20,6 @@ export interface ExportInput {
   /** Accepted for compatibility; extensions are recomputed against the exported terrain. */
   generated?: { owner: string; geometry: ModelGeometry }[];
   textures?: Readonly<Record<string, Uint8Array>>;
-}
-
-function inverseRigid(matrix: Mat4): Mat4 {
-  const result = [
-    matrix[0]!,
-    matrix[4]!,
-    matrix[8]!,
-    0,
-    matrix[1]!,
-    matrix[5]!,
-    matrix[9]!,
-    0,
-    matrix[2]!,
-    matrix[6]!,
-    matrix[10]!,
-    0,
-    0,
-    0,
-    0,
-    1,
-  ];
-  for (let row = 0; row < 3; row++)
-    result[row + 12] = -(
-      result[row]! * matrix[12]! +
-      result[row + 4]! * matrix[13]! +
-      result[row + 8]! * matrix[14]!
-    );
-  return result;
 }
 
 /** Export the checked map as one self-contained, engine-neutral GLB. */

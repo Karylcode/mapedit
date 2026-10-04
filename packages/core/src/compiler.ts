@@ -20,7 +20,6 @@ import {
   EPSILON,
   moduleTransform,
   multiplyMatrices,
-  normalizeRotation,
   onGrid,
   snap,
   transformBounds,
@@ -29,7 +28,7 @@ import {
   yawOf,
 } from './math.js';
 import { createViolation } from './violation.js';
-import { compatibleSocketTypes, socketTypesCompatible } from './socket-rules.js';
+import { compatibleSocketTypes, socketAttachment, socketTypesCompatible } from './socket-rules.js';
 
 function referenceSuggestion(value: string, candidates: string[], fallback: string): string {
   const distance = (candidate: string): number => {
@@ -305,45 +304,24 @@ export function compileMap(
     socketConnections.push({ a: own.instanceRef, b: target.instanceRef });
   };
   const attachmentMatrix = (own: PlacedSocket, target: PlacedSocket, source: SourceRef): Mat4 => {
-    const ownDirection = directionVector(
-      own.socket.direction,
-      own.socket.rotation + yawOf(own.transform),
-    );
-    const targetDirection = directionVector(
-      target.socket.direction,
-      target.socket.rotation + yawOf(target.transform),
-    );
-    let yaw: number;
-    if (Math.abs(ownDirection[1]) > EPSILON || Math.abs(targetDirection[1]) > EPSILON) {
-      if (
-        Math.abs(ownDirection[1] + targetDirection[1]) > EPSILON ||
-        Math.abs(ownDirection[1]) < EPSILON
-      )
-        violations.push(
-          createViolation({
-            kind: 'incompatible_socket',
-            message: 'Socket directions cannot face each other with a Y-axis rotation.',
-            refs: [own.instanceRef, target.instanceRef],
-            source,
-            suggestion: `Choose an ${targetDirection[1] > EPSILON ? 'own Socket facing down' : targetDirection[1] < -EPSILON ? 'own Socket facing up' : 'own horizontal Socket'} to face ${target.instanceRef}.${target.socket.id}; a Y-axis rotation cannot align the current directions. ${socketAdvice(own, target)}`,
-            rule: `socket-directions:${JSON.stringify([`${own.instanceRef}.${own.socket.id}`, `${target.instanceRef}.${target.socket.id}`].sort())}`,
-          }),
-        );
-      yaw =
-        yawOf(target.transform) +
-        target.socket.rotation -
-        yawOf(own.transform) -
-        own.socket.rotation;
-    } else
-      yaw =
-        (Math.atan2(targetDirection[0], targetDirection[2]) * 180) / Math.PI +
-        180 -
-        (Math.atan2(ownDirection[0], ownDirection[2]) * 180) / Math.PI;
-    yaw = normalizeRotation(yaw);
-    const ownPoint = transformPoint(own.transform, own.socket.position),
-      targetPoint = transformPoint(target.transform, target.socket.position);
-    const rotated = transformPoint(transformMatrix([0, 0, 0], yaw), ownPoint);
-    return transformMatrix(targetPoint.map((n, i) => clean(n - rotated[i]!)) as Vec3, yaw);
+    const { transform, facing } = socketAttachment(own, target);
+    if (!facing) {
+      const targetDirection = directionVector(
+        target.socket.direction,
+        target.socket.rotation + yawOf(target.transform),
+      );
+      violations.push(
+        createViolation({
+          kind: 'incompatible_socket',
+          message: 'Socket directions cannot face each other with a Y-axis rotation.',
+          refs: [own.instanceRef, target.instanceRef],
+          source,
+          suggestion: `Choose an ${targetDirection[1] > EPSILON ? 'own Socket facing down' : targetDirection[1] < -EPSILON ? 'own Socket facing up' : 'own horizontal Socket'} to face ${target.instanceRef}.${target.socket.id}; a Y-axis rotation cannot align the current directions. ${socketAdvice(own, target)}`,
+          rule: `socket-directions:${JSON.stringify([`${own.instanceRef}.${own.socket.id}`, `${target.instanceRef}.${target.socket.id}`].sort())}`,
+        }),
+      );
+    }
+    return transform;
   };
   const localByStructure = new Map<string, Map<string, LocalInstance>>();
   for (const structure of structures) {

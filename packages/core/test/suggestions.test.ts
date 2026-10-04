@@ -324,8 +324,9 @@ describe('F5 concrete geometry suggestions', () => {
       ).violations,
       'unsupported',
     );
-    expect(violation.suggestion).toContain('module:house/base.west');
-    expect(violation.suggestion).toContain('module:anchor/base.east');
+    // F18 writes the exact Structure attachment to use instead of naming the Sockets only.
+    expect(violation.suggestion).toContain('Attach structure:house to anchor/base.east (2 m away)');
+    expect(violation.suggestion).toContain('attach: {socket: base.west, to: anchor/base.east}');
   });
   it('offers canFloat only as an intentional exception when neither lowering nor compatible Sockets help', async () => {
     const violation = violationOf(
@@ -338,6 +339,7 @@ describe('F5 concrete geometry suggestions', () => {
     expect(violation.suggestion).toContain('true');
   });
   it('does not suggest attaching to another unsupported floating Socket', async () => {
+    // Shared by F5 and F18: Sockets on unsupported Modules can never provide Support.
     const compiled = fixture(
       [placed('alpha', [10, 6, 10]), placed('beta', [14, 6, 10])],
       [
@@ -353,8 +355,130 @@ describe('F5 concrete geometry suggestions', () => {
     const violations = (await checkGeometry(compiled, await geometryModels())).violations;
     expect(violations.filter((item) => item.kind === 'unsupported')).toHaveLength(2);
     for (const violation of violations) {
-      expect(violation.suggestion).not.toMatch(/Attach free Socket/i);
+      expect(violation.suggestion).not.toMatch(/\bAttach\b/);
       expect(violation.suggestion).toContain('canFloat: true');
     }
+  });
+});
+
+describe('F18 unsupported suggestions inside the same Structure', () => {
+  // A wall on the ground and a roof floating 1 m above it, with compatible free Sockets.
+  const wallAndRoof: TestModule[] = [
+    {
+      id: 'wall',
+      size: [2, 2, 1],
+      sockets: [{ id: 'top', type: 'wall', position: [1, 2, 0.5], direction: 'up' }],
+    },
+    {
+      id: 'roof',
+      size: [2, 0.5, 2],
+      sockets: [{ id: 'bottom', type: 'roof', position: [1, 0, 0.5], direction: 'down' }],
+    },
+    // An unsupported obstruction: it blocks the attached roof but cannot support it.
+    { id: 'slab', size: [2, 0.5, 2] },
+  ];
+  const wallAndRoofModels = () =>
+    geometryModels({
+      wall: box([2, 2, 1]),
+      roof: box([2, 0.5, 2]),
+      slab: box([2, 0.5, 2]),
+      block: box([2, 2, 2]),
+    });
+  const house = (modules: TestStructure['modules']): TestStructure => ({
+    id: 'house',
+    position: [10, 10],
+    modules,
+  });
+  const unsupportedOf = (violations: ViolationView[], ref: string): ViolationView => {
+    const result = violations.find(
+      (violation) => violation.kind === 'unsupported' && violation.refs.includes(ref),
+    );
+    expect(result, `Expected ${ref} to be unsupported`).toBeDefined();
+    return result!;
+  };
+
+  it('attaches a floating roof to the free wall Socket below it in the same Structure', async () => {
+    const modules = [
+      { id: 'wall_n', module: 'wall', at: [0, 0, 0] as Vec3 },
+      { id: 'roof', module: 'roof', at: [0, 3, 0] as Vec3 },
+    ];
+    const models = await wallAndRoofModels();
+    const violation = unsupportedOf(
+      (await checkGeometry(fixture([house(modules)], wallAndRoof), models)).violations,
+      'module:house/roof',
+    );
+    expect(violation.suggestion).toContain('Attach roof to wall_n.top (1 m below)');
+    expect(violation.suggestion).toContain('attach: {socket: bottom, to: wall_n.top}');
+    expect(violation.suggestion).not.toContain('canFloat');
+
+    // Applying the advice removes the violation without creating another one.
+    const fixed = fixture(
+      [
+        house([
+          modules[0]!,
+          { id: 'roof', module: 'roof', attach: { socket: 'bottom', to: 'wall_n.top' } },
+        ]),
+      ],
+      wallAndRoof,
+    );
+    expect(fixed.scene.violations).toEqual([]);
+    expect((await checkGeometry(fixed, models)).violations).toEqual([]);
+  });
+
+  it('prefers a clear supported Socket and ignores Sockets on unsupported Modules', async () => {
+    const compiled = fixture(
+      [
+        house([
+          { id: 'wall_n', module: 'wall', at: [0, 0, 0] },
+          { id: 'wall_far', module: 'wall', at: [0, 0, 3] },
+          { id: 'loose_wall', module: 'wall', at: [0, 4.5, 0] },
+          { id: 'roof', module: 'roof', at: [0, 3, 3] },
+        ]),
+      ],
+      wallAndRoof,
+    );
+    const violation = unsupportedOf(
+      (await checkGeometry(compiled, await wallAndRoofModels())).violations,
+      'module:house/roof',
+    );
+    expect(violation.suggestion).toContain('Attach roof to wall_far.top (1 m below)');
+    expect(violation.suggestion).not.toContain('loose_wall');
+  });
+
+  it('still names the compatible Socket instead of canFloat when attaching would overlap', async () => {
+    const compiled = fixture(
+      [
+        house([
+          { id: 'wall_n', module: 'wall', at: [0, 0, 0] },
+          { id: 'roof', module: 'roof', at: [0, 3, 0] },
+          { id: 'blocker', module: 'slab', at: [0, 2, 1] },
+        ]),
+      ],
+      wallAndRoof,
+    );
+    const violation = unsupportedOf(
+      (await checkGeometry(compiled, await wallAndRoofModels())).violations,
+      'module:house/roof',
+    );
+    expect(violation.suggestion).toContain('Attach roof to wall_n.top (1 m below)');
+    expect(violation.suggestion).toMatch(/overlap/i);
+    expect(violation.suggestion).not.toContain('canFloat');
+  });
+
+  it('lowers only the floating Module when it can rest on a supported Module of its Structure', async () => {
+    const modules = [
+      { id: 'base', module: 'block', at: [0, 0, 0] as Vec3 },
+      { id: 'top', module: 'block', at: [0, 3, 0] as Vec3 },
+    ];
+    const models = await wallAndRoofModels();
+    const violation = unsupportedOf(
+      (await checkGeometry(fixture([house(modules)]), models)).violations,
+      'module:house/top',
+    );
+    expect(violation.suggestion).toContain('Lower top by 1 m');
+    expect(violation.suggestion).toContain('module:house/base');
+    expect(violation.suggestion).not.toContain('canFloat');
+    const fixed = fixture([house([modules[0]!, { id: 'top', module: 'block', at: [0, 2, 0] }])]);
+    expect((await checkGeometry(fixed, models)).violations).toEqual([]);
   });
 });

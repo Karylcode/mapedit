@@ -386,3 +386,23 @@ by Claude. Each entry records the change, the tests and any deviation.
   in Codex, which means Codex rewrites MCP schemas before calling its API; the
   400 failure is on the Anthropic side. The real Claude Code check is listed under
   需要人處理 because the CLI login on this machine has expired. Deviation: none.
+- **F18 complete:** `unsupported` advice now looks for a supporting position in
+  this order: lower the whole Structure (F5 behavior); attach to the nearest
+  compatible free Socket of a supported Module, including Sockets in the same
+  Structure, choosing a placement that is verified clear; lower only this Module
+  and the Modules attached to it onto terrain or a supported Module; otherwise
+  name the nearest compatible Socket and say that the obstruction must move too.
+  `canFloat: true` is suggested only when no compatible supported free Socket is
+  within 5 m. Same-Structure advice names the YAML to use, for example
+  `Attach roof to wall_n.top (1 m below)` followed by
+  `attach: {socket: bottom, to: wall_n.top}` as the replacement for the roof's
+  `at` and `rotation`; another Structure gets the matching Structure `attach`.
+  The compiler's Socket alignment moved into the shared `socketAttachment`
+  (`core/src/socket-rules.ts`), so the advice computes
+  the attached pose exactly as compilation does; `inverseRigid` moved from export
+  to `core/src/math.ts`. Tests: `core/test/suggestions.test.ts` "F18" (the roof
+  case, preferring a clear supported Socket over a floating one, an obstructed
+  Socket, and lowering one Module onto its Structure); each fix is applied back
+  and rechecked. All four failed first with the reported `canFloat` advice. The
+  F5 cross-Structure test now expects the exact `attach` text. The rewrite already
+  uses the F24 names (`solidsByStructure`, `Placement`, `place`). Deviation: none.
