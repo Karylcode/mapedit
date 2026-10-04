@@ -39,6 +39,8 @@ interface Events {
 type Listener<K extends keyof Events> = (value: Events[K]) => void;
 
 const OPEN = 1;
+/** The close code the server uses for a message it cannot accept (protocol section 4, flow 8). */
+const POLICY_VIOLATION = 1008;
 const browserSocket = (url: string): SocketLike => new WebSocket(url) as unknown as SocketLike;
 const serverTypes = new Set([
   'welcome',
@@ -186,9 +188,12 @@ export class Connection {
       const message = parseServerMessage(event.data);
       if (message) this.receive(message);
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.socket !== socket) return;
       this.socket = undefined;
+      // Before welcome the only message sent is hello: a server that cannot accept it
+      // speaks another protocol version, and asking again would not change that.
+      if (!this.welcomed && event.code === POLICY_VIOLATION) return this.incompatible();
       this.welcomed = false;
       this.retry();
     };
@@ -198,8 +203,7 @@ export class Connection {
   private receive(message: ServerMessage): void {
     if (message.type === 'welcome') {
       if (message.protocolVersion !== 1) {
-        this.stopped = true;
-        this.setStatus('incompatible');
+        this.incompatible();
         this.socket?.close(1000, 'Unsupported protocol version.');
         return;
       }
@@ -213,6 +217,12 @@ export class Connection {
     } else if (message.type === 'scene') this.mapShown(message.scene.map.id);
     else if (message.type === 'notice' && message.code === 'unknown_map') this.mapRefused();
     this.emit('message', message);
+  }
+
+  /** Stop for good: only a page and server of the same protocol version can talk. */
+  private incompatible(): void {
+    this.stopped = true;
+    this.setStatus('incompatible');
   }
 
   private retry(): void {

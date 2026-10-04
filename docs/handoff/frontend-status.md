@@ -230,6 +230,12 @@ is not modified here.
 - **FE14 完成**：地圖選單選完後立刻失去焦點，方向鍵和 WASD 回到移動鏡頭。
   測試：`test/maps-browser.test.ts` 先讓選單取得焦點再換地圖，接著按住 W 和下方向鍵：鏡頭移動，地圖和選單都沒變
   （修正前按 W 鏡頭不動）。
+- **FE15 完成**：還沒收到 `welcome` 就被以 1008 關閉時，表示伺服器讀不懂 `hello`（協定版本不同）。這時停止重連，
+  狀態變成「伺服器版本不相容」。收到 `welcome` 之後的 1008 照常重連。
+  測試：
+  - `test/connection.test.ts`：假連線測兩種時機的 1008。
+  - `test/editor-browser.test.ts`：用 Playwright 攔下 WebSocket 當成假伺服器，收到 `hello` 就以 1008 關閉。
+    畫面顯示版本不相容，1.5 秒內只連了一次（修正前一直顯示「連線中」）。
 
 ## 自行決定的事
 

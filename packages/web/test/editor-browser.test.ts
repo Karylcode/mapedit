@@ -155,6 +155,25 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     expect(await camera()).toMatchObject({ bearing: orbited.bearing });
   });
 
+  it('stops reconnecting when the server cannot read hello (FE15)', async () => {
+    const other = await browser.newPage({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
+    let connections = 0;
+    // A server that speaks another protocol version closes on hello, as the real one does.
+    await other.routeWebSocket(/\/ws$/, (socket) => {
+      connections++;
+      socket.onMessage(() => socket.close({ code: 1008, reason: 'Invalid protocol message.' }));
+    });
+    await other.goto(server.url);
+    await poll(() => other.locator('.tb-link').getAttribute('data-status')).toBe('incompatible');
+    expect(await other.locator('.status-message').textContent()).toBe(
+      'Incompatible server version',
+    );
+    // Retries would start within 250 ms and repeat within a second.
+    await other.waitForTimeout(1500);
+    expect(connections).toBe(1);
+    await other.close();
+  });
+
   it('reports no page errors', () => {
     expect((page as Page & { errors: string[] }).errors).toEqual([]);
   });

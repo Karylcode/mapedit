@@ -32,9 +32,9 @@ class FakeSocket implements SocketLike {
   receive(message: ServerMessage | string): void {
     this.onmessage?.({ data: typeof message === 'string' ? message : JSON.stringify(message) });
   }
-  drop(): void {
+  drop(code = 1006, reason = ''): void {
     this.readyState = 3;
-    this.onclose?.({ code: 1006, reason: '' });
+    this.onclose?.({ code, reason });
   }
 }
 
@@ -207,6 +207,29 @@ describe('Connection', () => {
     expect(statuses).toEqual(['incompatible']);
     socket.drop();
     expect(timers).toHaveLength(0);
+  });
+
+  it('stops when the server refuses hello with 1008 (FE15)', () => {
+    const { connection, timers, statuses } = fakeConnection();
+    connection.start();
+    const socket = FakeSocket.all[0]!;
+    socket.open();
+    expect(socket.sent).toEqual([{ type: 'hello', protocolVersion: 1, client: 'editor' }]);
+    socket.drop(1008, 'Invalid protocol message.');
+    expect(statuses).toEqual(['incompatible']);
+    expect(connection.status).toBe('incompatible');
+    expect(timers).toHaveLength(0);
+  });
+
+  it('reconnects after a 1008 once welcomed: the version matched (FE15)', () => {
+    const { connection, timers, statuses } = fakeConnection();
+    connection.start();
+    const socket = FakeSocket.all[0]!;
+    socket.open();
+    socket.receive({ type: 'welcome', protocolVersion: 1, project });
+    socket.drop(1008, 'Open a map first.');
+    expect(statuses).toEqual(['open', 'reconnecting']);
+    expect(timers).toHaveLength(1);
   });
 });
 
