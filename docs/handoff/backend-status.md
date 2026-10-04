@@ -194,3 +194,16 @@ recorded after all corrections are complete.
   and MCP multi-map test exercise floating islands supporting ordinary houses,
   grounded exceptions and paging. ADR 0011 behavior is preserved. Related CLI,
   MCP, geometry-report and history tests, typecheck and lint pass. Deviation: none.
+- **F5 complete:** every violation kind now supplies concrete corrections: nearest
+  legal values/angles, minimum boundary moves, closest existing names and accepted
+  socket types. Geometric diagnostics include locations; exact solid searches find
+  shortest cardinal half-meter moves up to 5 m and downward support up to 3 m,
+  then compatible supported free sockets or intentional `canFloat` guidance.
+  Searches cover whole merged structures, reuse a spatial index and candidate cache,
+  and exclude unsupported support cycles. Advice states when it is evaluated at
+  the current geometry/height and requests a recheck after terrain placement.
+  Red/green tests: `core/test/compiler-suggestions.test.ts` and
+  `core/test/suggestions.test.ts`, including openings, explicit terrain-following
+  heights and suggestions applied back to the map. Related geometry, compiler,
+  dragging and server tests pass; 30 ms preview and 2-second/2,000-module bounds
+  remain passing. Deviation: none.

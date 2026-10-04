@@ -163,3 +163,13 @@ Each `floating` entry has `ref`, `moduleType`, and `position` (the module origin
 `mapedit export --out <directory>` validates every map before writing any output, then creates `<map-id>.glb` for each map. `--map <id>` limits both validation and export to that map. A rejected export names invalid maps and retains existing output files. Project-wide malformed-file errors remain visible even when a map cannot be parsed.
 
 Violation kinds from text compilation are `off_grid`, `bad_rotation`, `out_of_bounds`, `missing_reference`, and `incompatible_socket`; geometry adds `overlap` and `unsupported`. All must be resolved before export. Parser errors are a separate `fileErrors` array so the frontend can report a malformed file even when no object exists yet.
+
+Violation IDs identify the rule and affected object refs across revisions; source
+line shifts and measured coordinate changes do not change that identity. File-backed
+violations include `params.file` and `params.line`. Geometry violations also include
+a map-space `location` and a concrete suggestion. Overlap suggestions search the
+four cardinal directions in 0.5 m steps up to 5 m; if no such move clears the
+overlap, the suggestion identifies the objects and location. Unsupported modules
+receive a downward-support suggestion within 3 m, a nearby compatible free socket,
+or guidance to declare `canFloat` when floating is intentional. After applying a
+suggestion, run `check` again to validate the resulting map.

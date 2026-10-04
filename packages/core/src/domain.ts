@@ -117,6 +117,7 @@ export interface Compilation {
   instances: CompiledInstance[];
   sockets: CompiledSocket[];
   socketConnections: { a: string; b: string }[];
+  socketTypes: Record<string, SocketType>;
   sourceRefs: Record<string, SourceRef>;
 }
 export const BUILTIN_MATERIAL_IDS = [

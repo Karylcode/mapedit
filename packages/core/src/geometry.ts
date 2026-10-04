@@ -1,9 +1,14 @@
 import type { Manifold, ManifoldToplevel, Mat4 as ManifoldMat4 } from 'manifold-3d';
 import type { Vec3, ViolationView } from '@mapedit/protocol';
-import type { Bounds, Compilation, CompiledInstance } from './domain.js';
+import type { Bounds, Compilation } from './domain.js';
 import { transformPoint } from './math.js';
 import { geometryMesh, getManifold, meshGeometry, type ModelGeometry } from './model.js';
 import { violationId } from './violation.js';
+import {
+  createGeometryAdvice,
+  type AdviceSolid,
+  type TerrainContact,
+} from './geometry-suggestions.js';
 
 export const GEOMETRY_TOLERANCE = 0.0001;
 const MIN_VOLUME = 1e-9;
@@ -15,11 +20,9 @@ export interface GeometryCheck {
   violations: ViolationView[];
   generated: { owner: string; geometry: ModelGeometry }[];
 }
-interface SolidInstance {
-  instance: CompiledInstance;
-  solid: Manifold;
-  bounds: Bounds;
-}
+type SolidInstance = AdviceSolid;
+const boundsCenter = (bounds: Bounds): Vec3 =>
+  bounds.min.map((value, axis) => (value + bounds.max[axis]!) / 2) as Vec3;
 
 function intersectsBounds(a: Bounds, b: Bounds, margin = 0): boolean {
   return [0, 1, 2].every(
@@ -30,6 +33,14 @@ function intersectVolume(a: Manifold, b: Manifold): number {
   const intersection = a.intersect(b);
   try {
     return intersection.volume();
+  } finally {
+    intersection.delete();
+  }
+}
+function intersectionLocation(a: Manifold, b: Manifold): Vec3 {
+  const intersection = a.intersect(b);
+  try {
+    return boundsCenter(intersection.boundingBox());
   } finally {
     intersection.delete();
   }
@@ -56,6 +67,58 @@ function terrainSolid(
   bottom: number,
 ): Manifold {
   return library.Manifold.hull([...triangle, ...triangle.map(([x, , z]): Vec3 => [x, bottom, z])]);
+}
+
+function measureTerrainContact(
+  library: ManifoldToplevel,
+  entry: SolidInstance,
+  triangles: [Vec3, Vec3, Vec3][],
+): TerrainContact & { location?: Vec3 } {
+  let minimum = Infinity,
+    maximum = -Infinity;
+  for (const triangle of triangles)
+    for (const point of triangle) {
+      minimum = Math.min(minimum, point[1]);
+      maximum = Math.max(maximum, point[1]);
+    }
+  const result: TerrainContact & { location?: Vec3 } = { overlap: false, supported: false };
+  if (!triangles.length || entry.bounds.min[1] > maximum + GEOMETRY_TOLERANCE) return result;
+  if (
+    Math.abs(maximum - minimum) < GEOMETRY_TOLERANCE &&
+    Math.abs(entry.bounds.min[1] - maximum) <= GEOMETRY_TOLERANCE
+  ) {
+    result.supported = true;
+    return result;
+  }
+  const allowsBurial =
+    entry.instance.definition.isFoundation || entry.instance.definition.terrainFollow;
+  const lowered = entry.solid.translate([0, -GEOMETRY_TOLERANCE * 2, 0]);
+  try {
+    for (const triangle of triangles) {
+      if (Math.max(...triangle.map((point) => point[1])) < entry.bounds.min[1] - GEOMETRY_TOLERANCE)
+        continue;
+      const ground = terrainSolid(library, triangle, Math.min(entry.bounds.min[1], minimum) - 1);
+      try {
+        if (!result.supported && intersectVolume(lowered, ground) > MIN_VOLUME)
+          result.supported = true;
+        if (
+          !allowsBurial &&
+          !result.overlap &&
+          entry.bounds.min[1] < maximum - GEOMETRY_TOLERANCE &&
+          intersectVolume(entry.solid, ground) > MIN_VOLUME
+        ) {
+          result.overlap = true;
+          result.location = intersectionLocation(entry.solid, ground);
+        }
+      } finally {
+        ground.delete();
+      }
+      if (result.supported && (result.overlap || allowsBurial)) break;
+    }
+  } finally {
+    lowered.delete();
+  }
+  return result;
 }
 
 /** A footprint skirt, or four square pillars, clipped to the exact terrain surface. */
@@ -143,6 +206,7 @@ export async function checkGeometry(
     message: string,
     suggestion: string,
     params: Record<string, unknown> = {},
+    location?: Vec3,
   ): void => {
     const source = instancesByRef.get(refs[0]!)?.source;
     result.violations.push({
@@ -152,6 +216,7 @@ export async function checkGeometry(
       message,
       suggestion,
       params: { ...(source ? { file: source.file, line: source.line } : {}), ...params },
+      ...(location ? { location } : {}),
     });
   };
   try {
@@ -172,9 +237,6 @@ export async function checkGeometry(
       const { instance, bounds, solid } = entry;
       if (instance.definition.canFloat) supported.add(instance.ref);
       const triangles = [...sampledTriangles(terrain, bounds)];
-      const heights = triangles.flatMap((triangle) => triangle.map((point) => point[1]));
-      const maximum = Math.max(...heights),
-        minimum = Math.min(...heights);
       if (instance.definition.isFoundation) {
         const extension = foundationExtension(library, entry, triangles);
         if (extension) {
@@ -192,50 +254,16 @@ export async function checkGeometry(
           entry.bounds = entry.solid.boundingBox();
         }
       }
-      if (
-        !triangles.length ||
-        (bounds.min[1] > maximum + GEOMETRY_TOLERANCE && !instance.definition.isFoundation)
-      )
-        continue;
-      if (
-        Math.abs(maximum - minimum) < GEOMETRY_TOLERANCE &&
-        Math.abs(entry.bounds.min[1] - maximum) <= GEOMETRY_TOLERANCE
-      ) {
-        supported.add(instance.ref);
-        continue;
-      }
-      let groundContact = false,
-        terrainOverlap = false;
-      const lowered = keep(entry.solid.translate([0, -GEOMETRY_TOLERANCE * 2, 0]));
-      for (const triangle of triangles) {
-        if (
-          Math.max(...triangle.map((point) => point[1])) <
-          entry.bounds.min[1] - GEOMETRY_TOLERANCE
-        )
-          continue;
-        const ground = terrainSolid(library, triangle, Math.min(entry.bounds.min[1], minimum) - 1);
-        try {
-          if (!groundContact && intersectVolume(lowered, ground) > MIN_VOLUME) groundContact = true;
-          if (
-            !instance.definition.isFoundation &&
-            !instance.definition.terrainFollow &&
-            !terrainOverlap &&
-            entry.bounds.min[1] < maximum - GEOMETRY_TOLERANCE &&
-            intersectVolume(entry.solid, ground) > MIN_VOLUME
-          )
-            terrainOverlap = true;
-        } finally {
-          ground.delete();
-        }
-      }
-      if (groundContact) supported.add(instance.ref);
-      if (terrainOverlap)
+      const contact = measureTerrainContact(library, entry, triangles);
+      if (contact.supported) supported.add(instance.ref);
+      if (contact.overlap)
         violation(
           'overlap',
           [instance.ref],
           `${instance.ref} overlaps the terrain.`,
           'Raise the Structure or use a Foundation or terrain-following Module.',
           { terrain: true },
+          contact.location,
         );
     }
     const buckets = new Map<string, number[]>(),
@@ -276,6 +304,8 @@ export async function checkGeometry(
           [a.instance.ref, b.instance.ref],
           `${a.instance.ref} overlaps ${b.instance.ref}.`,
           'Move one Structure by 0.5 metres or change its Module shape.',
+          {},
+          intersectionLocation(a.solid, b.solid),
         );
       }
       // A tiny downward probe detects physical bottom contact, including sloped surfaces.
@@ -306,6 +336,7 @@ export async function checkGeometry(
         link(entry.instance.ref, entry.instance.attachTo);
       }
     }
+    const supportSeeds = new Set(supported);
     const queue = [...supported];
     for (let i = 0; i < queue.length; i++)
       for (const next of supportLinks.get(queue[i]!) ?? []) {
@@ -321,7 +352,52 @@ export async function checkGeometry(
           [entry.instance.ref],
           `${entry.instance.ref} has no Support connected to terrain.`,
           'Lower the Structure, add a Foundation, or connect to a supported Module.',
+          {},
+          [
+            (entry.bounds.min[0] + entry.bounds.max[0]) / 2,
+            entry.bounds.min[1],
+            (entry.bounds.min[2] + entry.bounds.max[2]) / 2,
+          ],
         );
+    if (result.violations.length) {
+      const entriesByRef = new Map(entries.map((entry) => [entry.instance.ref, entry]));
+      const advice = createGeometryAdvice({
+        compilation,
+        entries,
+        supportSeeds,
+        supportLinks,
+        tolerance: GEOMETRY_TOLERANCE,
+        nearby(bounds) {
+          const indices = new Set<number>();
+          for (
+            let z = Math.floor((bounds.min[2] - GEOMETRY_TOLERANCE) / cell);
+            z <= Math.floor((bounds.max[2] + GEOMETRY_TOLERANCE) / cell);
+            z++
+          ) {
+            for (
+              let x = Math.floor((bounds.min[0] - GEOMETRY_TOLERANCE) / cell);
+              x <= Math.floor((bounds.max[0] + GEOMETRY_TOLERANCE) / cell);
+              x++
+            ) {
+              for (const index of buckets.get(`${x},${z}`) ?? []) indices.add(index);
+            }
+          }
+          return [...indices].map((index) => entries[index]!);
+        },
+        overlaps: (a, b) =>
+          intersectsBounds(a.bounds, b.bounds, -GEOMETRY_TOLERANCE) &&
+          intersectVolume(a.solid, b.solid) > MIN_VOLUME,
+        terrainContact: (entry) =>
+          measureTerrainContact(library, entry, [...sampledTriangles(terrain, entry.bounds)]),
+      });
+      for (const issue of result.violations) {
+        const first = entriesByRef.get(issue.refs[0]!)!;
+        issue.suggestion =
+          issue.kind === 'overlap'
+            ? advice.overlap(first, entriesByRef.get(issue.refs[1] ?? ''), issue.location!)
+            : advice.unsupported(first);
+      }
+    }
     return result;
   } finally {
     for (const handle of handles.reverse()) handle.delete();
