@@ -3,3 +3,8 @@ export * from './domain.js';
 export * from './format.js';
 export * from './math.js';
 export * from './compiler.js';
+export * from './model-api.js';
+export * from './model.js';
+export * from './materials.js';
+export * from './glb.js';
+export * from './geometry.js';

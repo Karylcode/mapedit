@@ -2,8 +2,8 @@
 
 ## 目前進度
 
-M0–M1 complete on `backend`. M2 geometry implementation is being integrated.
-Next: complete model execution, exact geometry checks and material acceptance.
+M0–M2 complete on `backend`. M3 terrain integration is in progress.
+Next: connect terrain PNGs, chunk assets and foundations to the real project build.
 
 ## 每個里程碑完成了什麼、怎麼驗證
 
@@ -20,7 +20,16 @@ Next: complete model execution, exact geometry checks and material acceptance.
   nonzero exit tests, and a 2,000-module compile regression passed. Numeric edits
   preserve byte-level layout including CRLF and comments. Full typecheck, lint and
   all 51 tests currently present passed before this milestone commit.
-- M2–M7: pending final integration/acceptance.
+- M2: Manifold modelling API, esbuild compilation and isolated model runner,
+  dimension validation, GLB materials/UVs, exact shape colliders and intersections,
+  rooted support graph, terrain penetration exceptions and skirt/pillar foundations.
+  Includes 13 named materials and 9 bundled CC0 Poly Haven JPEGs with verified
+  checksums/provenance (`packages/core/materials/SOURCES.md`). All runtime assets
+  are local. Windows geometry/runner tests cover openings, contact tolerance,
+  stacked/socket support, floating exceptions, rotated foundations, metre-scale
+  slope UVs, malicious imports/globals and timeouts. 2,000-module compile plus
+  exact geometry checking passed the 2-second bound (isolated measurement 53 ms).
+- M3–M7: pending final integration/acceptance.
 
 ## 自行決定的事
 
@@ -31,6 +40,10 @@ Next: complete model execution, exact geometry checks and material acceptance.
   infer orientation; structures connect through `structure/instance.socket` paths.
 - Height PNGs use signed offset encoding (`sample = meters * 2 + 32768`); absent
   terrain PNGs represent flat ground. Both files are required once either exists.
+- Untrusted model code executes in QuickJS WASM inside a permission-restricted
+  disposable Node child. Node permissions alone are not treated as a sandbox.
+- `canFloat` modules can support attached/stacked modules, allowing floating
+  platforms. Foundations support skirt or pillar geometry; both clip to terrain.
 
 ## 偏離設計
 

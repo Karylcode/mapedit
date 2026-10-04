@@ -1,0 +1,56 @@
+[
+  {
+    "material": "wood_planks",
+    "asset": "wood_planks",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/wood_planks/wood_planks_diff_1k.jpg",
+    "md5": "922505c35c2d0dc6a44da7ac77757134"
+  },
+  {
+    "material": "stone_brick",
+    "asset": "castle_brick_01",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/castle_brick_01/castle_brick_01_diff_1k.jpg",
+    "md5": "d3d6194b814cbda8a17dc5ebe407a41e"
+  },
+  {
+    "material": "plaster",
+    "asset": "plaster_grey_04",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/plaster_grey_04/plaster_grey_04_diff_1k.jpg",
+    "md5": "bc8a1530a637d36865f90c86391c75c4"
+  },
+  {
+    "material": "roof_tiles",
+    "asset": "roof_tiles",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_tiles/roof_tiles_diff_1k.jpg",
+    "md5": "525e8cac13027e36f47844f3240fdde8"
+  },
+  {
+    "material": "thatch",
+    "asset": "thatch_roof_angled",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/thatch_roof_angled/thatch_roof_angled_diff_1k.jpg",
+    "md5": "645a32cd470a4b14aa033793d0e7aa83"
+  },
+  {
+    "material": "grass",
+    "asset": "grass_path_2",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/grass_path_2/grass_path_2_diff_1k.jpg",
+    "md5": "48cebe95af233211c9469a9bfe2f42f2"
+  },
+  {
+    "material": "dirt",
+    "asset": "brown_mud",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud/brown_mud_diff_1k.jpg",
+    "md5": "b141af27b413db140818d0a4998c394c"
+  },
+  {
+    "material": "gravel",
+    "asset": "gravel",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/gravel/gravel_diff_1k.jpg",
+    "md5": "a4cbe2105f51b692057d70459c56b4a3"
+  },
+  {
+    "material": "metal",
+    "asset": "rusty_metal",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rusty_metal/rusty_metal_diff_1k.jpg",
+    "md5": "ba829f953270d3ad87d8e86d840f71d6"
+  }
+]
