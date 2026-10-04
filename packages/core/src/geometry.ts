@@ -7,12 +7,16 @@ import { createViolation } from './violation.js';
 import { createGeometryAdvice, type TerrainContact } from './geometry-suggestions.js';
 import { supportedFrom } from './support.js';
 import {
+  axisAlignedBox,
+  estimatedOverlap,
+  estimatedRest,
   fillsBounds,
   GEOMETRY_TOLERANCE,
   intersectsBounds,
   intersectVolume,
   manifoldOverlap,
   MIN_VOLUME,
+  orientedBox,
   overlapLocation,
   restsOn,
   type PlacedSolid,
@@ -21,7 +25,15 @@ import {
 export { GEOMETRY_TOLERANCE } from './solid.js';
 /** Geometry violations, in report order, that receive a searched suggestion. */
 export const SEARCHED_ADVICE_LIMIT = 50;
-const RECHECK_FOR_ADVICE = `Specific suggestions are searched for the first ${SEARCHED_ADVICE_LIMIT} geometry violations only; fix those, then run check again.`;
+const RECHECK_FOR_ADVICE = `Specific suggestions are searched for the first ${SEARCHED_ADVICE_LIMIT} geometry violations only, within a fixed amount of geometry work; fix those, then run check again.`;
+/**
+ * Module overlaps compared with exact shapes in one check. Later non-box pairs are
+ * estimated from oriented bounding boxes, so a badly broken map still checks quickly.
+ */
+export const EXACT_OVERLAP_LIMIT = 200;
+/** Boolean operations that suggestion searches may use in one check. */
+const ADVICE_BOOLEAN_LIMIT = 1_000;
+class AdviceBudgetSpent extends Error {}
 export interface GeometryTerrain {
   heightAt(x: number, z: number): number;
   trianglesInBounds?(bounds: Bounds): Iterable<[Vec3, Vec3, Vec3]>;
@@ -68,6 +80,7 @@ function measureTerrainContact(
   library: ManifoldToplevel,
   entry: PlacedSolid,
   triangles: [Vec3, Vec3, Vec3][],
+  beforeBoolean?: () => void,
 ): TerrainContact & { location?: Vec3 } {
   let minimum = Infinity,
     maximum = -Infinity;
@@ -94,13 +107,16 @@ function measureTerrainContact(
         continue;
       const ground = terrainSolid(library, triangle, Math.min(entry.bounds.min[1], minimum) - 1);
       try {
-        if (!result.supported && intersectVolume(lowered, ground) > MIN_VOLUME)
-          result.supported = true;
+        if (!result.supported) {
+          beforeBoolean?.();
+          if (intersectVolume(lowered, ground) > MIN_VOLUME) result.supported = true;
+        }
         if (
           !allowsBurial &&
           !result.overlap &&
           entry.bounds.min[1] < maximum - GEOMETRY_TOLERANCE
         ) {
+          beforeBoolean?.();
           const location = manifoldOverlap(entry.solid, ground);
           if (location) {
             result.overlap = true;
@@ -198,7 +214,7 @@ export async function checkGeometry(
     supportLinks.set(from, links);
   };
   try {
-    const bases = new Map<string, { solid: Manifold; volume: number }>();
+    const bases = new Map<string, { solid: Manifold; volume: number; bounds: Bounds }>();
     const entries: PlacedSolid[] = [];
     for (const instance of compilation.instances) {
       const geometry = models.get(instance.moduleType);
@@ -206,12 +222,18 @@ export async function checkGeometry(
       let base = bases.get(instance.moduleType);
       if (!base) {
         const solid = keep(new library.Manifold(geometryMesh(library, geometry)));
-        base = { solid, volume: solid.volume() };
+        base = { solid, volume: solid.volume(), bounds: solid.boundingBox() };
         bases.set(instance.moduleType, base);
       }
       const solid = keep(base.solid.transform(instance.transform as ManifoldMat4));
       const bounds = solid.boundingBox();
-      entries.push({ instance, solid, bounds, box: fillsBounds(base.volume, bounds) });
+      entries.push({
+        instance,
+        solid,
+        bounds,
+        box: fillsBounds(base.volume, bounds),
+        oriented: orientedBox(base.bounds, instance.transform),
+      });
     }
     for (const entry of entries) {
       const { instance, bounds, solid } = entry;
@@ -233,6 +255,7 @@ export async function checkGeometry(
           entry.solid = keep(solid.add(extension));
           entry.bounds = entry.solid.boundingBox();
           entry.box = fillsBounds(entry.solid.volume(), entry.bounds);
+          entry.oriented = axisAlignedBox(entry.bounds);
         }
       }
       const contact = measureTerrainContact(library, entry, triangles);
@@ -261,6 +284,7 @@ export async function checkGeometry(
         buckets.set(key, occupants);
       }
     }
+    let exactOverlaps = 0;
     for (const pair of pairs) {
       const [ai, bi] = pair.split(',').map(Number),
         a = entries[ai!]!,
@@ -268,16 +292,23 @@ export async function checkGeometry(
       if (!intersectsBounds(a.bounds, b.bounds, GEOMETRY_TOLERANCE * 3)) continue;
       const aOnB = a.bounds.min[1] >= b.bounds.min[1] - GEOMETRY_TOLERANCE,
         bOnA = b.bounds.min[1] >= a.bounds.min[1] - GEOMETRY_TOLERANCE;
-      const location = overlapLocation(a, b);
+      // Box pairs are always exact and cheap; other pairs are estimated past the limit.
+      const estimate = exactOverlaps >= EXACT_OVERLAP_LIMIT && !(a.box && b.box);
+      const location = estimate ? estimatedOverlap(a, b) : overlapLocation(a, b);
       if (location) {
+        if (!estimate) exactOverlaps++;
         result.violations.push(
           createViolation({
             kind: 'overlap',
             refs: [a.instance.ref, b.instance.ref],
             source: a.instance.source,
-            message: `${a.instance.ref} overlaps ${b.instance.ref}.`,
-            suggestion: `Move one of the overlapping Structures or change a Module shape. ${RECHECK_FOR_ADVICE}`,
-            params: { target: 'module' },
+            message: estimate
+              ? `${a.instance.ref} probably overlaps ${b.instance.ref}; estimated from bounding boxes after ${EXACT_OVERLAP_LIMIT} exact overlaps.`
+              : `${a.instance.ref} overlaps ${b.instance.ref}.`,
+            suggestion: estimate
+              ? `Fix the first ${EXACT_OVERLAP_LIMIT} overlaps, then run check again to compare exact shapes here.`
+              : `Move one of the overlapping Structures or change a Module shape. ${RECHECK_FOR_ADVICE}`,
+            params: estimate ? { target: 'module', estimated: true } : { target: 'module' },
             location,
           }),
         );
@@ -288,8 +319,9 @@ export async function checkGeometry(
         continue;
       }
       // A tiny downward probe detects physical bottom contact, including sloped surfaces.
-      if (aOnB && restsOn(a, b)) link(b.instance.ref, a.instance.ref);
-      if (bOnA && restsOn(b, a)) link(a.instance.ref, b.instance.ref);
+      const rests = estimate ? estimatedRest : restsOn;
+      if (aOnB && rests(a, b)) link(b.instance.ref, a.instance.ref);
+      if (bOnA && rests(b, a)) link(a.instance.ref, b.instance.ref);
     }
     for (const connection of compilation.socketConnections) {
       link(connection.a, connection.b);
@@ -321,6 +353,10 @@ export async function checkGeometry(
         );
     if (result.violations.length) {
       const entriesByRef = new Map(entries.map((entry) => [entry.instance.ref, entry]));
+      let adviceBooleans = 0;
+      const spend = (): void => {
+        if (++adviceBooleans > ADVICE_BOOLEAN_LIMIT) throw new AdviceBudgetSpent();
+      };
       const advice = createGeometryAdvice({
         compilation,
         entries,
@@ -333,18 +369,27 @@ export async function checkGeometry(
             for (const index of buckets.get(key) ?? []) indices.add(index);
           return [...indices].map((index) => entries[index]!);
         },
-        overlaps: (a, b) => overlapLocation(a, b) !== undefined,
+        overlaps: (a, b) => overlapLocation(a, b, spend) !== undefined,
         terrainContact: (entry) =>
-          measureTerrainContact(library, entry, [...sampledTriangles(terrain, entry.bounds)]),
+          measureTerrainContact(
+            library,
+            entry,
+            [...sampledTriangles(terrain, entry.bounds)],
+            spend,
+          ),
       });
-      // Searches cost Boolean operations, so only the first violations get them; the rest
-      // keep the brief suggestion set above until the first ones are fixed.
-      for (const issue of result.violations.slice(0, SEARCHED_ADVICE_LIMIT)) {
-        const first = entriesByRef.get(issue.refs[0]!)!;
-        issue.suggestion =
-          issue.kind === 'overlap'
-            ? advice.overlap(first, entriesByRef.get(issue.refs[1] ?? ''), issue.location!)
-            : advice.unsupported(first);
+      // Searches cost Boolean operations, so only the first violations get them, within a
+      // budget; the rest keep the brief suggestion set above until the first ones are fixed.
+      try {
+        for (const issue of result.violations.slice(0, SEARCHED_ADVICE_LIMIT)) {
+          const first = entriesByRef.get(issue.refs[0]!)!;
+          issue.suggestion =
+            issue.kind === 'overlap'
+              ? advice.overlap(first, entriesByRef.get(issue.refs[1] ?? ''), issue.location!)
+              : advice.unsupported(first);
+        }
+      } catch (error) {
+        if (!(error instanceof AdviceBudgetSpent)) throw error;
       }
     }
     return result;

@@ -14,7 +14,8 @@ import {
 } from '../src/model-api.js';
 import { buildModel } from '../src/model.js';
 import { modelToGlb } from '../src/glb.js';
-import { checkGeometry } from '../src/geometry.js';
+import { EXACT_OVERLAP_LIMIT, checkGeometry } from '../src/geometry.js';
+import { violationParamsProblems } from '@mapedit/protocol';
 import { parseProject } from '../src/format.js';
 import { compileMap } from '../src/compiler.js';
 
@@ -168,6 +169,59 @@ describe('physical geometry rules', () => {
     const checked = await checkGeometry(compiled, models);
     expect(checked.violations.filter((item) => item.kind === 'unsupported')).toHaveLength(2000);
     expect(performance.now() - start).toBeLessThan(2000);
+  });
+  describe('F32 bounded exact work for densely overlapping non-box Modules', () => {
+    const grid = (dz: number) =>
+      Array.from({ length: 2000 }, (_, index): Vec3 => [
+        2 + (index % 50) * 1.5,
+        0,
+        2 + Math.floor(index / 50) * dz,
+      ]);
+    // Door walls turned 30 degrees, 0.5 m apart: each crosses two walls of the next columns.
+    const cases = [
+      ['cylinders', translate(cylinder(1, 2), [1, 0, 1]), grid(1.5), 0],
+      [
+        'door walls turned 30 degrees',
+        difference(box([2, 2, 0.3]), translate(box([0.8, 1.6, 0.6]), [0.6, -0.1, -0.15])),
+        grid(0.5),
+        30,
+      ],
+      [
+        'boxes with a hole',
+        difference(box([2, 2, 2]), translate(box([0.6, 3, 0.6]), [0.7, -0.5, 0.7])),
+        grid(1.5),
+        0,
+      ],
+    ] as const;
+    for (const [label, shape, positions, rotation] of cases)
+      it(`checks 2000 densely overlapping ${label} within the two-second budget`, async () => {
+        const models = new Map([['test', await buildModel(shape)]]);
+        const start = performance.now();
+        const compiled = fixture(
+          [...positions],
+          '',
+          positions.map(() => rotation),
+        );
+        const checked = await checkGeometry(compiled, models);
+        const elapsed = performance.now() - start;
+        const overlaps = checked.violations.filter(
+          (item) => item.kind === 'overlap' && item.params.target === 'module',
+        );
+        expect(overlaps.length).toBeGreaterThan(EXACT_OVERLAP_LIMIT);
+        // The first overlaps compare exact shapes; later ones are estimated and say so.
+        expect(overlaps.slice(0, EXACT_OVERLAP_LIMIT).some((item) => item.params.estimated)).toBe(
+          false,
+        );
+        const estimated = overlaps.slice(EXACT_OVERLAP_LIMIT);
+        expect(estimated.length).toBeGreaterThan(0);
+        expect(estimated.every((item) => item.params.estimated === true)).toBe(true);
+        expect(estimated.every((item) => /estimated from bounding boxes/.test(item.message))).toBe(
+          true,
+        );
+        for (const item of checked.violations) expect(violationParamsProblems(item)).toEqual([]);
+        expect(checked.violations[0]!.suggestion).not.toMatch(/geometry violations only/);
+        expect(elapsed).toBeLessThan(2000);
+      });
   });
   it('reports real overlap, but permits contact and numerical tolerance', async () => {
     const models = new Map([['test', await buildModel(box([2, 2, 2]))]]);

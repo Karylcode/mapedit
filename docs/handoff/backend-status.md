@@ -743,3 +743,33 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   works; before, it waited forever), `verbose` (a 20,000-character page error
   is capped), and an MCP `screenshot` call on a real server whose web root is
   the fixture, which answers the timeout error. Deviation: none.
+- **F32 complete:** three changes keep dense non-box overlaps within two seconds:
+  - Every placed solid also gets an oriented box: its model bounds placed along
+    its own axes (the map-axis bounds for a Foundation with an extension). Two
+    solids whose oriented boxes are more than 1e-7 m apart cannot meet, so
+    `overlapLocation` and `restsOn` skip the Boolean for them. This changes no
+    result: a test compares both functions with and without the boxes for
+    turned walls that are apart, touching, sunk 0.00005 m into each other,
+    crossing and stacked.
+  - After `EXACT_OVERLAP_LIMIT` (200) exact overlaps in one check, the
+    remaining non-box pairs are estimated from the oriented boxes (box pairs
+    stay exact). `docs/protocol.md` section 3 adds the optional overlap param
+    `estimated: true`; such a violation says it is "estimated from bounding
+    boxes" and asks to fix the first 200 overlaps and check again. Ids do not
+    change, because params are not part of them.
+  - Suggestion searches for the first 50 violations share a budget of 1,000
+    Boolean operations, counted in `overlapLocation` and in terrain contact.
+    When it runs out, the remaining violations keep the brief suggestion, whose
+    text now says the search is limited.
+
+  Measured on this machine before → after, compile plus check: cylinders
+  3.8 s → 0.75 s, door walls turned 30° and 0.5 m apart 3.3 s → 0.4 s, boxes
+  with a hole 1.3 s → 0.5 s. Tests: `core/test/geometry.test.ts` "F32" checks
+  2,000 densely overlapping cylinders, door walls turned 30° and boxes with a
+  hole: each must finish within 2 s, report exact first overlaps and marked
+  estimates after them, and give params that `violationParamsProblems`
+  accepts. All three failed before the change. `core/test/solid.test.ts`
+  "F32" covers the equivalence and that the boxes move with `moveSolid`.
+  Deviation: the spec suggested axis-aligned bounds for the estimate; this
+  uses oriented boxes because axis-aligned bounds of a turned wall are several
+  times larger than the wall.
