@@ -21,7 +21,7 @@
 | `/render` | GET | 前端 | 截圖用頁面（見第 6 節） |
 | `/ws` | WebSocket | 後端 | 即時通道（見第 4 節） |
 | `/api/project` | GET、HEAD | 後端 | GET 回傳 `ProjectInfo`；HEAD 只回本機程序識別 headers，供 CLI 發現伺服器 |
-| `/api/scene?map=<mapId>` | GET | 後端 | 回傳目前的 `SceneSnapshot`，給截圖頁面和除錯用 |
+| `/api/scene?map=<mapId>` | GET | 後端 | 回傳目前的 `SceneSnapshot`，給截圖頁面和除錯用；`map` 不是專案裡的地圖時回 404 |
 | `/assets/...` | GET | 後端 | 產生出來的 glb。網址由 `SceneSnapshot` 提供，前端不要自己拼 |
 | `/mcp` | POST、GET | 後端 | MCP（Streamable HTTP），前端不使用 |
 | `/api/mock/trigger` | POST | 後端（只有 mock） | 模擬提示情境，給前端測試用 |
@@ -244,7 +244,8 @@ type NoticeCode =
   | 'overwritten_by_agent'    // 人剛做的修改，被 Agent 後來的修改蓋掉了
   | 'agent_change_overridden' // 人放下時，蓋掉了 Agent 在拖動期間做的修改
   | 'edit_rejected'           // 人的修改被拒絕，例如會造成違規
-  | 'file_error';             // 有檔案無法讀取
+  | 'file_error'              // 有檔案無法讀取
+  | 'unknown_map';            // 新增：openMap 指定的地圖不存在（見流程 2）
 
 // notice 的 message 是英文；前端依 code 翻成介面語言。
 
@@ -263,6 +264,7 @@ type EditFailure =
 
 1. 連線後，前端送 `hello`，後端回 `welcome`。
 2. 前端送 `openMap`，後端回 `scene` 和 `history`。之後只要地圖有變動（Agent 改檔、人的修改、復原或重做），後端就再送一次 `scene`。
+   - `mapId` 不是專案裡的地圖時（例如 Agent 剛刪掉它），後端不會建置這張地圖，只回 `notice { level: 'error', code: 'unknown_map' }`，`message` 是英文說明；這條連線原本開著的地圖不變。已經開著的地圖之後被 Agent 刪掉時，則是下一份 `scene` 的 `fileErrors` 說明它不存在。
 3. **拖動中**：
    - 前端每個畫面最多送一個 `previewEdit`。還沒收到回覆前，只保留最新的一個，舊的直接丟掉。
    - 後端回 `previewResult`：`transform` 是對齊後的位置，`violations` 是放在那裡會造成的違規。`ok` 為 false 時，前端把預覽畫成紅色。
@@ -281,6 +283,7 @@ type EditFailure =
    - 兩種回覆的 `failure` 都是 `unknown_object`；想移動結構裡的模組或已接合的結構時是 `immovable_object`，`violations` 那一筆的 `params.reason` 也一樣。
 8. **斷線**：只有訊息本身的結構不合法時，後端才以 1008 關閉連線，例如不是 JSON、`type` 不認得、欄位型別不對（`ref` 不是字串、`position` 不是三個有限數字、`requestId` 不是整數），或是在 `hello` 之前送其他訊息、在 `openMap` 之前送修改。
 9. **檔案錯誤**：專案裡只要有檔案無法讀取（`scene.fileErrors` 不是空的，包括其他地圖、模組定義或 model.ts 的錯誤），移動的預覽和套用都不能進行（刪除不受影響）：`previewResult { ok: false, failure: 'file_errors', violations: [] }`、`editResult { ok: false, failure: 'file_errors', reason }`。前端顯示「有檔案無法讀取，修好之前不能移動」，錯誤內容看快照的 `fileErrors`。
+10. **一定有回覆**：帶 `requestId` 的訊息（`previewEdit`、`applyEdit`、`undo`、`redo`）一定會收到同一個 `requestId` 的回覆，而且只有一個。處理時發生其他錯誤（例如 Agent 正在寫檔，讀檔失敗）時，`previewEdit` 回 `previewResult { ok: false, failure: 'internal_error', violations: [] }`，其餘回 `editResult { ok: false, failure: 'internal_error', reason }`，`reason` 是英文說明。前端可以稍後重試。
 
 ## 5. 前端的責任範圍（給後端參考）
 

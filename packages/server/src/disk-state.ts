@@ -26,7 +26,7 @@ import type { BuiltProject } from './build-project.js';
 import { readProjectInputs } from './project-files.js';
 import { containsPath } from './paths.js';
 import { ProjectHistory, type EditRefusal } from './history.js';
-import { noticeMessage } from './notice.js';
+import { UnknownMapError, noticeMessage } from './notice.js';
 import { createAgentServices } from './services.js';
 import type { AgentServices } from './mcp.js';
 import type { ScreenshotService } from './screenshot.js';
@@ -232,6 +232,8 @@ export class DiskState extends EventEmitter implements StateStore {
     if (preview) return preview;
     let build = this.builds.get(mapId);
     if (!build) {
+      // Only maps of the project are built and cached (protocol section 4, flow 2).
+      if (!this.project.maps.some((map) => map.id === mapId)) throw new UnknownMapError(mapId);
       build = await this.builder.build(mapId, this.revision);
       this.builds.set(mapId, build);
     }

@@ -153,6 +153,7 @@ export const NOTICE_CODES = [
   'agent_change_overridden',
   'edit_rejected',
   'file_error',
+  'unknown_map',
 ] as const;
 export type NoticeCode = (typeof NOTICE_CODES)[number];
 export interface RenderSpec {

@@ -699,3 +699,28 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   `ok: true` before), runs MCP `build_module` with those names, compiles them as
   map ids and as a Module type, and checks that `sourceRefs` has no prototype.
   Deviation: none.
+- **F30 complete:** `docs/protocol.md` section 4 adds flow 10: every
+  `previewEdit`, `applyEdit`, `undo` and `redo` gets exactly one answer with its
+  `requestId`; an unexpected error (for example EBUSY while the Agent writes)
+  answers `previewResult { ok: false, failure: 'internal_error', violations: [] }`
+  or `editResult { ok: false, failure: 'internal_error', reason }`. The WebSocket
+  handler remembers the request until its answer is sent, so a later failure
+  (for example while broadcasting) never sends a second answer; messages
+  without a `requestId` still get a `file_error` notice. Flow 2 and the
+  NoticeCode list add `unknown_map`: `openMap` for an id that is not a project
+  map is answered with `notice { level: 'error', code: 'unknown_map' }`, the
+  connection keeps its open map, and `DiskState.getScene` throws
+  `UnknownMapError` instead of building and caching that id. The same error
+  makes `GET /api/scene?map=<unknown>` answer 404 and MCP tools with an unknown
+  `map` answer a tool error; the mock state and `POST /api/mock/trigger` support
+  the new code. A map that was open when the Agent deleted it keeps its cached
+  build, so its editors see the "does not exist" file error in the next scene.
+  Tests: `server/test/request-replies.test.ts` makes `getBuild` and `flush`
+  reject on a real server and checks one `internal_error` answer per request
+  (previews and applies got no answer before), checks the `unknown_map` notice,
+  the kept open map and that `builds` never gains the unknown id over
+  WebSocket, HTTP and MCP (it was cached before), and covers mock mode;
+  `server/test/mock-coverage.test.ts` triggers `unknown_map`, and
+  `protocol/test/catalogs.test.ts` now compares `VIOLATION_KINDS`,
+  `NOTICE_CODES` and `EDIT_FAILURES` with their unions in `docs/protocol.md`.
+  Deviation: none.

@@ -13,7 +13,7 @@ import type {
 } from '@mapedit/protocol';
 import { mockScene, mockAsset } from './mock.js';
 import { ProjectHistory, type EditRefusal } from './history.js';
-import { noticeMessage } from './notice.js';
+import { UnknownMapError, noticeMessage } from './notice.js';
 import { createMockServices, triggerMockNotice } from './mock-services.js';
 import type { AgentServices } from './mcp.js';
 import type { ScreenshotService } from './screenshot.js';
@@ -65,7 +65,7 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
     await this.getScene(id);
   }
   async getScene(id = this.scene.map.id): Promise<SceneSnapshot> {
-    if (id !== this.scene.map.id) throw new Error(`Map '${id}' does not exist.`);
+    if (id !== this.scene.map.id) throw new UnknownMapError(id);
     return this.scene;
   }
   asset(path: string): Uint8Array | undefined {
