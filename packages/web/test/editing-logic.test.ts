@@ -94,9 +94,14 @@ describe('change log text', () => {
   });
 
   it('describes human moves and deletes by object name', () => {
-    expect(describeEntry(entry('Move structure:house'), index, t)).toBe('移動 House');
-    expect(describeEntry(entry('Delete marker:zone'), index, t)).toBe('刪除 zone');
-    expect(describeEntry(entry('Delete structure:gone'), index, t)).toBe('刪除 gone');
+    const human = (action: 'move' | 'delete', ref: string): HistoryEntry => ({
+      ...entry(`${action} ${ref}`),
+      action,
+      refs: [ref],
+    });
+    expect(describeEntry(human('move', 'structure:house'), index, t)).toBe('移動 House');
+    expect(describeEntry(human('delete', 'marker:zone'), index, t)).toBe('刪除 zone');
+    expect(describeEntry(human('delete', 'structure:gone'), index, t)).toBe('刪除 gone');
   });
 
   it('describes Agent changes by the files they touched', () => {

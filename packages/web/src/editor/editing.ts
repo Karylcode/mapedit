@@ -1,7 +1,14 @@
 import { Matrix4, Raycaster, Vector3, type Vector2 } from 'three';
-import type { Edit, ObjectRef, ServerMessage, Vec3, ViolationView } from '@mapedit/protocol';
+import type {
+  Edit,
+  EditFailure,
+  ObjectRef,
+  ServerMessage,
+  Vec3,
+  ViolationView,
+} from '@mapedit/protocol';
 import type { Connection, Request } from '../net/connection.js';
-import { translate, type MessageKey, type Params } from '../i18n/i18n.js';
+import { translate, type MessageKey, type Params, type Translator } from '../i18n/i18n.js';
 import type { MapView } from '../scene/map-view.js';
 import { Ghost } from '../scene/ghost.js';
 import type { Store } from './store.js';
@@ -56,6 +63,22 @@ interface InFlight {
 export type DragStart = 'drag' | 'pan' | 'blocked';
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
+
+/** Why a request failed, in the interface language, for the failures the code alone explains. */
+function failureText(failure: EditFailure | undefined): ((t: Translator) => string) | undefined {
+  switch (failure) {
+    case 'file_errors':
+      return (t) => t('edit.fileErrors');
+    case 'unknown_object':
+      return (t) => t('violation.missing.unknown_object');
+    case 'immovable_object':
+      return (t) => t('violation.missing.immovable_object');
+    case 'internal_error':
+      return (t) => t('edit.internalError');
+    default:
+      return undefined;
+  }
+}
 
 /**
  * The human's edits: dragging with a live preview, rotating, deleting, undo
@@ -312,11 +335,14 @@ export class EditController {
     if (result.transform) drag.ghost.place(new Matrix4().fromArray(result.transform));
     drag.ghost.setState(result.ok ? 'ok' : 'blocked');
     if (result.ok) this.note.hide();
+    else if (result.failure === 'file_errors')
+      // Nothing can move anywhere until the files are fixed; the place is not the problem.
+      this.note.show(this.t('edit.fileErrors'), undefined, drag.client.x, drag.client.y);
     else {
       const first = result.violations[0];
       this.note.show(
         this.t('edit.blocked'),
-        first ? this.reasonOf(first) : undefined,
+        first ? this.reasonOf(first) : failureText(result.failure)?.(this.t),
         drag.client.x,
         drag.client.y,
       );
@@ -351,7 +377,8 @@ export class EditController {
       for (const kind of this.afterDrop.splice(0)) this.send({ type: kind }, { kind });
     }
     if (result.ok) return;
-    const reason = result.reason ?? '';
+    // The failure code says what went wrong; the English reason is shown as written.
+    const detail = failureText(result.failure) ?? result.reason;
     if (pending.kind === 'apply') {
       const name = objectName(pending.ref, this.map.index);
       const key: MessageKey =
@@ -364,10 +391,10 @@ export class EditController {
         level: 'warning',
         key: `edit:${pending.ref}`,
         text: (t) => t(key, { name }),
-        detail: reason,
+        detail,
       });
     } else {
-      const nothing = /^Nothing to (undo|redo)/i.test(reason);
+      const nothing = result.failure === 'nothing_to_undo' || result.failure === 'nothing_to_redo';
       const undo = pending.kind === 'undo';
       this.toasts.show({
         level: nothing ? 'info' : 'warning',
@@ -376,7 +403,7 @@ export class EditController {
           nothing
             ? t(undo ? 'history.nothingToUndo' : 'history.nothingToRedo')
             : t(undo ? 'history.undoFailed' : 'history.redoFailed'),
-        detail: nothing ? undefined : reason,
+        detail: nothing ? undefined : detail,
       });
     }
   }

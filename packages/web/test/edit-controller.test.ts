@@ -8,6 +8,8 @@ import { EditController } from '../src/editor/editing.js';
 import { MapView } from '../src/scene/map-view.js';
 import { AssetCache } from '../src/scene/assets.js';
 import { OverviewCamera } from '../src/scene/overview-camera.js';
+import { translate } from '../src/i18n/i18n.js';
+import type { Localized } from '../src/editor/hud/toasts.js';
 import { installFakeCanvas } from './fake-canvas.js';
 
 installFakeCanvas();
@@ -44,8 +46,12 @@ function setup(scene: SceneSnapshot = mockScene()) {
   const overview = new OverviewCamera();
   overview.setMap(scene.map.size);
   overview.frameMap(40, 1.6);
+  const tasks: (() => boolean)[] = [];
   const viewport = {
-    addTask: () => () => {},
+    addTask: (task: () => boolean) => {
+      tasks.push(task);
+      return () => {};
+    },
     invalidate() {},
     scene: new Scene(),
     camera: new PerspectiveCamera(40, 1.6),
@@ -72,8 +78,16 @@ function setup(scene: SceneSnapshot = mockScene()) {
   };
   const applied = () =>
     sent.filter((m): m is Extract<ClientMessage, { type: 'applyEdit' }> => m.type === 'applyEdit');
-  return { edits, store, map, sent, applied, emit, setStatus, toasts, note, viewport };
+  /** One animation frame: a drag asks for its preview. */
+  const frame = () => tasks.forEach((task) => task());
+  return { edits, store, map, sent, applied, emit, setStatus, toasts, note, viewport, frame };
 }
+
+/** A toast's text or detail in English. */
+const english = (value: unknown) =>
+  typeof value === 'function'
+    ? (value as Localized)((key, params) => translate('en', key, params))
+    : value;
 
 describe('EditController before the backend answers', () => {
   it('keeps turning from the last angle sent when R is pressed quickly (FE5)', () => {
@@ -146,5 +160,76 @@ describe('EditController before the backend answers', () => {
     const result = edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });
     expect(result).toBe('blocked');
     expect(toasts.show).toHaveBeenCalledWith(expect.objectContaining({ key: 'edit.busy' }));
+  });
+});
+
+describe('EditController reads failure codes, not English (FE17)', () => {
+  const lastToast = (toasts: { show: ReturnType<typeof vi.fn> }) =>
+    toasts.show.mock.calls.at(-1)![0] as { level: string; text: unknown; detail?: unknown };
+
+  it('says there is nothing to undo from the failure code alone', () => {
+    const { edits, sent, emit, toasts } = setup();
+    edits.undo();
+    emit({
+      type: 'editResult',
+      requestId: (sent.at(-1) as { requestId: number }).requestId,
+      ok: false,
+      failure: 'nothing_to_undo',
+      reason: 'The history is at its start.',
+    });
+    expect(lastToast(toasts)).toMatchObject({ level: 'info' });
+    expect(english(lastToast(toasts).text)).toBe('Nothing to undo');
+  });
+
+  it('reports a failed redo whatever its English reason says', () => {
+    const { edits, sent, emit, toasts } = setup();
+    edits.redo();
+    emit({
+      type: 'editResult',
+      requestId: (sent.at(-1) as { requestId: number }).requestId,
+      ok: false,
+      failure: 'internal_error',
+      reason: 'Nothing to redo: a file could not be read.',
+    });
+    expect(lastToast(toasts)).toMatchObject({ level: 'warning' });
+    expect(english(lastToast(toasts).text)).toBe('Redo failed');
+  });
+
+  it('tells a dragged object cannot move while a file is unreadable', () => {
+    const { edits, sent, emit, note, frame } = setup();
+    edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });
+    edits.dragMove(new Vector2(0.1, 0.05), { x: 700, y: 380 });
+    frame();
+    const preview = sent.filter((m) => m.type === 'previewEdit').at(-1)!;
+    emit({
+      type: 'previewResult',
+      requestId: preview.requestId,
+      ok: false,
+      violations: [],
+      failure: 'file_errors',
+    });
+    expect(note.show).toHaveBeenLastCalledWith(
+      'A file could not be read; fix it before moving anything',
+      undefined,
+      700,
+      380,
+    );
+  });
+
+  it('explains a drop refused because of file errors', () => {
+    const { edits, applied, emit, toasts } = setup();
+    edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });
+    edits.dragEnd(new Vector2(0.1, 0.05), { x: 700, y: 380 });
+    emit({
+      type: 'editResult',
+      requestId: applied().at(-1)!.requestId,
+      ok: false,
+      failure: 'file_errors',
+      reason: 'Fix the file errors first.',
+    });
+    expect(english(lastToast(toasts).text)).toBe('House was not moved');
+    expect(english(lastToast(toasts).detail)).toBe(
+      'A file could not be read; fix it before moving anything',
+    );
   });
 });

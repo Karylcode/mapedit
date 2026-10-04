@@ -252,7 +252,34 @@ is not modified here.
 
   ![700 × 600](images/editor-narrow-700.png)
 
-- **FE17**：等後端 F35（F28、F34 已經合併進來），先做後面的項目。
+- **FE17 完成**（後端 F28、F34、F35 合併之後；FE18、FE19 先做完）：前端不再比對或解析後端的英文文字。
+  - 復原、重做看 `failure` 是不是 `nothing_to_undo`、`nothing_to_redo`，不再比對 `Nothing to undo`。
+  - 失敗原因看 `failure`：
+    - `file_errors`：拖動時游標旁顯示「有檔案無法讀取，修好之前不能移動」；放下被拒時，這句放在提示裡。
+    - `unknown_object`、`immovable_object`、`internal_error`：各有翻譯。
+    - 其他原因（例如 `violations`）：照原樣顯示後端的英文 `reason`。
+  - 修改紀錄用 `action` 和 `refs` 寫出「移動 House」「刪除 House · roof」。Agent 的修改列出檔案。
+    沒有 `action` 的項目照原樣顯示 `summary`，不解析。
+  - `/render` 看 `map.kind === 'module_preview'` 決定地面格線、取景和圖例，不再看 `__module_` 開頭的 id。
+  - 提示的 `mapId` 不是畫面上的地圖時：
+    - 不用目前地圖的名稱，改成「「Second Map」上的 house」，用 id 加上地圖名稱。
+    - 不框任何東西。
+    - 每張地圖的 Agent 修改提示各自一則，不會互相取代。
+  - 後端改成先送 `scene` 再送 `agent_changed` 之後，提示裡用的是改名後的新名稱。
+  - `file_error` 提示的重複過濾不再比對訊息內容：每則訊息顯示一次，等專案裡所有檔案都能讀取之後才重新計算。
+    剩下的錯誤看違規清單的「檔案錯誤」。
+
+  測試：
+  - `test/edit-controller.test.ts`：四項，修正前都失敗。
+    - 理由寫著 `Nothing to redo…` 的 `internal_error` 算失敗；`nothing_to_undo` 不看理由。
+    - 預覽和放下遇到 `file_errors` 時的文字。
+  - `test/history-text.test.ts`、`test/editing-logic.test.ts`：從 `action`、`refs` 寫出紀錄，`summary` 不被解析。
+  - `test/notices.test.ts`：別張地圖的提示寫出地圖名稱、不用目前地圖的物件名稱。`file_error` 的過濾不讀訊息內容。
+  - `test/render-views.test.ts`：id 是 `__module_…` 但 `kind: 'map'` 的照地圖寫圖例，`kind: 'module_preview'` 的照預覽寫。
+  - `test/maps-browser.test.ts`（真專案，兩張地圖都有 `structure:house`）：
+    - Agent 改另一張地圖的 house：提示是 `The Agent changed house on Second Map`，畫面上的 house 沒有被框
+      （修正前提示寫成目前地圖的名稱，也框了目前地圖的 house）。
+    - Agent 把目前地圖的 house 改名：提示用新名稱，並框住它。
 - **FE18 完成**：protocol.md 第 4 節 `Edit` 的說明改成實際的意思：`position` 是物件原點想放的位置（還沒對齊），
   也就是結構的 `position`、點標記的 `position` 或方形標記的 `center`，不是滑鼠指到的點。前端送的和後端 `snapMove`
   的解讀本來就一致，只改文件，沒有程式測試。已通知後端。

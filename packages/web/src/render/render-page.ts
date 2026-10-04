@@ -18,7 +18,13 @@ import { MapView } from '../scene/map-view.js';
 import { palette } from '../scene/palette.js';
 import { fitScreenSprites } from '../scene/screen-sprite.js';
 import { montageLayout, regionOf, viewCamera, type Region, type ViewName } from './views.js';
-import { drawLegend, drawNorthArrow, drawViewLabel } from './montage.js';
+import {
+  drawLegend,
+  drawNorthArrow,
+  drawViewLabel,
+  isModulePreview,
+  legendLines,
+} from './montage.js';
 
 const VIEWS: readonly ViewName[] = ['top', 'ne', 'nw', 'se', 'sw'];
 /** How long `minRevision` may take to arrive. */
@@ -153,7 +159,7 @@ class RenderPage {
         (i % columns) * tile,
         Math.floor(i / columns) * tile,
         tile,
-        this.legend(snapshot),
+        legendLines(snapshot, this.gridStep),
       );
     g.fillStyle = '#17201c';
     for (let c = 1; c < columns; c++) g.fillRect(c * tile - 1, 0, 2, canvas.height);
@@ -185,7 +191,7 @@ class RenderPage {
 
   /** The top view of a whole map frames the map's rectangle, not its bounding sphere. */
   private topRegion(spec: RenderSpec, region: Region, snapshot: SceneSnapshot): Region {
-    if (spec.focus || !snapshot.terrain.chunks.length) return region;
+    if (spec.focus || isModulePreview(snapshot)) return region;
     const half = Math.max(snapshot.map.size.x, snapshot.map.size.z) / 2;
     return {
       center: new Vector3(snapshot.map.size.x / 2, region.center.y, snapshot.map.size.z / 2),
@@ -194,8 +200,8 @@ class RenderPage {
   }
 
   /**
-   * Maps without terrain (module previews) get a ground plane with a 0.5 m
-   * grid, so sizes and shadows can be read.
+   * Module previews have no terrain: they get a ground plane with a grid, so
+   * sizes and shadows can be read.
    */
   private placeFloor(snapshot: SceneSnapshot, region: Region): void {
     for (const child of [...this.floor.children]) {
@@ -204,7 +210,7 @@ class RenderPage {
       mesh.geometry?.dispose();
       (mesh.material as Material | undefined)?.dispose();
     }
-    if (snapshot.terrain.chunks.length) return;
+    if (!isModulePreview(snapshot)) return;
     const size = Math.max(4, Math.ceil(region.radius * 4));
     const step = (this.gridStep = size <= 100 ? 0.5 : size <= 400 ? 1 : 5);
     const span = Math.ceil(size / step) * step;
@@ -219,25 +225,6 @@ class RenderPage {
     const grid = new GridHelper(span, Math.round(span / step), 0x8a958e, 0xaab3ad);
     grid.position.set(x, 0, z);
     this.floor.add(plane, grid);
-  }
-
-  private legend(snapshot: SceneSnapshot): { text: string; alert?: boolean }[] {
-    const violations = snapshot.violations.length;
-    const errors = snapshot.fileErrors.length;
-    // build_module previews use a temporary map without terrain.
-    if (!snapshot.terrain.chunks.length && snapshot.map.id.startsWith('__module_'))
-      return [
-        { text: snapshot.map.name || snapshot.map.id },
-        { text: `module preview · grid lines every ${this.gridStep} m` },
-        { text: 'north is -Z' },
-      ];
-    return [
-      { text: snapshot.map.name || snapshot.map.id },
-      { text: `map ${snapshot.map.id} · revision ${snapshot.revision}` },
-      { text: `${snapshot.map.size.x} × ${snapshot.map.size.z} m · north is -Z` },
-      { text: `${violations} violation${violations === 1 ? '' : 's'}`, alert: violations > 0 },
-      ...(errors ? [{ text: `${errors} file error${errors === 1 ? '' : 's'}`, alert: true }] : []),
-    ];
   }
 }
 

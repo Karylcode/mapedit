@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Box3, Vector3 } from 'three';
+import { mockScene } from '@mapedit/server';
+import type { SceneSnapshot } from '@mapedit/protocol';
 import { montageLayout, regionOf, viewCamera } from '../src/render/views.js';
+import { legendLines } from '../src/render/montage.js';
 
 const region = { center: new Vector3(50, 0, 50), radius: 20 };
 /** Normalized screen position of a map point (x right, y up, −1…1). */
@@ -68,5 +71,24 @@ describe('render view cameras', () => {
       { columns: 2, rows: 2 },
       { columns: 3, rows: 2 },
     ]);
+  });
+});
+
+describe('render legend (FE17)', () => {
+  /** A scene without terrain, like a module preview. */
+  const bare = (map: Partial<SceneSnapshot['map']>): SceneSnapshot => {
+    const scene = mockScene();
+    return { ...scene, terrain: { revision: 0, chunks: [] }, map: { ...scene.map, ...map } };
+  };
+
+  it('tells a module preview by its map kind, not by its id', () => {
+    const preview = bare({ id: 'preview-1', name: 'Door', kind: 'module_preview' });
+    expect(legendLines(preview, 0.5).map((line) => line.text)).toEqual([
+      'Door',
+      'module preview · grid lines every 0.5 m',
+      'north is -Z',
+    ]);
+    const map = bare({ id: '__module_like', kind: 'map' });
+    expect(legendLines(map, 0.5)[1]!.text).toMatch(/^map __module_like · revision /);
   });
 });

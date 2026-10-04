@@ -1,3 +1,4 @@
+import type { SceneSnapshot } from '@mapedit/protocol';
 import type { ViewName } from './views.js';
 
 const FONT = 'Bahnschrift, "Segoe UI", system-ui, sans-serif';
@@ -55,13 +56,43 @@ export function drawNorthArrow(
   g.fillText('N', cx, cy + r * 0.48);
 }
 
+/** One line of the legend; alerts are drawn in flag red. */
+export interface LegendLine {
+  text: string;
+  alert?: boolean;
+}
+
+/** The one-Module scene MCP build_module renders, told by its kind (protocol section 6). */
+export const isModulePreview = (scene: SceneSnapshot): boolean =>
+  scene.map.kind === 'module_preview';
+
+/** What the legend says: a map's facts, or a module preview's grid spacing. */
+export function legendLines(scene: SceneSnapshot, gridStep: number): LegendLine[] {
+  const name = scene.map.name || scene.map.id;
+  if (isModulePreview(scene))
+    return [
+      { text: name },
+      { text: `module preview · grid lines every ${gridStep} m` },
+      { text: 'north is -Z' },
+    ];
+  const violations = scene.violations.length;
+  const errors = scene.fileErrors.length;
+  return [
+    { text: name },
+    { text: `map ${scene.map.id} · revision ${scene.revision}` },
+    { text: `${scene.map.size.x} × ${scene.map.size.z} m · north is -Z` },
+    { text: `${violations} violation${violations === 1 ? '' : 's'}`, alert: violations > 0 },
+    ...(errors ? [{ text: `${errors} file error${errors === 1 ? '' : 's'}`, alert: true }] : []),
+  ];
+}
+
 /** Facts for the spare tile of a montage, written for the Agent reading it. */
 export function drawLegend(
   g: CanvasRenderingContext2D,
   x: number,
   y: number,
   tile: number,
-  lines: { text: string; alert?: boolean }[],
+  lines: LegendLine[],
 ): void {
   g.fillStyle = INK;
   g.fillRect(x, y, tile, tile);

@@ -163,4 +163,30 @@ describe.skipIf(!executable)('switching maps in a real two-map project', () => {
       expect(await select.inputValue()).toBe(other);
     }
   });
+
+  it('names and outlines what the Agent changed on the open map only (FE17)', async () => {
+    const select = page.locator('.tb-select');
+    if ((await select.inputValue()) !== 'village') await select.selectOption('village');
+    await poll(() => editorState(page, (e) => e.store.state.scene?.map.id)).toBe('village');
+    const flashed = () => editorState(page, (e) => e.map.outlines.flash.refs);
+    const edit = async (file: string, from: RegExp | string, to: string) =>
+      writeFile(join(root, file), (await readFile(join(root, file), 'utf8')).replace(from, to));
+
+    // The other map has a structure:house too; this one must not light up.
+    await edit('maps/second/structures/house.yaml', /position: \[[^\]]+\]/, 'position: [70, 70]');
+    const elsewhere = page.locator('.toast-text', { hasText: 'on Second Map' });
+    await poll(() => elsewhere.count()).toBe(1);
+    expect(await elsewhere.textContent()).toBe('The Agent changed house on Second Map');
+    expect(await flashed()).toEqual([]);
+
+    // On the open map, the toast already uses the new name: the scene comes first.
+    await edit(
+      'maps/village/structures/house.yaml',
+      'name: Starter House',
+      'name: Renamed Cottage',
+    );
+    const here = page.locator('.toast-text', { hasText: 'The Agent changed Renamed Cottage' });
+    await poll(() => here.count()).toBe(1);
+    await poll(flashed).toEqual(['structure:house']);
+  });
 });

@@ -65,6 +65,8 @@ export const zhTW = {
   'edit.offline': '還沒連上編輯器伺服器，這次的修改沒有送出',
   'edit.busy': '上一個修改還在處理中，請稍等再拖',
   'edit.uncertain': '連線中斷，不確定剛才的修改有沒有套用；重新連線後以畫面為準',
+  'edit.fileErrors': '有檔案無法讀取，修好之前不能移動',
+  'edit.internalError': '伺服器暫時無法處理，請稍後再試',
 
   'history.title': '修改紀錄',
   'history.empty': '開啟以來還沒有修改',
@@ -94,6 +96,7 @@ export const zhTW = {
   'notice.edit_rejected': '{objects} 的修改沒有套用',
   'notice.file_error': '有檔案無法讀取',
   'notice.unknown_map': '專案裡已經沒有這張地圖，可能剛被刪除',
+  'notice.onMap': '「{map}」上的 {objects}',
   'history.nothingToUndo': '沒有可以復原的修改',
   'history.nothingToRedo': '沒有可以重做的修改',
   'history.undoFailed': '復原失敗',
@@ -217,6 +220,8 @@ export const en: Record<MessageKey, Message> = {
   'edit.busy': 'The previous change is still being applied; drag again in a moment',
   'edit.uncertain':
     'Connection lost; the last change may or may not have been applied. The map shows the truth once reconnected',
+  'edit.fileErrors': 'A file could not be read; fix it before moving anything',
+  'edit.internalError': "The server couldn't handle that just now; try again in a moment",
 
   'history.title': 'Change log',
   'history.empty': 'No changes since the editor opened',
@@ -248,6 +253,7 @@ export const en: Record<MessageKey, Message> = {
   'notice.edit_rejected': 'Your change to {objects} was not applied',
   'notice.file_error': 'A file could not be read',
   'notice.unknown_map': 'That map is no longer in the project; it may have just been deleted',
+  'notice.onMap': '{objects} on {map}',
   'history.nothingToUndo': 'Nothing to undo',
   'history.nothingToRedo': 'Nothing to redo',
   'history.undoFailed': 'Undo failed',

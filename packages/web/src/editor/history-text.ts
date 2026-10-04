@@ -1,20 +1,22 @@
-import { parseObjectRef, type HistoryEntry } from '@mapedit/protocol';
+import type { HistoryEntry } from '@mapedit/protocol';
 import { hasMessage, type Translator } from '../i18n/i18n.js';
 import type { SnapshotIndex } from '../scene/snapshot-index.js';
 import { objectName } from './describe.js';
 
-/** One history row in the interface language: what changed, by whom. */
+/**
+ * One history row in the interface language, from the entry's action, refs
+ * and files. The English summary is shown as written only when nothing else says
+ * what happened.
+ */
 export function describeEntry(
   entry: HistoryEntry,
   index: SnapshotIndex | undefined,
   t: Translator,
 ): string {
-  // Human edits are recorded as "Move <ref>" or "Delete <ref>".
-  const match = /^(Move|Delete) (\S+)$/.exec(entry.summary);
-  if (match && parseObjectRef(match[2]!)) {
-    const ref = match[2]!;
+  const ref = entry.refs?.[0];
+  if ((entry.action === 'move' || entry.action === 'delete') && ref) {
     const name = objectName(ref, index);
-    return t(match[1] === 'Move' ? 'history.move' : 'history.delete', { name });
+    return t(entry.action === 'move' ? 'history.move' : 'history.delete', { name });
   }
   if (entry.files.length) {
     const names = entry.files.map((file) => file.slice(file.lastIndexOf('/') + 1));

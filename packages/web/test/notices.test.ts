@@ -64,6 +64,48 @@ describe('notice toasts', () => {
     filter.update({ ...scene, fileErrors: [] });
     expect(filter.admit(message)).toBe(true);
   });
+
+  it('remembers a file error by its whole message, without reading it (FE17)', () => {
+    const filter = new FileErrorFilter();
+    // Words the snapshot's file errors do not repeat.
+    const message = 'Some project file is broken.';
+    expect(filter.admit(message)).toBe(true);
+    filter.update(mockScene());
+    expect(filter.admit(message)).toBe(false);
+  });
+});
+
+describe('notices about another map (FE17)', () => {
+  const project = {
+    name: 'Demo',
+    maps: [
+      { id: 'village', name: 'Mock village' },
+      { id: 'second', name: 'Second Map' },
+    ],
+  };
+  const on = (code: NoticeCode, refs: string[], mapId: string): Notice => ({
+    ...notice(code, refs),
+    mapId,
+  });
+
+  it('names objects from the open map only', () => {
+    const here = noticeToast(on('agent_changed', ['module:house/base'], 'village'), index, project);
+    expect(resolve(here.text, tr('en'))).toBe('The Agent changed House');
+    const there = noticeToast(on('agent_changed', ['module:house/base'], 'second'), index, project);
+    expect(resolve(there.text, tr('en'))).toBe('The Agent changed house on Second Map');
+    expect(there.key).not.toBe(here.key);
+  });
+
+  it('says which map a lost edit was on', () => {
+    const lost = noticeToast(
+      on('overwritten_by_agent', ['structure:house'], 'second'),
+      index,
+      project,
+    );
+    expect(resolve(lost.text, tr('zh-TW'))).toBe(
+      '你剛才對 「Second Map」上的 house 的修改，被 Agent 後來的修改蓋掉了',
+    );
+  });
 });
 
 describe('violation text', () => {

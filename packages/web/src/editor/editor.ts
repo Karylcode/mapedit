@@ -15,7 +15,7 @@ import { OverviewInput } from './input.js';
 import { clickSelection, keepSelection } from './selection.js';
 import { shortcutFor } from './keys.js';
 import { EditController } from './editing.js';
-import { FileErrorFilter, noticeToast } from './notices.js';
+import { FileErrorFilter, noticeToast, onDrawnMap } from './notices.js';
 import { wholeObjects } from './describe.js';
 import { TitleBlock } from './hud/title-block.js';
 import { StatusCard } from './hud/status-card.js';
@@ -260,9 +260,14 @@ export function start(root: HTMLElement = document.body): void {
       store.set({ history: { entries: message.entries, cursor: message.cursor } });
     else if (message.type === 'notice') {
       if (message.code === 'file_error' && !fileErrors.admit(message.message)) return;
-      toasts.show(noticeToast(message, map.index));
+      toasts.show(noticeToast(message, map.index, store.state.project));
       if (message.code === 'unknown_map') returnToOpenMap();
-      if (message.code === 'agent_changed' && message.refs?.length) {
+      // The scene comes before the notice, so the refs are found in the new snapshot.
+      if (
+        message.code === 'agent_changed' &&
+        message.refs?.length &&
+        onDrawnMap(message, map.index)
+      ) {
         // Briefly outline what the Agent touched, so a watching human can spot it.
         map.setOutlines('flash', wholeObjects(message.refs, map.index));
         window.clearTimeout(flash);
