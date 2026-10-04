@@ -178,3 +178,19 @@ recorded after all corrections are complete.
   suites (25 tests), typecheck and lint pass. Grid clarification: final height is
   rounded to 0.5 m, so sloped terrain can introduce up to 0.25 m clearance error;
   documented in `map-format.md` and covered by a test. No other deviation.
+- **F3 complete:** CLI `check` and MCP `check`/`overview` cover all maps by default;
+  CLI JSON always has a `maps` array. All-map export validates and prepares every
+  GLB before writing, names rejected maps/source errors, and preserves existing
+  outputs on rejection. Explicit map selection retains the same report shape;
+  MCP reporting leaves the editor's selected map unchanged. Red/green regressions
+  in `cli/test/multi-map.test.ts` and `server/test/multi-map-mcp.test.ts` cover the
+  second-map violation, all-map exports, malformed maps and selection isolation.
+  README, format docs, Agent template and the end-to-end script are updated.
+  Deviation: none.
+- **F4 complete:** a shared `listFloatingInstances` report lists every `canFloat`
+  instance with ref, module type and map-space model-origin position, including
+  grounded instances. CLI text/JSON and both MCP reports use it; it does not affect
+  violations or exit status. `core/test/report.test.ts`, the CLI multi-map test
+  and MCP multi-map test exercise floating islands supporting ordinary houses,
+  grounded exceptions and paging. ADR 0011 behavior is preserved. Related CLI,
+  MCP, geometry-report and history tests, typecheck and lint pass. Deviation: none.

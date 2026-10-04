@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { createServer, buildProject, exportProject, connectStdio } from '@mapedit/server';
+import { createServer, buildProjects, exportProject, connectStdio } from '@mapedit/server';
+import { listFloatingInstances } from '@mapedit/core';
 import { spawn } from 'node:child_process';
 import { initProject } from './init.js';
 import { discoverServer, registerServer } from './discovery.js';
@@ -21,9 +22,12 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       throw new Error('export requires --out <directory>.');
     if (mapIndex >= 0 && (!flags[mapIndex + 1] || flags[mapIndex + 1]!.startsWith('--')))
       throw new Error('--map requires a map ID.');
-    process.stdout.write(
-      `${await exportProject(process.cwd(), mapIndex >= 0 ? flags[mapIndex + 1] : undefined, out)}\n`,
+    const files = await exportProject(
+      process.cwd(),
+      mapIndex >= 0 ? flags[mapIndex + 1] : undefined,
+      out,
     );
+    process.stdout.write(`${files.join('\n')}\n`);
     return;
   }
   if (command === 'mcp') {
@@ -63,26 +67,43 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   }
   if (command === 'check') {
     const mapIndex = flags.indexOf('--map');
-    if (mapIndex >= 0 && !flags[mapIndex + 1]) throw new Error('--map requires a map ID.');
-    const { compilation } = await buildProject(
+    if (mapIndex >= 0 && (!flags[mapIndex + 1] || flags[mapIndex + 1]!.startsWith('--')))
+      throw new Error('--map requires a map ID.');
+    const built = await buildProjects(
       process.cwd(),
       mapIndex < 0 ? undefined : flags[mapIndex + 1],
     );
-    const { violations, fileErrors } = compilation.scene;
+    const maps = built.map(({ scene }) => ({
+      map: scene.map.id,
+      violations: scene.violations,
+      fileErrors: scene.fileErrors,
+      floating: listFloatingInstances(scene),
+    }));
     if (flags.includes('--json')) {
-      process.stdout.write(
-        `${JSON.stringify({ map: compilation.scene.map.id, violations, fileErrors }, null, 2)}\n`,
-      );
+      process.stdout.write(`${JSON.stringify({ maps }, null, 2)}\n`);
     } else {
-      for (const error of fileErrors)
-        process.stdout.write(`${error.file}:${error.line ?? 1}: ${error.message}\n`);
-      for (const violation of violations)
+      for (const { map, violations, fileErrors, floating } of maps) {
+        process.stdout.write(`Map ${map}:\n`);
+        for (const error of fileErrors)
+          process.stdout.write(`${error.file}:${error.line ?? 1}: ${error.message}\n`);
+        for (const violation of violations)
+          process.stdout.write(
+            `${violation.kind}: ${violation.message}${violation.suggestion ? ` ${violation.suggestion}` : ''}\n`,
+          );
+        for (const instance of floating)
+          process.stdout.write(
+            `canFloat: ${instance.ref} ${instance.moduleType} at [${instance.position.join(', ')}] m\n`,
+          );
         process.stdout.write(
-          `${violation.kind}: ${violation.message}${violation.suggestion ? ` ${violation.suggestion}` : ''}\n`,
+          `${violations.length} violations, ${fileErrors.length} file errors, ${floating.length} canFloat instances.\n`,
         );
-      process.stdout.write(`${violations.length} violations, ${fileErrors.length} file errors.\n`);
+      }
     }
-    process.exitCode = violations.length || fileErrors.length ? 1 : 0;
+    process.exitCode = maps.some(
+      ({ violations, fileErrors }) => violations.length || fileErrors.length,
+    )
+      ? 1
+      : 0;
     return;
   }
   if (command === 'dev') {

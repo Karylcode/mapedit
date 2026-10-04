@@ -33,6 +33,9 @@ async function fixture() {
     async getScene() {
       return compiled.scene;
     },
+    async getScenes() {
+      return [compiled.scene];
+    },
     async getCompilation() {
       return compiled;
     },

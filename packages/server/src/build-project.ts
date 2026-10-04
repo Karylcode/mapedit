@@ -11,6 +11,7 @@ import {
   terrainChunkGlb,
   checkGeometry,
   modelToGlb,
+  compareText,
   type ParsedProject,
   type Compilation,
   type TerrainData,
@@ -122,7 +123,30 @@ export async function buildProject(
   mapId?: string,
   revision = 1,
 ): Promise<BuiltProject> {
+  return buildParsedProject(root, await readProject(root), mapId, revision);
+}
+
+/** Check all maps from the same authoring snapshot; retain diagnostics for an empty project. */
+export async function buildProjects(
+  root: string,
+  mapId?: string,
+  revision = 1,
+): Promise<BuiltProject[]> {
   const parsed = await readProject(root);
+  const ids =
+    mapId === undefined ? parsed.info.maps.map((map) => map.id).sort(compareText) : [mapId];
+  if (ids.length === 0) return [await buildParsedProject(root, parsed, undefined, revision)];
+  const built: BuiltProject[] = [];
+  for (const id of ids) built.push(await buildParsedProject(root, parsed, id, revision));
+  return built;
+}
+
+async function buildParsedProject(
+  root: string,
+  parsed: ParsedProject,
+  mapId: string | undefined,
+  revision: number,
+): Promise<BuiltProject> {
   const initial = compileMap(parsed, mapId, { revision });
   const selectedId = initial.scene.map.id;
   const assets = new Map<string, Uint8Array>(),

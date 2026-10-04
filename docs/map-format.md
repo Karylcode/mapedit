@@ -48,7 +48,7 @@ sockets:
     rotation: 0
 ```
 
-`name` defaults to id. `isFoundation`, `canFloat`, and `terrainFollow` default to false. `foundationStyle` is `skirt` (default) or `pillars`; it selects how the foundation extends down to terrain. `canFloat` exempts the module from the support requirement. `terrainFollow` adapts a directly placed module's height to terrain beneath its center when the structure height is automatic. An explicit structure height takes precedence, including for floating islands. `material` is optional; recipes may assign materials themselves.
+`name` defaults to id. `isFoundation`, `canFloat`, and `terrainFollow` default to false. `foundationStyle` is `skirt` (default) or `pillars`; it selects how the foundation extends down to terrain. `canFloat` exempts the module from the support requirement and allows it to support modules above or attached to it. `check` and `overview` list every `canFloat` instance, including grounded ones, so the exception remains visible. `terrainFollow` adapts a directly placed module's height to terrain beneath its center when the structure height is automatic. An explicit structure height takes precedence, including for floating islands. `material` is optional; recipes may assign materials themselves.
 
 `sockets` defaults to an empty list. Every socket has an id, type, and local position. `direction` is north/east/south/west/up/down (default south). `rotation` defaults to 0 and is a multiple of 90 degrees; it rotates a horizontal direction or sets the twist of a vertical socket. Up connects to down; horizontal sockets face each other after attachment. Each socket has capacity one.
 
@@ -152,4 +152,14 @@ socket positions coincident. Foundations extend down without altering either PNG
 
 Human dragging snaps x/z to the 0.5-meter grid and rotation to 15 degrees. Auto-height structures follow terrain; explicit heights remain explicit. Markers move by the terrain-height difference between their old position and snapped destination, preserving a point's height above terrain or a box bottom's clearance. The resulting marker y coordinate is rounded to the 0.5-meter grid, so clearance may change by up to 0.25 meters on an interpolated slope. Existing numeric fields are edited at their YAML AST source ranges, preserving surrounding comments, quotes, spaces, and line endings exactly. Adding a previously omitted field or deleting an object uses the YAML Document API, retaining comments and scalar/flow styles while normalizing some incidental whitespace. A preview does not mutate source documents.
 
-`mapedit check --json` returns violations and file errors. Violation kinds from text compilation are `off_grid`, `bad_rotation`, `out_of_bounds`, `missing_reference`, and `incompatible_socket`; geometry adds `overlap` and `unsupported`. All must be resolved before export. Parser errors are a separate `fileErrors` array so the frontend can report a malformed file even when no object exists yet.
+`mapedit check` checks every map by default; `--map <id>` selects one. Any violation or file error makes the exit code nonzero. `--json` always returns the same envelope, even for a single selected map:
+
+```json
+{ "maps": [{ "map": "village", "violations": [], "fileErrors": [], "floating": [] }] }
+```
+
+Each `floating` entry has `ref`, `moduleType`, and `position` (the module origin in world-space meters). It lists every `canFloat` instance, regardless of current ground contact, and does not count as a violation or change the exit code. MCP `check` and `overview` also return all maps unless `map` is specified; querying them leaves the editor's selected map unchanged.
+
+`mapedit export --out <directory>` validates every map before writing any output, then creates `<map-id>.glb` for each map. `--map <id>` limits both validation and export to that map. A rejected export names invalid maps and retains existing output files. Project-wide malformed-file errors remain visible even when a map cannot be parsed.
+
+Violation kinds from text compilation are `off_grid`, `bad_rotation`, `out_of_bounds`, `missing_reference`, and `incompatible_socket`; geometry adds `overlap` and `unsupported`. All must be resolved before export. Parser errors are a separate `fileErrors` array so the frontend can report a malformed file even when no object exists yet.

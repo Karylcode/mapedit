@@ -117,7 +117,9 @@ describe('real backend integration', () => {
       expect((await client.listTools()).tools).toHaveLength(10);
       await call('overview');
       const checked = await call('check');
-      expect(JSON.parse((checked.content as Array<{ text: string }>)[0]!.text).ok).toBe(true);
+      expect(JSON.parse((checked.content as Array<{ text: string }>)[0]!.text).maps[0].ok).toBe(
+        true,
+      );
       await call('floor_plan', { structure: 'house0' });
       await call('modules');
       await call('free_sockets', { structure: 'house0' });
@@ -127,7 +129,9 @@ describe('real backend integration', () => {
       const original = await readFile(structure, 'utf8');
       await writeFile(structure, original.replace('[10, 10]', '[-10, 10]'));
       const invalid = await call('check');
-      expect(JSON.parse((invalid.content as Array<{ text: string }>)[0]!.text).ok).toBe(false);
+      expect(JSON.parse((invalid.content as Array<{ text: string }>)[0]!.text).maps[0].ok).toBe(
+        false,
+      );
       const denied = await client.callTool({ name: 'export', arguments: { out: 'export' } });
       expect(denied.isError).toBe(true);
       await writeFile(structure, original);

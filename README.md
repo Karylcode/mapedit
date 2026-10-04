@@ -34,6 +34,13 @@ node ../packages/cli/dist/index.js export --map village --out ./export
 node ../packages/cli/dist/index.js mcp
 ```
 
+`check` 與 `export` 沒加 `--map` 時會處理全部地圖。任何一張有違規或檔案錯誤，
+檢查就以非零代碼結束；匯出會在寫入任何檔案前全部拒絕，並列出問題地圖。
+`check --json` 固定回傳 `{ "maps": [{ "map": "village", "violations": [],
+"fileErrors": [], "floating": [] }] }`，指定地圖時陣列只有一項。
+`floating` 列出所有 `canFloat` 模組的 ref、模組類型與世界座標，包含目前貼地的實例；
+這是提示資訊，不算違規。MCP `check` 和 `overview` 同樣預設檢查全部地圖。
+
 `mcp` 以 stdio 連接此專案正在運行的伺服器，或自行啟動一個。HTTP MCP 位於
 `/mcp`，提供固定的 10 個工具。`init` 會產生 Claude Code 與 Codex 的 HTTP 設定
 和使用絕對 Node/CLI 路徑的 stdio 備用設定。執行期間不呼叫 AI 或外部服務；

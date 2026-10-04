@@ -28,7 +28,9 @@ it('check emits valid JSON and nonzero status for violations and YAML errors', a
     });
   const initial = check();
   expect(initial.status, initial.stderr).toBe(0);
-  expect(JSON.parse(initial.stdout)).toMatchObject({ violations: [], fileErrors: [] });
+  expect(JSON.parse(initial.stdout)).toMatchObject({
+    maps: [{ map: 'village', violations: [], fileErrors: [], floating: [] }],
+  });
   const structures = path.join(root, 'maps/village/structures/house.yaml');
   await writeFile(
     structures,
@@ -36,13 +38,13 @@ it('check emits valid JSON and nonzero status for violations and YAML errors', a
   );
   const invalid = check();
   expect(invalid.status).toBe(1);
-  expect(JSON.parse(invalid.stdout).violations.map((v: { kind: string }) => v.kind)).toContain(
-    'missing_reference',
-  );
+  expect(
+    JSON.parse(invalid.stdout).maps[0].violations.map((v: { kind: string }) => v.kind),
+  ).toContain('missing_reference');
   await writeFile(structures, 'structures: [unterminated');
   const syntax = check();
   expect(syntax.status).toBe(1);
-  expect(JSON.parse(syntax.stdout).fileErrors[0]).toMatchObject({
+  expect(JSON.parse(syntax.stdout).maps[0].fileErrors[0]).toMatchObject({
     file: 'maps/village/structures/house.yaml',
     line: 1,
   });

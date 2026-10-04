@@ -60,7 +60,7 @@ const png = encodeTerrain(terrain);
 await writeFile(path.join(root, 'maps/village/terrain/height.png'), png.height);
 await writeFile(path.join(root, 'maps/village/terrain/surface.png'), png.surface);
 const checked = JSON.parse(run(['check', '--json']));
-if (checked.violations.length || checked.fileErrors.length)
+if (checked.maps.some((map) => map.violations.length || map.fileErrors.length))
   throw new Error('Village check did not reach zero violations.');
 const out = path.join(root, 'export');
 run(['export', '--out', out]);

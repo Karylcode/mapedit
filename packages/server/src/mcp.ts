@@ -11,13 +11,14 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { Compilation, ModuleDefinition } from '@mapedit/core';
+import { listFloatingInstances, type Compilation, type ModuleDefinition } from '@mapedit/core';
 import type { InstanceView, SceneSnapshot } from '@mapedit/protocol';
 import { ScreenshotService } from './screenshot.js';
 
 export interface AgentServices {
   flush(): Promise<void>;
   getScene(mapId?: string): Promise<SceneSnapshot>;
+  getScenes(mapId?: string): Promise<SceneSnapshot[]>;
   getCompilation(mapId?: string): Promise<Compilation | undefined>;
   getModules(): ModuleDefinition[];
   compatibleSocketTypes(type: string): string[];
@@ -155,23 +156,31 @@ export function createMcpServer(
     'overview',
     {
       description:
-        units + 'Map size, structures, markers and violation counts. Example: {"map":"village"}.',
+        units +
+        'Map size, structures, markers, canFloat instances and violation counts for every map unless map is specified. Example: {"map":"village"}.',
       inputSchema: { ...mapSchema, ...pageSchema },
     },
     async ({ map, offset, limit }) => {
       await services.flush();
-      const scene = await services.getScene(map);
+      const scenes = await services.getScenes(map);
       return textResult({
-        map: scene.map,
-        revision: scene.revision,
-        structures: page(
-          scene.structures.map((s) => ({ ref: s.ref, name: s.name, modules: s.instances.length })),
-          offset,
-          limit,
-        ),
-        markers: page(scene.markers, offset, limit),
-        violations: scene.violations.length,
-        fileErrors: scene.fileErrors.length,
+        maps: scenes.map((scene) => ({
+          map: scene.map,
+          revision: scene.revision,
+          structures: page(
+            scene.structures.map((s) => ({
+              ref: s.ref,
+              name: s.name,
+              modules: s.instances.length,
+            })),
+            offset,
+            limit,
+          ),
+          markers: page(scene.markers, offset, limit),
+          violations: scene.violations.length,
+          fileErrors: scene.fileErrors.length,
+          floating: page(listFloatingInstances(scene), offset, limit),
+        })),
       });
     },
   );
@@ -180,17 +189,21 @@ export function createMcpServer(
     {
       description:
         units +
-        'List violations and actionable suggestions. Example: {"map":"village","limit":50}.',
+        'List violations, actionable suggestions and canFloat instances for every map unless map is specified. canFloat instances are informational, including those on the ground. Example: {"map":"village","limit":50}.',
       inputSchema: { ...mapSchema, ...pageSchema },
     },
     async ({ map, offset, limit }) => {
       await services.flush();
-      const scene = await services.getScene(map);
+      const scenes = await services.getScenes(map);
       return textResult({
-        revision: scene.revision,
-        ok: scene.violations.length === 0 && scene.fileErrors.length === 0,
-        violations: page(scene.violations, offset, limit),
-        fileErrors: page(scene.fileErrors, offset, limit),
+        maps: scenes.map((scene) => ({
+          map: scene.map.id,
+          revision: scene.revision,
+          ok: scene.violations.length === 0 && scene.fileErrors.length === 0,
+          violations: page(scene.violations, offset, limit),
+          fileErrors: page(scene.fileErrors, offset, limit),
+          floating: page(listFloatingInstances(scene), offset, limit),
+        })),
       });
     },
   );

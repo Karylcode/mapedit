@@ -21,7 +21,7 @@ export { MemoryState } from './state.js';
 export { mockScene } from './mock.js';
 export type { StateStore } from './state.js';
 export { readProject, readProjectTexts, projectPath } from './project-files.js';
-export { buildProject, buildFromParsed } from './build-project.js';
+export { buildProject, buildProjects, buildFromParsed } from './build-project.js';
 export { exportProject } from './export-project.js';
 export { connectStdio } from './mcp.js';
 export { DiskState } from './disk-state.js';

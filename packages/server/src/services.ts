@@ -22,6 +22,13 @@ export function createAgentServices(
   return {
     flush: () => state.flush(),
     getScene: (id) => state.getScene(id),
+    async getScenes(id) {
+      if (id !== undefined) return [await state.getScene(id)];
+      const maps = state.project.maps.map((map) => map.id).sort();
+      return maps.length
+        ? Promise.all(maps.map((map) => state.getScene(map)))
+        : [await state.getScene()];
+    },
     getCompilation: async (id) => (await state.getBuild(id)).compilation,
     getModules: () =>
       Object.values(current().parsed.modules).sort((a, b) => a.id.localeCompare(b.id)),

@@ -16,13 +16,15 @@ export function createMockServices(
     'project.yaml': 'name: Mock project\n',
     'modules/block/module.yaml': 'id: block\nname: Block\nsize: [2, 2, 2]\n',
   });
+  const getScene = async (id?: string) => {
+    if (state.getScene) return state.getScene(id);
+    if (id) await state.openMap(id);
+    return state.scene;
+  };
   return {
     flush: () => state.flush(),
-    async getScene(id) {
-      if (state.getScene) return state.getScene(id);
-      if (id) await state.openMap(id);
-      return state.scene;
-    },
+    getScene,
+    getScenes: async (id) => [await getScene(id)],
     async getCompilation() {
       return undefined;
     },
