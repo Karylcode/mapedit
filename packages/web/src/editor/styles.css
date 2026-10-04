@@ -1,0 +1,228 @@
+/*
+ * mapedit HUD: survey tags laid over a diorama.
+ * Ink and chalk for chrome, chalk-line blue for selection and snapping,
+ * flag red reserved for violations, stake amber for warnings.
+ */
+:root {
+  --ink: #17201c;
+  --ink-soft: #4b5751;
+  --ink-faint: #7d8782;
+  --chalk: #f1f3ee;
+  --chalk-raised: #fbfcf8;
+  --rule: rgba(23, 32, 28, 0.16);
+  --chalkline: #2b5fd9;
+  --chalkline-wash: rgba(43, 95, 217, 0.12);
+  --flag: #e0412f;
+  --flag-ink: #b3261c;
+  --flag-wash: rgba(224, 65, 47, 0.1);
+  --stake: #c98a16;
+  --stake-ink: #8a5d06;
+  --moss: #2f7a4d;
+  --sky: #c9dbe3;
+
+  --font-label:
+    'Bahnschrift', 'DIN Alternate', 'DIN Condensed', 'Microsoft JhengHei UI', 'PingFang TC',
+    system-ui, sans-serif;
+  --font-body:
+    'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Microsoft JhengHei UI',
+    'PingFang TC', 'Noto Sans TC', sans-serif;
+  --font-mono:
+    'Cascadia Mono', 'Cascadia Code', Consolas, ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --tag-edge: 0 2px 0 var(--ink);
+  --tag-lift: 0 2px 0 var(--ink), 0 10px 24px -12px rgba(23, 32, 28, 0.45);
+  --gutter: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--sky);
+  color: var(--ink);
+  font: 14px/1.4 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--chalkline);
+  outline-offset: 2px;
+}
+
+.editor {
+  position: fixed;
+  inset: 0;
+}
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hud > * {
+  pointer-events: auto;
+}
+
+/* Title block ------------------------------------------------------------ */
+
+.title-block {
+  position: absolute;
+  top: var(--gutter);
+  left: var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(150px, 260px) minmax(92px, auto);
+  background: var(--chalk-raised);
+  border: 1px solid var(--ink);
+  box-shadow: var(--tag-lift);
+}
+
+.tb-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 5px 10px 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.tb-cell:nth-child(odd) {
+  border-right: 1px solid var(--rule);
+}
+
+.tb-label {
+  font: 600 10px/1.2 var(--font-label);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.tb-value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 600 15px/1.25 var(--font-label);
+}
+
+.tb-project {
+  font-size: 17px;
+}
+
+.tb-mono {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.tb-select {
+  appearance: none;
+  min-width: 0;
+  margin: 0 -4px;
+  padding: 0 18px 0 4px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2317201c' stroke-width='1.6'/%3E%3C/svg%3E")
+    no-repeat right 4px center;
+  font: 600 15px/1.25 var(--font-label);
+  cursor: pointer;
+}
+
+.tb-select:disabled {
+  background-image: none;
+  cursor: default;
+  opacity: 1;
+}
+
+.tb-select:hover:not(:disabled) {
+  background-color: var(--chalkline-wash);
+}
+
+.tb-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.tb-link::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+
+.tb-link[data-status='open']::before {
+  background: var(--moss);
+  box-shadow: 0 0 0 3px rgba(47, 122, 77, 0.18);
+}
+
+.tb-link[data-status='reconnecting'],
+.tb-link[data-status='incompatible'] {
+  color: var(--flag-ink);
+}
+
+.tb-link[data-status='reconnecting']::before,
+.tb-link[data-status='incompatible']::before {
+  background: var(--flag);
+}
+
+.tb-link[data-status='connecting']::before,
+.tb-link[data-status='reconnecting']::before {
+  animation: tb-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tb-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.tb-lang {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 4px 6px;
+}
+
+.tb-lang-option {
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  font: 600 12px/1.5 var(--font-label);
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
+.tb-lang-option:hover {
+  color: var(--ink);
+}
+
+.tb-lang-option[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--chalk-raised);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

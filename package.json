@@ -7,7 +7,7 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "build": "pnpm prepare:cli && tsc -b",
+    "build": "pnpm prepare:cli && tsc -b && pnpm --filter @mapedit/web build",
     "prepare:cli": "node scripts/prepare-cli.mjs",
     "generate:authoring": "node scripts/generate-authoring.mjs",
     "typecheck": "pnpm prepare:cli && tsc -b --pretty false",
@@ -16,7 +16,8 @@
     "lint": "eslint packages",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "mapedit": "node packages/cli/dist/index.js"
+    "mapedit": "node packages/cli/dist/index.js",
+    "dev:web": "pnpm --filter @mapedit/web dev"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
