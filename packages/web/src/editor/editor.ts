@@ -197,10 +197,14 @@ export function start(root: HTMLElement = document.body): void {
   const fileErrors = new FileErrorFilter();
   const showScene = (scene: SceneSnapshot): void => {
     if (scene.map.id !== store.state.mapId) return;
-    const first = store.state.scene?.map.id !== scene.map.id;
+    const previous = store.state.scene;
+    const first = previous?.map.id !== scene.map.id;
     map.apply(scene);
-    if (first) {
+    // The Agent may resize the map: keep the camera's limits and framing in step.
+    const { x, z } = scene.map.size;
+    if (first || previous.map.size.x !== x || previous.map.size.z !== z)
       viewport.overview.setMap(scene.map.size);
+    if (first) {
       viewport.overview.frameMap(viewport.camera.fov, viewport.camera.aspect);
       viewport.invalidate();
       void map.settled().then(() => {

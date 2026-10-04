@@ -130,4 +130,27 @@ describe.skipIf(!executable)('editing a real project in a real browser', () => {
     const last = await editorState(page, (e) => e.store.state.history.entries.at(-1));
     expect(last.author).toBe('agent');
   });
+
+  it('widens the camera limits when the Agent enlarges the map (FE11)', async () => {
+    const limits = () =>
+      editorState(page, (e) => ({
+        maxDistance: e.viewport.overview.maxDistance,
+        margin: e.viewport.overview.margin,
+      }));
+    expect(await limits()).toEqual({ maxDistance: 160, margin: 10 });
+    const file = join(root, 'maps/village/map.yaml');
+    await writeFile(
+      file,
+      (await readFile(file, 'utf8')).replace('{ x: 100, z: 100 }', '{ x: 400, z: 400 }'),
+    );
+    await poll(() => editorState(page, (e) => e.store.state.scene.map.size.x)).toBe(400);
+    expect(await limits()).toEqual({ maxDistance: 640, margin: 40 });
+    // F with nothing selected now frames the larger map.
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('f');
+    await poll(() => editorState(page, (e) => e.viewport.overview.target.x), {
+      timeout: 5000,
+    }).toBe(200);
+  });
 });
