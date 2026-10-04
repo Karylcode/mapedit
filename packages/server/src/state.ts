@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { transformMatrix, createViolation } from '@mapedit/core';
+import { transformMatrix, createViolation, snapMove } from '@mapedit/core';
 import { parseObjectRef, markerPosition } from '@mapedit/protocol';
 import type {
   Edit,
@@ -18,6 +18,8 @@ import type { AgentServices } from './mcp.js';
 import type { ScreenshotService } from './screenshot.js';
 
 export type Preview = Extract<ServerMessage, { type: 'previewResult' }>;
+/** The mock terrain is one flat chunk whose surface is at height 0. */
+const mockTerrainHeight = (): number => 0;
 export interface StateStore {
   project: ProjectInfo;
   scene: SceneSnapshot;
@@ -101,9 +103,13 @@ export class MemoryState extends EventEmitter implements StateStore {
       );
     if (edit.kind === 'delete')
       return { type: 'previewResult', requestId, ok: violations.length === 0, violations };
-    const position = edit.position.map((v) => Math.round(v * 2) / 2) as [number, number, number];
-    position[1] = 0;
-    const rotation = Math.round(edit.rotation / 15) * 15;
+    // The same height rule as the real editor, on the mock's flat terrain at height 0.
+    const marker = this.scene.markers.find((item) => item.ref === edit.ref);
+    const { position, rotation } = snapMove(
+      edit,
+      marker ? { markerPosition: markerPosition(marker.shape) } : {},
+      mockTerrainHeight,
+    );
     const extent = object?.kind === 'structure' ? 2 : 0;
     if (
       position[0] < 0 ||
@@ -150,7 +156,7 @@ export class MemoryState extends EventEmitter implements StateStore {
       this.scene.markers = this.scene.markers.filter((m) => m.ref !== edit.ref);
     } else if (structure && preview.transform) {
       const previous = structure.transform;
-      const angle = Math.round(edit.rotation / 15) * 15;
+      const angle = snapMove(edit, {}, mockTerrainHeight).rotation;
       const oldAngle = (Math.atan2(-previous[2]!, previous[0]!) * 180) / Math.PI;
       const delta = ((angle - oldAngle) * Math.PI) / 180;
       for (const instance of structure.instances) {
@@ -174,7 +180,7 @@ export class MemoryState extends EventEmitter implements StateStore {
       ];
       const coordinates = markerPosition(marker.shape);
       coordinates.splice(0, 3, ...position);
-      marker.shape.rotation = Math.round(edit.rotation / 15) * 15;
+      marker.shape.rotation = snapMove(edit, {}, mockTerrainHeight).rotation;
     }
     this.scene.revision++;
     this.record('human', `${edit.kind === 'move' ? 'Move' : 'Delete'} ${edit.ref}`, [

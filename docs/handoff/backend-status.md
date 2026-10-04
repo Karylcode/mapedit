@@ -406,3 +406,13 @@ by Claude. Each entry records the change, the tests and any deviation.
   and rechecked. All four failed first with the reported `canFloat` advice. The
   F5 cross-Structure test now expects the exact `attach` text. The rewrite already
   uses the F24 names (`solidsByStructure`, `Placement`, `place`). Deviation: none.
+- **F19 complete:** `snapMove` in `core/src/format.ts` is now the single rule for a
+  human move: grid X/Z, 15-degree rotation, and the height (a Marker keeps its
+  height above terrain, an explicit Structure height stays, anything else sits on
+  terrain). `normalizeEdit` and the mock `MemoryState` preview/apply both call it;
+  the mock passes its flat terrain at height 0. Dragging the mock box marker from
+  center `[10, 1, 5]` to `[30.2, 0, 29.9]` now gives `[30, 1, 30]`, keeping its
+  bottom on the ground. The mock also stores rotations normalized to 0–360 like
+  the real editor. Test: `server/test/protocol.test.ts` "F19 keeps the bottom
+  clearance of a dragged mock box marker" (preview and apply over WebSocket);
+  it failed first with `[30, 0, 30]`. Deviation: none.
