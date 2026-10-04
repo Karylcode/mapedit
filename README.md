@@ -59,8 +59,9 @@ node scripts/test-packed-cli.mjs --keep
 ```
 
 最後一行會另行把四個 workspace 套件執行 `pnpm pack`，在 repo 外的暫存目錄
-以本機 tarball overrides 離線安裝，再用封裝 CLI 執行 `init` 與 `check`。
-先前的 `pnpm install` 需已填入相依套件快取；輸出會列出保留的暫存路徑。
+以本機 tarball overrides 和 repo 鎖定的完整相依版本圖離線安裝，再用封裝 CLI
+執行 `init` 與 `check`。先前的 `pnpm install --frozen-lockfile` 需已填入相依套件
+快取；驗收安裝同樣使用 frozen lockfile，輸出會列出保留的暫存路徑。
 測試驗證套件及相依解析沒有連回 repo，並檢查模型、材質、WASM 與範本都能使用。
 
 目前所有套件仍保留 `private: true`。發佈到 npm 前，需要人決定正式套件名稱、

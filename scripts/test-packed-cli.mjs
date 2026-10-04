@@ -6,6 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { packedLockfile, packedManifest } from './packed-lockfile.mjs';
+
+// Build-time tooling uses the already installed parser; the consumer resolves only packed packages.
+const { parse, stringify } = createRequire(
+  new URL('../packages/core/package.json', import.meta.url),
+)('yaml');
 
 const execute = promisify(execFile);
 const repository = await realpath(fileURLToPath(new URL('../', import.meta.url)));
@@ -52,6 +59,7 @@ try {
   await mkdir(consumer);
   const dependencies = {};
   const names = [];
+  const packedPackages = [];
   for (const folder of packageFolders) {
     const source = path.join(repository, 'packages', folder);
     const metadata = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'));
@@ -62,13 +70,17 @@ try {
     );
     const tarball = path.join(artifacts, `${folder}.tgz`);
     await pnpm(['pack', '--out', tarball], source);
-    assert.deepEqual(
-      [...(await readFile(tarball)).subarray(0, 2)],
-      [31, 139],
-      `${folder} must be a packed tarball.`,
-    );
+    const archive = await readFile(tarball);
+    assert.deepEqual([...archive.subarray(0, 2)], [31, 139], `${folder} must be a packed tarball.`);
     names.push(metadata.name);
     dependencies[metadata.name] = `file:../artifacts/${folder}.tgz`;
+    packedPackages.push({
+      importer: `packages/${folder}`,
+      manifest: metadata,
+      packed: packedManifest(archive),
+      specifier: dependencies[metadata.name],
+      integrity: `sha512-${createHash('sha512').update(archive).digest('base64')}`,
+    });
   }
   await writeFile(
     path.join(consumer, 'package.json'),
@@ -83,14 +95,31 @@ try {
       2,
     ),
   );
+  const repositoryLock = parse(await readFile(path.join(repository, 'pnpm-lock.yaml'), 'utf8'));
+  const locked = packedLockfile(repositoryLock, packedPackages);
+  const lockText = stringify(locked);
+  await writeFile(path.join(consumer, 'pnpm-lock.yaml'), lockText);
   await writeFile(
     path.join(consumer, 'pnpm-workspace.yaml'),
-    `overrides:\n${Object.entries(dependencies)
-      .map(([name, specifier]) => `  ${JSON.stringify(name)}: ${JSON.stringify(specifier)}`)
-      .join('\n')}\n`,
+    stringify({ overrides: locked.overrides }),
   );
   await writeFile(path.join(consumer, '.npmrc'), 'enable-global-virtual-store=false\n');
-  await pnpm(['install', '--offline', '--ignore-scripts'], consumer);
+  await pnpm(
+    [
+      'install',
+      '--offline',
+      '--frozen-lockfile',
+      '--ignore-scripts',
+      '--cache-dir',
+      path.join(temporary, 'registry-cache'),
+    ],
+    consumer,
+  );
+  assert.equal(
+    await readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8'),
+    lockText,
+    'The isolated installation must not resolve or rewrite the frozen dependency graph.',
+  );
   const installed = {};
   for (const name of names) {
     const packageRoot = await realpath(path.join(consumer, 'node_modules', name));

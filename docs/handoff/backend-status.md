@@ -9,7 +9,7 @@ Start with `docs/protocol.md`, `docs/map-format.md`,
 Protocol stays at version 1, with stable diagnostic IDs, source metadata and the
 documented mock trigger endpoint. `packages/web` has not been created or modified.
 The mock remains available through `mapedit dev --mock`.
-On this Windows machine: all 259 tests across 42 files, strict build/typecheck and
+On this Windows machine: all 265 tests across 43 files, strict build/typecheck and
 ESLint pass. The fresh no-AI village has zero violations/file errors and exports a
 5,062,524-byte GLB; real Unity 6 batchmode under PowerShell 5.1 verifies 40
 MeshColliders, two markers, the spawn prefab and trigger. Frontend rendering and the
@@ -23,8 +23,11 @@ commits. Full Windows validation passes, including real browser execution,
 HTTP/stdio MCP paging, isolated packed CLI installation, PowerShell 5.1, the
 unchanged 30 ms preview target and the 2-second/2,000-module geometry target.
 [PR #1](https://github.com/Karylcode/mapedit/pull/1) is open against `main`.
-The correction commits are ready to push; final GitHub CI acceptance will be
-recorded here after all Windows/Ubuntu and Node 22/24 jobs finish.
+The correction commits have been pushed. Initial correction CI exposed dependency
+version drift in the isolated offline packaging test. Its consumer now uses a frozen
+projection of the repository lockfile; all 265 Windows tests pass, including an
+empty registry metadata cache regression. Final Windows/Ubuntu and Node 22/24 CI
+acceptance will be recorded here after the follow-up is pushed and verified.
 The earlier M0–M7 counts below are historical milestone results.
 
 ## 每個里程碑完成了什麼、怎麼驗證
@@ -266,6 +269,14 @@ deviation. Final Windows acceptance is recorded after F16; GitHub CI is tracked 
   preparation nonmutation test, init, guide and end-to-end tests (10 tests),
   typecheck and lint pass. All packages remain private; npm naming/scope and
   account selection are recorded under human follow-up. Deviation: none.
+  CI follow-up: the consumer now preserves the repository's exact external
+  dependency/peer/optional snapshots and installs with `--offline --frozen-lockfile`.
+  Only the four workspace roots become actual tarball nodes with SHA-512 integrity;
+  packed manifests are checked against source declarations and locked importers.
+  An empty registry metadata cache first reproduced the unlocked install failure,
+  then passed without resolving any ranges. `cli/test/packed-lockfile.test.ts`
+  covers graph preservation and omitted/added/changed declarations or stale edges.
+  All 15 related tests pass, followed by all 265 Windows tests across 43 files.
 - **F13 complete:** the disposable model worker is an ordinary TypeScript entry
   point covered by strict compilation and ESLint, with shared typed stdin/stdout
   messages. The runner resolves the installed server package's compiled worker,
@@ -315,7 +326,7 @@ deviation. Final Windows acceptance is recorded after F16; GitHub CI is tracked 
   `protocol/test/marker-position.test.ts`, `server/test/state-contract.test.ts`,
   plus existing compiler, geometry, marker, protocol, MCP and disk regressions.
   Opaque state factory/capability failures were reproduced before fixing them.
-  All final Windows checks pass: 259 tests across 42 files, build, workspace lint,
+  All final Windows checks pass: 265 tests across 43 files, build, workspace lint,
   generated guide checks and scoped formatting. Deviation: none.
 
 Final correction acceptance: `pnpm build`, `pnpm lint` and `pnpm test` pass with
