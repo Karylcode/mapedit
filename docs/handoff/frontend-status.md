@@ -170,6 +170,11 @@ is not modified here.
   測試：`test/maps-browser.test.ts` 用有兩張地圖、兩邊都有 `structure:house` 和 `marker:player_spawn` 的真專案，
   以 Playwright 攔下第二張地圖的快照：等待期間點選、Delete、R、拖動都沒有送出任何 `applyEdit`／`previewEdit`，
   放行後第二張地圖的檔案沒有被改（修正前會送出 `delete structure:house`，`baseRevision` 是 0）。
+- **FE4 完成**：Vite 代理只在 `Origin` 是開發伺服器自己（等於 `http://<請求的 Host>`）時改寫成後端的來源，
+  其他網站的 `Origin` 原樣轉送，由後端拒絕；沒有 `Origin` 的請求也不會被加上。代理設定移到 `packages/web/dev-proxy.ts`。
+  測試：`test/dev-proxy.test.ts` 測 `forwardedOrigin`，並實際啟動 Vite 開發伺服器接到 mock 後端：自己頁面的
+  WebSocket 升級和 `POST /api/mock/trigger` 通過，`http://evil.example` 的都被後端以 403 拒絕
+  （修正前外部網站的 WebSocket 升級會成功，回 101）。這也補上了 W0 代理沒有自動測試的缺口。
 
 ## 自行決定的事
 
