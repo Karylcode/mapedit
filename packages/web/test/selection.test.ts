@@ -86,11 +86,19 @@ describe('object descriptions', () => {
       'action.zoom',
       'action.wholeMap',
     ]);
-    expect(hintsFor('structure:house', index).map((h) => h.action)).toContain(
-      'action.selectModule',
-    );
-    expect(hintsFor('module:house/base', index).map((h) => h.action)).not.toContain(
-      'action.selectModule',
-    );
+    expect(hintsFor('structure:house', index).map((h) => h.action)).toEqual([
+      'action.move',
+      'action.rotate',
+      'action.delete',
+      'action.focus',
+      'action.deselect',
+    ]);
+    expect(hintsFor('module:house/base', index).map((h) => h.action)).toEqual([
+      'action.deleteModule',
+      'action.moveStructure',
+      'action.rotateStructure',
+      'action.focus',
+      'action.deselect',
+    ]);
   });
 });

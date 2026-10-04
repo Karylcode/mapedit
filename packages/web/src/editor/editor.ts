@@ -2,7 +2,7 @@ import './styles.css';
 import { Vector3 } from 'three';
 import type { ObjectRef, SceneSnapshot } from '@mapedit/protocol';
 import { Connection, socketUrl } from '../net/connection.js';
-import { initialLang, saveLang, type Lang } from '../i18n/i18n.js';
+import { initialLang, saveLang, translate, type Lang } from '../i18n/i18n.js';
 import { AssetCache } from '../scene/assets.js';
 import { MapView } from '../scene/map-view.js';
 import { OverviewControls } from '../scene/overview-controls.js';
@@ -13,10 +13,14 @@ import { chooseMap, initialState, type EditorState } from './state.js';
 import { Viewport } from './viewport.js';
 import { OverviewInput } from './input.js';
 import { clickSelection, keepSelection } from './selection.js';
+import { EditController } from './editing.js';
 import { TitleBlock } from './hud/title-block.js';
 import { StatusCard } from './hud/status-card.js';
 import { Tooltip } from './hud/tooltip.js';
 import { ActionBar } from './hud/action-bar.js';
+import { HistoryPanel } from './hud/history-panel.js';
+import { Toasts } from './hud/toasts.js';
+import { CursorNote } from './hud/cursor-note.js';
 
 const reducedMotion = (): boolean =>
   globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -74,7 +78,11 @@ export function start(root: HTMLElement = document.body): void {
     viewport.invalidate();
   };
 
-  const input = new OverviewInput(viewport, map, controls, {
+  const toasts = new Toasts();
+  const note = new CursorNote();
+  const edits = new EditController(connection, store, map, viewport, toasts, note);
+
+  const input: OverviewInput = new OverviewInput(viewport, map, controls, {
     click(hit) {
       const current = map.index;
       store.set({
@@ -91,6 +99,37 @@ export function start(root: HTMLElement = document.body): void {
     focus,
     escape() {
       store.set({ selection: undefined });
+    },
+    dragStart: (hit, pointer, client) => edits.beginDrag(hit, pointer, client),
+    dragMove: (pointer, client) => edits.dragMove(pointer, client),
+    dragEnd: (pointer, client) => edits.dragEnd(pointer, client),
+    key(event) {
+      const command = event.ctrlKey || event.metaKey;
+      if (event.code === 'Escape' && edits.dragging) {
+        edits.cancelDrag();
+        input.cancelGesture();
+        return true;
+      }
+      if (command && event.code === 'KeyZ') {
+        if (event.shiftKey) edits.redo();
+        else edits.undo();
+        return true;
+      }
+      if (command && event.code === 'KeyY') {
+        edits.redo();
+        return true;
+      }
+      if (command || event.altKey) return false;
+      if (event.code === 'KeyR') {
+        // Holding R turns a dragged preview continuously, but never re-applies edits.
+        if (!event.repeat || edits.dragging) edits.rotate(event.shiftKey ? -1 : 1);
+        return true;
+      }
+      if (event.code === 'Delete' || event.code === 'Backspace') {
+        if (!event.repeat) edits.deleteSelection();
+        return true;
+      }
+      return false;
     },
   });
 
@@ -156,10 +195,17 @@ export function start(root: HTMLElement = document.body): void {
 
   hud.append(
     new TitleBlock(store, { openMap, setLang }).element,
+    new HistoryPanel(store, index, { undo: () => edits.undo(), redo: () => edits.redo() }).element,
     new ActionBar(store, index).element,
     new StatusCard(store).element,
+    toasts.element,
     new Tooltip(store, index).element,
+    note.element,
   );
+  const syncToasts = (state: EditorState) =>
+    toasts.setDismissLabel(translate(state.lang, 'notice.dismiss'));
+  store.subscribe(syncToasts);
+  syncToasts(store.state);
 
   const syncDocument = (state: EditorState) => {
     document.documentElement.lang = state.lang;
@@ -170,6 +216,6 @@ export function start(root: HTMLElement = document.body): void {
   connection.start();
   // Read-only handle for browser tests and debugging from the console.
   Object.assign(globalThis, {
-    mapeditEditor: { store, viewport, map, connection, controls, input },
+    mapeditEditor: { store, viewport, map, connection, controls, input, edits, toasts },
   });
 }

@@ -1,0 +1,136 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { Browser, Page } from 'playwright-core';
+import { createServer, type MapeditServer } from '@mapedit/server';
+import {
+  buildWeb,
+  dragTo,
+  editorState,
+  findBrowser,
+  launch,
+  lookDown,
+  openEditor,
+  projectPoint,
+  screenPoint,
+} from './browser/harness.js';
+
+const executable = await findBrowser();
+const template = fileURLToPath(new URL('../../../templates/project/', import.meta.url));
+
+describe.skipIf(!executable)('editing a real project in a real browser', () => {
+  let web: Awaited<ReturnType<typeof buildWeb>>;
+  let root: string;
+  let server: MapeditServer;
+  let browser: Browser;
+  let page: Page;
+  const house = () => readFile(join(root, 'maps/village/structures/house.yaml'), 'utf8');
+  const markers = () => readFile(join(root, 'maps/village/markers.yaml'), 'utf8');
+  const revision = () => editorState(page, (e) => e.store.state.revision as number);
+
+  beforeAll(async () => {
+    web = await buildWeb();
+    root = await mkdtemp(join(tmpdir(), 'mapedit-real-web-'));
+    await cp(template, root, { recursive: true });
+    server = await createServer({ root, port: 0, webRoot: web.dir });
+    browser = await launch(executable!);
+    page = await openEditor(browser, server.url);
+    await lookDown(page);
+  }, 180_000);
+
+  afterAll(async () => {
+    await browser?.close();
+    await server?.close();
+    await web?.dispose();
+    if (root) await rm(root, { recursive: true, force: true });
+  });
+
+  it('draws the template village with its textured modules', async () => {
+    const drawn = await editorState(page, (e) => ({
+      modules: e.map.root
+        .getObjectByName('modules')
+        .children.reduce((n: number, mesh: { count: number }) => n + mesh.count, 0),
+      violations: e.store.state.scene.violations.length,
+      textured: e.map.root
+        .getObjectByName('modules')
+        .children.some((mesh: { material: { map?: unknown } }) => Boolean(mesh.material.map)),
+    }));
+    expect(drawn.violations).toBe(0);
+    expect(drawn.textured).toBe(true);
+    expect(drawn.modules).toBeGreaterThanOrEqual(8);
+  });
+
+  it('writes a dragged structure back to YAML and keeps the comment', async () => {
+    const start = await revision();
+    const from = await screenPoint(page, 'module:house/roof');
+    const to = await projectPoint(page, [22 + 8, 4, 22]);
+    await dragTo(page, from, to);
+    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    const text = await house();
+    expect(text).toMatch(/^# A walkable room: the door and window are genuine cutouts/);
+    expect(text).toMatch(/position: \[(27\.5|28|28\.5), (19\.5|20|20\.5)\]/);
+    const history = await editorState(page, (e) => e.store.state.history.entries.at(-1));
+    expect(history).toMatchObject({ author: 'human', summary: 'Move structure:house' });
+  });
+
+  it('rotates with R and deletes a single module, then undoes', async () => {
+    await page.keyboard.press('Escape');
+    const roof = await screenPoint(page, 'module:house/roof');
+    await page.mouse.click(roof.x, roof.y);
+    await expect
+      .poll(() => editorState(page, (e) => e.store.state.selection))
+      .toBe('structure:house');
+    let start = await revision();
+    await page.keyboard.press('r');
+    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    expect(await house()).toMatch(/rotation: 15/);
+
+    const stairs = await screenPoint(page, 'module:house/stairs');
+    await page.mouse.click(stairs.x, stairs.y);
+    await expect
+      .poll(() => editorState(page, (e) => e.store.state.selection))
+      .toBe('module:house/stairs');
+    start = await revision();
+    await page.keyboard.press('Delete');
+    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    expect(await house()).not.toMatch(/id: stairs/);
+    expect(await house()).toMatch(/^# A walkable room/);
+    start = await revision();
+    await page.keyboard.press('Control+z');
+    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    expect(await house()).toMatch(/id: stairs/);
+  });
+
+  it('moves a marker and keeps its properties', async () => {
+    await page.keyboard.press('Escape');
+    const start = await revision();
+    const spawn = await screenPoint(page, 'marker:player_spawn');
+    const to = await projectPoint(page, [40, 0, 40]);
+    await dragTo(page, spawn, to);
+    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    const text = await markers();
+    expect(text).toMatch(/properties: \{ team: player \}/);
+    expect(text).not.toMatch(/position: \[22, 0, 28\]/);
+  });
+
+  it('follows the Agent editing YAML by hand', async () => {
+    const start = await revision();
+    const text = await house();
+    await writeFile(
+      join(root, 'maps/village/structures/house.yaml'),
+      text.replace(/position: \[[^\]]+\]/, 'position: [60, 60]'),
+    );
+    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    const origin = await editorState(page, (e) => {
+      const transform = e.store.state.scene.structures.find(
+        (s: { ref: string }) => s.ref === 'structure:house',
+      ).transform;
+      return [transform[12], transform[14]];
+    });
+    expect(origin).toEqual([60, 60]);
+    const last = await editorState(page, (e) => e.store.state.history.entries.at(-1));
+    expect(last.author).toBe('agent');
+  });
+});

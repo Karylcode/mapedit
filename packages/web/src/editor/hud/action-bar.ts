@@ -22,9 +22,19 @@ export function hintsFor(selection: string | undefined, index: SnapshotIndex | u
       { keys: ['key.wheel'], action: 'action.zoom' },
       { keys: ['F'], action: 'action.wholeMap' },
     ];
-  const hints: Hint[] = [];
-  if (parseObjectRef(selection)?.kind === 'structure')
-    hints.push({ keys: ['key.click'], action: 'action.selectModule' });
+  const kind = parseObjectRef(selection)?.kind;
+  const hints: Hint[] =
+    kind === 'module'
+      ? [
+          { keys: ['Del'], action: 'action.deleteModule' },
+          { keys: ['key.drag'], action: 'action.moveStructure' },
+          { keys: ['R'], action: 'action.rotateStructure' },
+        ]
+      : [
+          { keys: ['key.drag'], action: 'action.move' },
+          { keys: ['R'], action: 'action.rotate' },
+          { keys: ['Del'], action: 'action.delete' },
+        ];
   hints.push({ keys: ['F'], action: 'action.focus' }, { keys: ['Esc'], action: 'action.deselect' });
   return hints;
 }

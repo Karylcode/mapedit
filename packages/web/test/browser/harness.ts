@@ -105,6 +105,54 @@ export async function screenPoint(page: Page, ref: ObjectRef): Promise<{ x: numb
   }, ref);
 }
 
+/** Look straight down at the map, so objects at different places never hide each other. */
+export async function lookDown(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const editor = (globalThis as unknown as { mapeditEditor: EditorHandle }).mapeditEditor;
+    const overview = editor.viewport.overview;
+    overview.frameMap(editor.viewport.camera.fov, editor.viewport.camera.aspect);
+    overview.pitch = 89;
+    editor.viewport.invalidate();
+  });
+  await page.waitForTimeout(100);
+}
+
+/** Page coordinates of a map position. */
+export async function projectPoint(
+  page: Page,
+  position: [number, number, number],
+): Promise<{ x: number; y: number }> {
+  return page.evaluate((target) => {
+    const editor = (globalThis as unknown as { mapeditEditor: EditorHandle }).mapeditEditor;
+    const viewport = editor.viewport;
+    viewport.overview.apply(viewport.camera);
+    const point = viewport.camera.position
+      .clone()
+      .set(...target)
+      .project(viewport.camera);
+    const rect = viewport.renderer.domElement.getBoundingClientRect();
+    return {
+      x: ((point.x + 1) / 2) * rect.width + rect.left,
+      y: ((1 - point.y) / 2) * rect.height + rect.top,
+    };
+  }, position);
+}
+
+/** Drag with the left button in small steps, like a person would. */
+export async function dragTo(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  during?: () => Promise<void>,
+): Promise<void> {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  await page.waitForTimeout(200);
+  await during?.();
+  await page.mouse.up();
+}
+
 /** Editor state as plain data. */
 export function editorState<T>(page: Page, pick: (editor: EditorHandle) => T): Promise<T> {
   return page.evaluate(`(${pick.toString()})(globalThis.mapeditEditor)`) as Promise<T>;

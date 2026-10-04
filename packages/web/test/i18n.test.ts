@@ -2,6 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { detectLang, loadLang, saveLang, translate, STORAGE_KEY } from '../src/i18n/i18n.js';
 import { en, zhTW } from '../src/i18n/messages.js';
 
+/** Every placeholder any message uses. */
+const PARAMS = {
+  name: 'x',
+  loaded: 1,
+  total: 2,
+  reason: 'r',
+  count: 3,
+  files: 'a.yaml',
+  more: 1,
+  objects: 'House',
+  file: 'a.yaml',
+  line: 4,
+};
+
 describe('interface language', () => {
   it('follows the browser: any Chinese locale gets Traditional Chinese', () => {
     expect(detectLang(['zh-TW', 'en'])).toBe('zh-TW');
@@ -39,13 +53,7 @@ describe('interface language', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(zhTW).sort());
     for (const lang of ['zh-TW', 'en'] as const)
       for (const key of Object.keys(zhTW) as (keyof typeof zhTW)[]) {
-        const text = translate(lang, key, {
-          name: 'x',
-          loaded: 1,
-          total: 2,
-          reason: 'r',
-          count: 3,
-        });
+        const text = translate(lang, key, PARAMS);
         expect(text, `${lang} ${key}`).not.toBe('');
         expect(text, `${lang} ${key}`).not.toMatch(/\{\w+\}/);
       }

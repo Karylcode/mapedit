@@ -26,11 +26,17 @@ export interface InputActions {
   focus(): void;
   escape(): void;
   /** A left-button drag that started on an object; return false to pan instead. */
-  dragStart?(hit: ObjectRef, pointer: Vector2): boolean;
-  dragMove?(pointer: Vector2): void;
-  dragEnd?(pointer: Vector2): void;
+  dragStart?(hit: ObjectRef, pointer: Vector2, client: ClientPoint): boolean;
+  dragMove?(pointer: Vector2, client: ClientPoint): void;
+  dragEnd?(pointer: Vector2, client: ClientPoint): void;
   /** Any other key; return true when handled. */
   key?(event: KeyboardEvent): boolean;
+}
+
+/** A page position, in CSS pixels. */
+export interface ClientPoint {
+  x: number;
+  y: number;
 }
 
 type Gesture =
@@ -146,10 +152,12 @@ export class OverviewInput {
     if (gesture.kind === 'press') {
       if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) < CLICK_SLOP) return;
       const start = this.pointer(gesture.x, gesture.y);
-      if (gesture.hit && this.actions.dragStart?.(gesture.hit, start)) {
+      const client = { x: event.clientX, y: event.clientY };
+      const origin = { x: gesture.x, y: gesture.y };
+      if (gesture.hit && this.actions.dragStart?.(gesture.hit, start, origin)) {
         this.gesture = { kind: 'drag', id: gesture.id };
         this.actions.hover(undefined, 0, 0);
-        this.actions.dragMove?.(pointer);
+        this.actions.dragMove?.(pointer, client);
       } else {
         // A left drag on open ground moves the map, like a web map.
         this.gesture = { kind: 'pan', id: gesture.id };
@@ -161,7 +169,7 @@ export class OverviewInput {
       gesture.x = event.clientX;
       gesture.y = event.clientY;
     } else if (gesture.kind === 'pan') this.controls.pan(pointer);
-    else this.actions.dragMove?.(pointer);
+    else this.actions.dragMove?.(pointer, { x: event.clientX, y: event.clientY });
     this.viewport.invalidate();
   }
 
@@ -174,7 +182,10 @@ export class OverviewInput {
     if (gesture.kind === 'press' && !cancelled) this.actions.click(gesture.hit);
     else if (gesture.kind === 'pan') this.controls.endPan();
     else if (gesture.kind === 'drag' && !cancelled)
-      this.actions.dragEnd?.(this.pointer(event.clientX, event.clientY));
+      this.actions.dragEnd?.(this.pointer(event.clientX, event.clientY), {
+        x: event.clientX,
+        y: event.clientY,
+      });
     this.hoverStale = true;
     this.viewport.invalidate();
   }

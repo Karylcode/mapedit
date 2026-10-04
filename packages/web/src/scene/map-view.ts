@@ -231,6 +231,32 @@ export class MapView {
     );
   }
 
+  /** The loaded model of a module type, if any. */
+  moduleAsset(typeId: string): Asset | undefined {
+    const type = this.index?.moduleTypes.get(typeId);
+    return type ? this.assets.get(type.url) : undefined;
+  }
+
+  /** Declared size of a module type; unknown types are drawn as 1 m cubes. */
+  moduleSize(typeId: string): readonly number[] {
+    return this.index?.moduleTypes.get(typeId)?.size ?? [1, 1, 1];
+  }
+
+  /**
+   * The frame an object moves by: a structure's transform, or a marker's
+   * position and rotation. Undefined for modules, which move with their structure.
+   */
+  frameOf(ref: ObjectRef): Matrix4 | undefined {
+    const structure = this.index?.structures.get(ref);
+    if (structure) return new Matrix4().fromArray(structure.transform);
+    const marker = this.index?.markers.get(ref);
+    if (!marker) return undefined;
+    const shape = marker.shape;
+    return new Matrix4()
+      .makeRotationY((shape.rotation * Math.PI) / 180)
+      .setPosition(...(shape.kind === 'point' ? shape.position : shape.center));
+  }
+
   /** Terrain height at a map position, if terrain is drawn there. */
   heightAt(x: number, z: number): number | undefined {
     const down = new Raycaster(new Vector3(x, 1e4, z), new Vector3(0, -1, 0));
