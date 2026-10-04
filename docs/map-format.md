@@ -129,6 +129,25 @@ Marker rotation uses 15-degree increments and defaults to 0. Box size is positiv
 
 `terrain/height.png` and `terrain/surface.png` live beside each map's `map.yaml`. Image dimensions equal map size; one pixel is one 1×1-meter tile. Image column increases with +X, row increases with +Z. Heights are quantized in 0.5-meter increments; surface pixels identify the tile's surface. Use the terrain tool to edit these images; do not write a million tile entries into YAML. The terrain module documents its exact PNG encoding and supported surface ids.
 
+Height PNGs are single-channel 16-bit grayscale, with `sample = meters * 2 + 32768`.
+This represents -16384 through 16383.5 meters without loss. Surface PNGs are
+single-channel 8-bit grayscale: 0 grass, 1 dirt, 2 gravel, 3 stone, 4 sand.
+Missing both images means flat grass at zero; providing only one is a file error.
+CRC, bit depth, channel count, dimensions and surface IDs are checked when loading.
+
+Terrain commands use tile centers to select circular, rectangular or path regions.
+`raise`/`lower` add/subtract an amount; `set_height` sets an absolute height;
+`flatten` uses an explicit height or the selected tiles' rounded mean; `paint`
+sets a surface; `mountain` adds height with a linear falloff toward the boundary.
+Every stored result stays on a 0.5-meter step.
+
+Meshes are generated in 32-meter chunks. Gentle adjacent tile heights (within one
+meter) are averaged at corners and triangulated along the northwest/southeast
+diagonal. Larger jumps retain the plateau and receive cliff faces. The height
+sampler, exact collision checks and foundation clipping use those same triangles.
+Terrain-following module roots carry their attached descendants with them, keeping
+socket positions coincident. Foundations extend down without altering either PNG.
+
 ## Source editing and diagnostics
 
 Human dragging snaps x/z to the 0.5-meter grid and rotation to 15 degrees. Auto-height structures follow terrain; explicit heights remain explicit. Existing numeric fields are edited at their YAML AST source ranges, preserving surrounding comments, quotes, spaces, and line endings exactly. Adding a previously omitted field or deleting an object uses the YAML Document API, retaining comments and scalar/flow styles while normalizing some incidental whitespace. A preview does not mutate source documents.

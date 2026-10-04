@@ -1,15 +1,13 @@
 #!/usr/bin/env node
-import { createServer, readProject } from '@mapedit/server';
-import { compileMap } from '@mapedit/core';
+import { createServer, buildProject } from '@mapedit/server';
 import { spawn } from 'node:child_process';
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
   const [command, ...flags] = args;
   if (command === 'check') {
-    const parsed = await readProject(process.cwd());
     const mapIndex = flags.indexOf('--map');
     if (mapIndex >= 0 && !flags[mapIndex + 1]) throw new Error('--map requires a map ID.');
-    const compilation = compileMap(parsed, mapIndex < 0 ? undefined : flags[mapIndex + 1]);
+    const { compilation } = await buildProject(process.cwd(), mapIndex < 0 ? undefined : flags[mapIndex + 1]);
     const { violations, fileErrors } = compilation.scene;
     if (flags.includes('--json')) {
       process.stdout.write(`${JSON.stringify({ map: compilation.scene.map.id, violations, fileErrors }, null, 2)}\n`);

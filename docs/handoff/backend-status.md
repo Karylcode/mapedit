@@ -2,8 +2,8 @@
 
 ## 目前進度
 
-M0–M2 complete on `backend`. M3 terrain integration is in progress.
-Next: connect terrain PNGs, chunk assets and foundations to the real project build.
+M0–M3 complete on `backend`. M4/M5 acceptance has passed and is being documented.
+Next: commit the real server and MCP integration, then Unity/export and templates.
 
 ## 每個里程碑完成了什麼、怎麼驗證
 
@@ -29,7 +29,16 @@ Next: connect terrain PNGs, chunk assets and foundations to the real project bui
   stacked/socket support, floating exceptions, rotated foundations, metre-scale
   slope UVs, malicious imports/globals and timeouts. 2,000-module compile plus
   exact geometry checking passed the 2-second bound (isolated measurement 53 ms).
-- M3–M7: pending final integration/acceptance.
+- M3: signed 16-bit height PNGs, surface PNGs, all six terrain operations and
+  circle/rectangle/path regions; deterministic ramps/cliffs and 32-meter GLB chunks.
+  Full project builds load models/textures/terrain, report input errors, and cache
+  immutable geometry/assets. Terrain-following attachment chains stay connected;
+  rotated foundations clip against the same triangles used by the renderer.
+  Windows acceptance: all 1,024 GLBs for a 1000×1000-meter map generated in the test;
+  real-file build tests cover missing/oversized model repair, terrain contact and
+  cache isolation. Warm previews of a 30-structure village pass the 30 ms bound.
+  Typecheck, lint and all 67 tests currently present passed before this commit.
+- M4–M7: pending milestone documentation/commits.
 
 ## 自行決定的事
 
@@ -44,6 +53,10 @@ Next: connect terrain PNGs, chunk assets and foundations to the real project bui
   disposable Node child. Node permissions alone are not treated as a sandbox.
 - `canFloat` modules can support attached/stacked modules, allowing floating
   platforms. Foundations support skirt or pillar geometry; both clip to terrain.
+- Terrain gentler than one meter blends neighboring corner heights; larger height
+  changes retain plateaus and receive cliff faces. Commands select tile centers.
+- Model builds run at most four children concurrently. A pure cached build path
+  handles previews without rereading models or re-encoding terrain.
 
 ## 偏離設計
 

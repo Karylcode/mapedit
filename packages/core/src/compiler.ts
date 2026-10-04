@@ -434,6 +434,36 @@ export function compileMap(
         transform: transformMatrix([x, height, z], structure.rotation),
         root: structure.id,
       };
+      // Adapt each independently positioned terrain-following root before resolving
+      // structure attachments. Its Socket-connected descendants inherit the same
+      // vertical offset, preserving every connection throughout the merged Structure.
+      const locals = localByStructure.get(structure.id)!;
+      const offsets = new Map<string, number>();
+      const offsetFor = (local: LocalInstance): number => {
+        const cached = offsets.get(local.instance.id);
+        if (cached !== undefined) return cached;
+        let offset = 0;
+        if (local.instance.attach) {
+          const targetId = local.instance.attach.to.split('.')[0]!;
+          const target = locals.get(targetId);
+          if (target) offset = offsetFor(target);
+        } else if (local.definition.terrainFollow) {
+          const world = multiplyMatrices(placement.transform, local.transform);
+          const bounds = transformBounds(world, local.definition.size);
+          offset =
+            snap(
+              terrainHeight(
+                (bounds.min[0] + bounds.max[0]) / 2,
+                (bounds.min[2] + bounds.max[2]) / 2,
+              ),
+            ) - world[13]!;
+        }
+        offsets.set(local.instance.id, offset);
+        return offset;
+      };
+      for (const local of locals.values()) offsetFor(local);
+      for (const local of locals.values())
+        local.transform[13] = clean(local.transform[13]! + offsets.get(local.instance.id)!);
     }
     placements.set(structure.id, placement);
     visiting.delete(structure.id);
@@ -480,12 +510,6 @@ export function compileMap(
     )) {
       const ref = `module:${structure.id}/${local.instance.id}`;
       const transform = multiplyMatrices(placement.transform, local.transform);
-      if (local.definition.terrainFollow && !local.instance.attach && !structure.attach) {
-        const base = transformBounds(transform, local.definition.size);
-        transform[13] = snap(
-          terrainHeight((base.min[0] + base.max[0]) / 2, (base.min[2] + base.max[2]) / 2),
-        );
-      }
       const bounds = transformBounds(transform, local.definition.size);
       const compiled: CompiledInstance = {
         ref,

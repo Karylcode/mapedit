@@ -242,3 +242,5 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
 }
 
 export { readProject, readProjectTexts, projectPath } from './project-files.js';
+
+export { buildProject, buildFromParsed } from './build-project.js';

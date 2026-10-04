@@ -111,6 +111,49 @@ describe('project format and deterministic compilation', () => {
     const compiled = compileMap(parseProject(input), 'village', { terrainHeight: () => 2.5 });
     expect(compiled.instances.map((i) => i.bounds.min[1])).toEqual([2.5, 10]);
   });
+  it('moves the full Socket-connected branch when its terrain-following root changes height', () => {
+    const input = files([
+      {
+        ...basicStructure,
+        height: 0,
+        modules: [
+          { id: 'root', module: 'block', at: [0, 0, 0] },
+          { id: 'child', module: 'block', attach: { socket: 'bottom', to: 'root.top' } },
+          { id: 'grandchild', module: 'block', attach: { socket: 'bottom', to: 'child.top' } },
+          { id: 'independent', module: 'block', at: [20, 0, 0] },
+        ],
+      },
+      {
+        id: 'annex',
+        attach: { socket: 'base.west', to: 'house/child.east' },
+        modules: basicStructure.modules,
+      },
+    ]);
+    input['modules/block/module.yaml'] += 'terrainFollow: true\n';
+    const compiled = compileMap(parseProject(input), 'village', {
+      terrainHeight: (x) => (x < 20 ? 3 : 5),
+    });
+    expect(compiled.scene.violations).toEqual([]);
+    const heightByRef = Object.fromEntries(
+      compiled.instances.map((instance) => [instance.ref, instance.transform[13]]),
+    );
+    expect(heightByRef).toEqual({
+      'module:house/root': 3,
+      'module:house/child': 4,
+      'module:house/grandchild': 5,
+      'module:house/independent': 5,
+      'module:annex/base': 4,
+    });
+    for (const [a, b] of [
+      ['module:house/root.top', 'module:house/child.bottom'],
+      ['module:house/child.top', 'module:house/grandchild.bottom'],
+      ['module:house/child.east', 'module:annex/base.west'],
+    ]) {
+      expect(compiled.sockets.find((socket) => socket.ref === a)!.position).toEqual(
+        compiled.sockets.find((socket) => socket.ref === b)!.position,
+      );
+    }
+  });
   it.each([
     ['off_grid', { ...basicStructure, position: [10.2, 10] }],
     ['off_grid', { ...basicStructure, height: 0.2 }],
