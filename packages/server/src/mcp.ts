@@ -177,7 +177,7 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
               `Send only {"cursor":"..."} to continue a paged result. Remove ${others.map((key) => JSON.stringify(key)).join(', ')}, or run the tool again without cursor.`,
             );
           // Answer only after the latest file changes, like every other tool call.
-          return pager.continue(
+          return pager.nextPage(
             name,
             cursorSchema.parse((values as { cursor: unknown }).cursor),
             async () => {
@@ -200,9 +200,9 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       const tool = tools.get(name);
       if (!tool) throw new Error('Unknown tool. Use tools/list to see the fixed tool names.');
       const result = await tool.run(request.params.arguments);
-      return pager.bound(name, result, services.projectRevision());
+      return pager.firstPage(name, result, services.projectRevision());
     } catch (error) {
-      return pager.bound(
+      return pager.firstPage(
         name,
         {
           isError: true,

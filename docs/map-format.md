@@ -158,7 +158,7 @@ Human dragging snaps x/z to the 0.5-meter grid and rotation to 15 degrees. Auto-
 { "maps": [{ "map": "village", "violations": [], "fileErrors": [], "floating": [] }] }
 ```
 
-Each `floating` entry has `ref`, `moduleType`, and `position` (the module origin in world-space meters). It lists every `canFloat` instance, regardless of current ground contact, and does not count as a violation or change the exit code. MCP `check` and `overview` also return all maps unless `map` is specified; querying them leaves the editor's selected map unchanged.
+Each `floating` entry has `ref`, `moduleType`, and `position` (the module origin in map-space meters). It lists every `canFloat` instance, regardless of current ground contact, and does not count as a violation or change the exit code. MCP `check` and `overview` also return all maps unless `map` is specified; querying them leaves the editor's selected map unchanged.
 
 `mapedit export --out <directory>` validates every map before writing any output, then creates `<map-id>.glb` for each map. `--map <id>` limits both validation and export to that map. A rejected export names invalid maps and retains existing output files. Project-wide malformed-file errors remain visible even when a map cannot be parsed.
 

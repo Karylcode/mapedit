@@ -34,7 +34,8 @@ export class ToolResultPager {
     for (const [id, capture] of this.captures) if (capture.expiresAt <= Date.now()) this.remove(id);
   }
 
-  bound(tool: string, result: CallToolResult, revision: number): CallToolResult {
+  /** The whole result when it fits, otherwise its captured first page. */
+  firstPage(tool: string, result: CallToolResult, revision: number): CallToolResult {
     const safe = { ...result };
     delete safe.structuredContent;
     const text = result.content
@@ -70,7 +71,7 @@ export class ToolResultPager {
    * Read the next page of a captured result. `refresh` processes pending file changes and
    * returns the current project revision; any change since the first page voids the cursor.
    */
-  async continue(
+  async nextPage(
     tool: string,
     cursor: string,
     refresh: () => Promise<number>,

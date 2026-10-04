@@ -78,7 +78,7 @@ export function exceededMapEdges(
 
 function boundsSuggestion(ref: string, bounds: Bounds, size: MapDefinition['size']): string {
   const moves: string[] = [];
-  for (const [axis, limit, positive, negative] of [
+  for (const [axis, limit, forward, backward] of [
     [0, size.x, 'east', 'west'],
     [2, size.z, 'south', 'north'],
   ] as const) {
@@ -87,7 +87,7 @@ function boundsSuggestion(ref: string, bounds: Bounds, size: MapDefinition['size
     if (minimum > maximum)
       return `Resize or split ${ref}; its full bounds cannot fit within the map's ${size.x} by ${size.z} m boundary on the 0.5 m grid.`;
     const delta = minimum > 0 ? minimum : maximum < 0 ? maximum : 0;
-    if (delta) moves.push(`${delta > 0 ? positive : negative} by ${clean(Math.abs(delta))} m`);
+    if (delta) moves.push(`${delta > 0 ? forward : backward} by ${clean(Math.abs(delta))} m`);
   }
   return `Move ${ref} ${moves.join(' and ')} to put its whole shape inside the map.`;
 }

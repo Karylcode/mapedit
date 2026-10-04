@@ -525,3 +525,14 @@ by Claude. Each entry records the change, the tests and any deviation.
   CLI acceptance in `scripts/test-packed-cli.mjs` now asserts the installed CLI
   creates the `.gitignore`. The first test failed before the change. Deviation:
   none.
+- **F24 complete:** `groups`, `Candidate`/`candidate()` and the
+  `SolidInstance = AdviceSolid` alias were already replaced in F18 and F20
+  (`solidsByStructure`, `Placement`/`place()`, one shared `PlacedSolid` type in
+  `core/src/solid.ts`); the compiler's unexplained `positive` flag became the
+  `minimum` option of `checkGridAlignment` in F23, and the bounds advice now
+  names its directions `forward`/`backward`. This commit renames the pager's
+  `bound()`/`continue()` to `firstPage()`/`nextPage()`, calls Modules "modules"
+  in the mock messages, and says "map-space" in `docs/map-format.md`. Tests:
+  `core/test/terminology.test.ts` and `server/test/terminology.test.ts` "F24"
+  check the identifiers, mock messages and wording; all four failed before the
+  renames. Deviation: none.
