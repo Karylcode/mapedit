@@ -145,6 +145,15 @@ and the npm account that will publish them. All packages remain `private: true`;
 this pass validates local tarballs and does not publish. GitHub authentication,
 system Edge and licensed Unity 6 were available for local/GitHub acceptance.
 
+F17 real Claude Code check: `claude` 2.1.258 on this machine answers
+`Failed to authenticate: OAuth session expired and could not be refreshed`, so
+the tool list was not sent to the Anthropic API from here. After signing in again
+(`claude` then `/login`), run `mapedit dev` in an initialized project and call:
+`claude -p 'Call mcp__mapedit__overview, then mcp__mapedit__query with {"x":10,"z":10}.' --mcp-config <file> --strict-mcp-config --allowedTools "mcp__mapedit__overview,mcp__mapedit__query"`,
+where `<file>` contains
+`{"mcpServers":{"mapedit":{"type":"http","url":"http://127.0.0.1:4790/mcp"}}}`.
+Both calls should complete without an API 400.
+
 ## 需要前端配合
 
 - Implement protocol v1 and `/render` exactly as documented; rendering waits for
@@ -352,3 +361,28 @@ Unity 6000.0.75f1 import through `scripts/test-unity.ps1`: 40 MeshColliders, two
 markers, spawn prefab and trigger. Independent F1–F16 checklist review found no
 remaining actionable requirement gap. npm publication remains the explicit human
 follow-up above; frontend/joint acceptance remains separately owned.
+
+## 第二輪修正
+
+F17–F26 from `docs/handoff/backend-fixes-2.md`, fixed on the same `backend` branch
+by Claude. Each entry records the change, the tests and any deviation.
+
+- **F17 complete:** every MCP tool now advertises one top-level `type: "object"`
+  schema with its original properties plus an optional `cursor`. There is no
+  top-level `anyOf`, `oneOf`, `allOf`, `not`, `if`, `then` or `else`, and no
+  top-level `required`, because a continuation sends only the cursor. Required
+  arguments are named in each tool description (`Required arguments: x, z.`) and
+  are still enforced at run time by the original strict Zod schema. A cursor sent
+  with other arguments is rejected with an error that names the extra arguments
+  and asks for `{"cursor":"..."}` alone. Tests: `server/test/mcp-schema.test.ts` lists the real mock server's tools over HTTP and
+  stdio and checks the runtime rules (both tests failed before the fix);
+  `server/test/mcp-paging.test.ts` replaces the assertion that locked in `anyOf`.
+  Real Codex: Codex CLI 0.160.0 with `gpt-5.5` over HTTP MCP called `overview` and
+  `query` and received both results. In `codex exec` the server needs
+  `mcp_servers.mapedit.default_tools_approval_mode="approve"`, otherwise tool calls
+  are refused for approval. The newer Codex models use code mode, which needs
+  `codex-code-mode-host.exe`; it is not installed here, so `gpt-5.5` (direct
+  function tools) was used. A control run against the pre-fix server also worked
+  in Codex, which means Codex rewrites MCP schemas before calling its API; the
+  400 failure is on the Anthropic side. The real Claude Code check is listed under
+  需要人處理 because the CLI login on this machine has expired. Deviation: none.

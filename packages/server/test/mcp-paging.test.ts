@@ -171,17 +171,17 @@ describe('F11 bounded MCP text and captured continuation pages', () => {
     const definitions = (await list()).tools;
     expect(definitions).toHaveLength(10);
     for (const definition of definitions) {
-      const branches = definition.inputSchema.anyOf as Array<{
-        required?: string[];
-        additionalProperties?: boolean;
-        properties: Record<string, unknown>;
-      }>;
-      expect(branches).toHaveLength(2);
-      expect(branches[1]).toMatchObject({ required: ['cursor'], additionalProperties: false });
-      expect(Object.keys(branches[1]!.properties)).toEqual(['cursor']);
-      if (definition.name === 'overview') expect(branches[0]!.required ?? []).toEqual([]);
-      if (definition.name === 'query') expect(branches[0]!.required).toEqual(['x', 'z']);
-      if (definition.name === 'export') expect(branches[0]!.required).toEqual(['out']);
+      expect(definition.inputSchema).toMatchObject({ type: 'object', additionalProperties: false });
+      expect(definition.inputSchema).not.toHaveProperty('anyOf');
+      expect(definition.inputSchema.required ?? []).toEqual([]);
+      expect(definition.inputSchema.properties).toHaveProperty('cursor');
+      expect(definition.description).toContain('Continue with only {"cursor":"..."}');
+      if (definition.name === 'overview')
+        expect(definition.description).not.toContain('Required arguments');
+      if (definition.name === 'query')
+        expect(definition.description).toContain('Required arguments: x, z.');
+      if (definition.name === 'export')
+        expect(definition.description).toContain('Required arguments: out.');
     }
   });
   for (const [name, args] of tools)
