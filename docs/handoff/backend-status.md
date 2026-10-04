@@ -773,3 +773,33 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   Deviation: the spec suggested axis-aligned bounds for the estimate; this
   uses oriented boxes because axis-aligned bounds of a turned wall are several
   times larger than the wall.
+- **F33 mechanism complete; packed acceptance pending PR #2:**
+  - `scripts/prepare-cli.mjs` (run by `pnpm build`, `typecheck` and the CLI's
+    `prepack`) now copies `packages/web/dist` into `packages/cli/web` through
+    the new `scripts/sync-tree.mjs`. The CLI's `files` list includes `web`
+    (gitignored like the templates). An identical copy is left untouched, and
+    without a web build the copy is removed so a package never carries an old
+    editor.
+  - `mapedit dev` and the stdio `mapedit mcp` fallback pass
+    `webRoot = findWebRoot(SERVER_WEB_ROOT, <cli>/web)`. The repository's fresh
+    `packages/web/dist` (or an installed `@mapedit/web`) comes first, then the
+    packed copy, otherwise `null`.
+  - `ServerOptions.webRoot` accepts `null` for "no editor". A web root now
+    needs an `index.html` to count. `ScreenshotService` receives the same
+    `webRoot`; without a built editor, `screenshot` fails at once with "The
+    editor web build is missing; run pnpm build." and `build_module` reports it
+    as `previewError`. Before, both waited 30 seconds for
+    `mapeditRenderReady`.
+  - Tests: `server/test/web-root.test.ts` serves a fake editor build at `/`,
+    `/render` and `/static/…`; with `webRoot: null` it checks both MCP tools
+    answer within seconds (before: a 30 s timeout) and the lookup order of
+    `findWebRoot`. `cli/test/package-assets.test.ts` "F33" copies a fake dist,
+    leaves an identical copy untouched, replaces a rebuilt one, drops it when
+    the dist is gone, and checks the `files` list and `.gitignore`.
+    `scripts/test-packed-cli.mjs` asserts the packed CLI carries
+    `web/index.html` exactly when `packages/web/dist/index.html` exists (on
+    this branch it does not).
+  - Still to do after PR #2 merges into `backend`: extend
+    `test-packed-cli.mjs` so the installed `mapedit dev` serves the editor at
+    `/` and MCP `screenshot` returns a PNG (marked `TODO(F33)` there).
+    Deviation: none.

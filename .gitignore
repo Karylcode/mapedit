@@ -8,6 +8,7 @@ build/
 *.tsbuildinfo
 coverage/
 packages/cli/templates/
+packages/cli/web/
 
 # Test artifacts
 test-results/

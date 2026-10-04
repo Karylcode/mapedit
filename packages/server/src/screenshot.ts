@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright-core';
 import type { RenderSpec, RenderWindow } from '@mapedit/protocol';
+import { findWebRoot } from './paths.js';
 
 export async function findBrowser(): Promise<string | undefined> {
   const candidates =
@@ -67,14 +68,23 @@ export class ScreenshotService {
   private browser?: Browser;
   private launch?: Promise<Browser>;
   private readonly renderTimeoutMs: number;
+  private readonly webRoot: string | null | undefined;
+  /**
+   * `webRoot` is the editor build that serves /render: null when there is none, so captures
+   * fail at once instead of waiting for a page that never loads. Leave it out when the
+   * base URL serves its own render page.
+   */
   constructor(
     private readonly baseUrl: string,
     private readonly executablePath?: string,
-    options: { renderTimeoutMs?: number } = {},
+    options: { renderTimeoutMs?: number; webRoot?: string | null } = {},
   ) {
     this.renderTimeoutMs = options.renderTimeoutMs ?? RENDER_TIMEOUT_MS;
+    this.webRoot = options.webRoot;
   }
   async capture(mapId: string, spec: RenderSpec): Promise<Buffer> {
+    if (this.webRoot !== undefined && !(this.webRoot && (await findWebRoot(this.webRoot))))
+      throw new Error('The editor web build is missing; run pnpm build.');
     if (!this.launch)
       this.launch = (async () => {
         const executablePath = this.executablePath ?? (await findBrowser());

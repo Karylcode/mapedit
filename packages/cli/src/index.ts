@@ -1,9 +1,23 @@
 #!/usr/bin/env node
-import { createServer, buildProjects, exportProject, connectStdio } from '@mapedit/server';
+import {
+  createServer,
+  buildProjects,
+  exportProject,
+  connectStdio,
+  findWebRoot,
+  SERVER_WEB_ROOT,
+} from '@mapedit/server';
 import { listFloatingInstances, sceneHasProblems } from '@mapedit/core';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { initProject } from './init.js';
 import { discoverServer, registerServer } from './discovery.js';
+
+/** The editor build that prepare-cli copies into this package for npm installs. */
+const PACKED_WEB_ROOT = fileURLToPath(new URL('../web/', import.meta.url));
+/** A repository build beside the server stays fresh while the editor is developed. */
+const editorWebRoot = async (): Promise<string | null> =>
+  (await findWebRoot(SERVER_WEB_ROOT, PACKED_WEB_ROOT)) ?? null;
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
   const [command, ...flags] = args;
@@ -46,7 +60,11 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     }
     let cleanup: (() => Promise<void>) | undefined;
     if (!url) {
-      const server = await createServer({ root: process.cwd(), port: 0 });
+      const server = await createServer({
+        root: process.cwd(),
+        port: 0,
+        webRoot: await editorWebRoot(),
+      });
       url = server.url;
       const unregister = await registerServer(process.cwd(), url);
       cleanup = async () => {
@@ -117,6 +135,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       port,
       mock: flags.includes('--mock'),
       root: process.cwd(),
+      webRoot: await editorWebRoot(),
     });
     const unregister = await registerServer(process.cwd(), server.url);
     process.stderr.write(`mapedit listening at ${server.url}\n`);

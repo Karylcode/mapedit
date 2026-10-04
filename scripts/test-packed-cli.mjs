@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { packedLockfile, packedManifest } from './packed-lockfile.mjs';
+import { packedLockfile, packedManifest, packedNames } from './packed-lockfile.mjs';
 // Packing needs a build, so the server's own containment check is available here.
 import { containsPath as isWithin } from '../packages/server/dist/paths.js';
 
@@ -88,6 +88,22 @@ try {
     await pnpm(['pack', '--out', tarball], source);
     const archive = await readFile(tarball);
     assert.deepEqual([...archive.subarray(0, 2)], [31, 139], `${folder} must be a packed tarball.`);
+    if (folder === 'cli') {
+      // The CLI carries the editor build exactly when packages/web has been built.
+      // TODO(F33): once packages/web is on this branch, also check that the installed
+      // `mapedit dev` serves the editor at / and that MCP screenshot returns a PNG.
+      const webBuilt = await stat(path.join(repository, 'packages/web/dist/index.html')).then(
+        (value) => value.isFile(),
+        () => false,
+      );
+      assert.equal(
+        packedNames(archive).includes('package/web/index.html'),
+        webBuilt,
+        webBuilt
+          ? 'The packed CLI must carry the editor build from packages/web/dist.'
+          : 'Without packages/web/dist the packed CLI must not carry an old editor build.',
+      );
+    }
     names.push(metadata.name);
     dependencies[metadata.name] = `file:../artifacts/${folder}.tgz`;
     packedPackages.push({

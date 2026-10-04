@@ -11,7 +11,8 @@
   "private": true,
   "files": [
     "dist",
-    "templates"
+    "templates",
+    "web"
   ],
   "scripts": {
     "prepack": "node ../../scripts/prepare-cli.mjs"

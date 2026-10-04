@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
 import { posix } from 'node:path';
 
-/** Read the manifest from the actual pnpm pack artifact, without unpacking code into the repo. */
-export function packedManifest(tarball) {
+/** The entries of an actual pnpm pack artifact, read without unpacking code into the repo. */
+function* packedEntries(tarball) {
   const archive = gunzipSync(tarball);
   for (let offset = 0; offset + 512 <= archive.length;) {
     const header = archive.subarray(offset, offset + 512);
@@ -16,11 +16,21 @@ export function packedManifest(tarball) {
     assert(Number.isSafeInteger(size) && size >= 0, 'Invalid packed tar entry size.');
     const start = offset + 512;
     assert(start + size <= archive.length, 'Truncated packed tar entry.');
-    if (name === 'package/package.json')
-      return JSON.parse(archive.toString('utf8', start, start + size));
+    yield { name, text: () => archive.toString('utf8', start, start + size) };
     offset = start + Math.ceil(size / 512) * 512;
   }
+}
+
+/** Read the manifest from the actual pnpm pack artifact. */
+export function packedManifest(tarball) {
+  for (const entry of packedEntries(tarball))
+    if (entry.name === 'package/package.json') return JSON.parse(entry.text());
   throw new Error('Packed artifact has no package/package.json.');
+}
+
+/** The file paths packed into an artifact, such as package/dist/index.js. */
+export function packedNames(tarball) {
+  return [...packedEntries(tarball)].map((entry) => entry.name);
 }
 
 /** Preserve the repository's exact external graph; replace only workspace roots with real tarballs. */
