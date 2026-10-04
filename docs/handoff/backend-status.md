@@ -1,6 +1,23 @@
 # Backend implementation status
 
-**Second review round (start here):** F17–F26 and F23b from
+**Third review round (start here):** F27–F37 from `docs/handoff/backend-fixes-3.md`
+are fixed on the `backend` branch, one numbered commit each, with follow-ups for
+F30 (a map whose map.yaml is broken still opens) and F33 (lint ignores the copied
+editor build), plus the frontend requests FE13/FE22 and a copy of the frontend's
+FE18 wording for `Edit.position`. The 第三輪修正 section at the end lists each
+change and its tests. Every protocol.md change is an addition and
+`protocolVersion` stays 1:
+- `failure` codes and flow 9 (file errors);
+- flow 10 (one answer per request) and `unknown_map`;
+- overlap `estimated`;
+- `HistoryEntry.action` and `refs`, and `MapInfo.kind`;
+- notice `mapId` and the scene-before-notice order.
+
+The 編輯器前端 session was notified and has finished FE17 on these fields. The
+F33 packed-CLI acceptance with the real editor waits for PR #2, and the F17 real
+Claude Code check remains under 需要人處理.
+
+**Second review round:** F17–F26 and F23b from
 `docs/handoff/backend-fixes-2.md` are fixed on the `backend` branch, one numbered
 commit each (F22 also has a guide follow-up), plus three requests from the
 編輯器前端 session (non-metallic terrain, sun and point-marker directions,
@@ -28,6 +45,16 @@ two-agent/Unity Play experience remain the planned joint acceptance after the
 frontend exists. GitHub publication and CI status are recorded below.
 
 ## 目前進度
+
+Third round: F27–F37 are complete on `backend`, one numbered commit per item, and
+every bug fix has a test that failed before the change. The exception is the F36
+performance test: it measures cost that F20 did not cover, and it already passed
+before (0.33 s). On this Windows machine `pnpm build`, `pnpm lint`,
+`pnpm typecheck` and `pnpm e2e` pass. `pnpm test` passes all 362 tests in
+60 files; see 已知問題 for the intermittent Node 24 worker abort, which did not
+occur in the final runs. The fresh no-AI village still has zero violations and
+file errors and exports a 5,062,564-byte GLB. Push and CI results for this round
+are recorded at the end of 第三輪修正.
 
 Second round: F17–F26 and F23b are complete on `backend`, one numbered commit per
 item. Every behavior change has a test that failed before the change; the
@@ -199,6 +226,16 @@ Both calls should complete without an API 400.
   `violationParamsProblems` (F23); violation ids now use fixed rule ids (F26);
   `mapeditRender` should throw a readable error when it cannot draw, which the
   backend relays as `Render page error: …`.
+- Third round (the 編輯器前端 session was notified on completion of F28, F34 and
+  F35 and has implemented FE17 with them):
+  - translate edits with `failure` (F28, F30);
+  - handle the `unknown_map` notice (F30);
+  - show `estimated` overlaps as estimates (F32);
+  - read `HistoryEntry.action` and `refs` and `MapInfo.kind` (F34);
+  - use a notice's `refs` only when its `mapId` is the open map (F35).
+
+  The editor build keeps its bundles in `static/`, since `/assets/` belongs to
+  the backend; packaging copies `packages/web/dist` into the CLI (F33).
 
 ## 已知問題
 
@@ -208,10 +245,12 @@ Both calls should complete without an API 400.
 - UnityGLTF emits optional URP/VisualScripting assembly-reference warnings in the
   minimal built-in-renderer test project; compilation and actual import pass.
 - Overlaps between solids that are not their own bounding box (openings, or
-  Structures rotated off 90°) still need one exact Boolean each, about 0.15–0.3
-  ms per overlapping pair on this machine (F20). A map whose 2,000 Modules all
-  overlap that way can exceed 2 seconds, for example 4.3 s for 15,286 overlapping
-  30°-rotated door Modules; ordinary maps have few overlaps.
+  Structures rotated off 90°) need one exact Boolean each, about 0.15–0.3 ms per
+  pair on this machine. Since F32, solids whose oriented boxes are apart skip it,
+  and after 200 exact overlaps in one check the rest are estimated from oriented
+  boxes and marked `estimated: true`. Such estimates can report an overlap that
+  the exact shapes do not have (for example between diagonal neighbours of round
+  Modules) until the first overlaps are fixed and the map is checked again.
 - Local `pnpm test` on this machine (Windows, Node 24.15, four Vitest workers)
   sometimes loses one test file: Vitest reports `Worker exited unexpectedly`, and
   the worker's exit code is `3221226505` (`0xC0000409`, a native fail-fast abort)
@@ -929,3 +968,21 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
     after that check. Test: `cli/test/package-assets.test.ts` "F37" with fake
     packages that are fresh, stale and never built.
   - Deviation: none.
+- **Kept on purpose – `--enable-unsafe-swiftshader` (listed under 這次不用改):**
+  the flag lets Chrome or Edge fall back to SwiftShader, a software WebGL. Chrome
+  calls it unsafe because a hostile page could reach that rasterizer. Here the
+  headless browser only opens the backend's own `/render` page:
+  `ScreenshotService` aborts every request that is not to the backend's origin,
+  `data:` or `blob:`, so the page runs only the editor build and loads only
+  the backend's own GLBs. Without the flag, machines without a GPU, such as
+  GitHub's Ubuntu runners, cannot create a WebGL context and every screenshot
+  fails. It stays in `SCREENSHOT_BROWSER_ARGS`; the test that checks the flag
+  is unchanged.
+- **Extra (frontend FE18):** `docs/protocol.md` section 4 now describes
+  `Edit.position` as where the object's origin should go (a Structure's
+  `position`, a point marker's `position` or a box marker's `center`), not
+  the point under the pointer. The wording is copied exactly from the frontend
+  branch (`2b094d9`), so both branches merge cleanly. No code reads it
+  differently, and the MCP texts never described it.
+- **Still for a person:** the F17 real Claude Code check stays under 需要人處理,
+  unchanged.
