@@ -1,30 +1,48 @@
 import type { Vec3, ViolationKind, ViolationView } from './index.js';
 
+// Each enumeration is one list, in protocol section 3 order; its type derives from it.
 /** Which value is off the 0.5 m grid (protocol section 3). */
-export type OffGridField =
-  | 'structure_position'
-  | 'structure_height'
-  | 'module_position'
-  | 'attached_module_position'
-  | 'module_size'
-  | 'socket_position'
-  | 'marker_position'
-  | 'marker_size';
+export const OFF_GRID_FIELDS = [
+  'structure_position',
+  'structure_height',
+  'module_position',
+  'attached_module_position',
+  'module_size',
+  'socket_position',
+  'marker_position',
+  'marker_size',
+] as const;
+export type OffGridField = (typeof OFF_GRID_FIELDS)[number];
 /** Which angle breaks its rotation step (protocol section 3). */
-export type RotationField =
-  'structure' | 'structure_attachment' | 'module' | 'attached_module' | 'socket' | 'marker';
+export const ROTATION_FIELDS = [
+  'structure',
+  'structure_attachment',
+  'module',
+  'attached_module',
+  'socket',
+  'marker',
+] as const;
+export type RotationField = (typeof ROTATION_FIELDS)[number];
+export const ROTATION_STEPS = [15, 90] as const;
+export type RotationStep = (typeof ROTATION_STEPS)[number];
 /** Map edges: north is z = 0, south is z = size.z, west is x = 0, east is x = size.x. */
-export type MapEdge = 'north' | 'south' | 'east' | 'west';
-export type MissingReferenceReason =
-  | 'unknown_module'
-  | 'unknown_socket_type'
-  | 'unknown_material'
-  | 'unknown_marker_type'
-  | 'unresolved_attachment'
-  | 'attachment_cycle'
-  | 'unknown_object'
-  | 'immovable_object';
-export type SocketProblem = 'types' | 'occupied' | 'directions';
+export const MAP_EDGES = ['north', 'south', 'east', 'west'] as const;
+export type MapEdge = (typeof MAP_EDGES)[number];
+export const MISSING_REFERENCE_REASONS = [
+  'unknown_module',
+  'unknown_socket_type',
+  'unknown_material',
+  'unknown_marker_type',
+  'unresolved_attachment',
+  'attachment_cycle',
+  'unknown_object',
+  'immovable_object',
+] as const;
+export type MissingReferenceReason = (typeof MISSING_REFERENCE_REASONS)[number];
+export const SOCKET_PROBLEMS = ['types', 'occupied', 'directions'] as const;
+export type SocketProblem = (typeof SOCKET_PROBLEMS)[number];
+export const OVERLAP_TARGETS = ['module', 'terrain'] as const;
+export type OverlapTarget = (typeof OVERLAP_TARGETS)[number];
 
 /** File-backed violations carry their source; editor-only violations do not. */
 export interface ViolationSourceParams {
@@ -42,7 +60,7 @@ export interface ViolationParamsByKind {
   bad_rotation: ViolationSourceParams & {
     field: RotationField;
     rotation: number;
-    step: 15 | 90;
+    step: RotationStep;
     nearest: number;
     moduleType?: string;
   };
@@ -64,7 +82,7 @@ export interface ViolationParamsByKind {
     typeB: string;
   };
   /** `estimated` marks a module overlap estimated from bounding boxes after 200 exact ones. */
-  overlap: ViolationSourceParams & { target: 'module' | 'terrain'; estimated?: true };
+  overlap: ViolationSourceParams & { target: OverlapTarget; estimated?: true };
   unsupported: ViolationSourceParams;
 }
 /** A ViolationView whose params are typed by its kind; narrow it with `switch (kind)`. */
@@ -93,36 +111,21 @@ const isEdges: Check = (value) =>
   value.every(
     (item) =>
       isRecord(item) &&
-      oneOf('north', 'south', 'east', 'west')(item.edge) &&
+      oneOf(...MAP_EDGES)(item.edge) &&
       isNumber(item.distance) &&
       (item.distance as number) > 0,
   );
 const fields: { [K in ViolationKind]: Record<string, [Check, 'required' | 'optional']> } = {
   off_grid: {
-    field: [
-      oneOf(
-        'structure_position',
-        'structure_height',
-        'module_position',
-        'attached_module_position',
-        'module_size',
-        'socket_position',
-        'marker_position',
-        'marker_size',
-      ),
-      'required',
-    ],
+    field: [oneOf(...OFF_GRID_FIELDS), 'required'],
     values: [isNumbers, 'required'],
     nearest: [isNumbers, 'required'],
     moduleType: [isString, 'optional'],
   },
   bad_rotation: {
-    field: [
-      oneOf('structure', 'structure_attachment', 'module', 'attached_module', 'socket', 'marker'),
-      'required',
-    ],
+    field: [oneOf(...ROTATION_FIELDS), 'required'],
     rotation: [isNumber, 'required'],
-    step: [oneOf(15, 90), 'required'],
+    step: [oneOf(...ROTATION_STEPS), 'required'],
     nearest: [isNumber, 'required'],
     moduleType: [isString, 'optional'],
   },
@@ -132,31 +135,19 @@ const fields: { [K in ViolationKind]: Record<string, [Check, 'required' | 'optio
     size: [isSize, 'required'],
   },
   missing_reference: {
-    reason: [
-      oneOf(
-        'unknown_module',
-        'unknown_socket_type',
-        'unknown_material',
-        'unknown_marker_type',
-        'unresolved_attachment',
-        'attachment_cycle',
-        'unknown_object',
-        'immovable_object',
-      ),
-      'required',
-    ],
+    reason: [oneOf(...MISSING_REFERENCE_REASONS), 'required'],
     reference: [isString, 'required'],
     moduleType: [isString, 'optional'],
   },
   incompatible_socket: {
-    reason: [oneOf('types', 'occupied', 'directions'), 'required'],
+    reason: [oneOf(...SOCKET_PROBLEMS), 'required'],
     socketA: [isString, 'required'],
     socketB: [isString, 'required'],
     typeA: [isString, 'required'],
     typeB: [isString, 'required'],
   },
   overlap: {
-    target: [oneOf('module', 'terrain'), 'required'],
+    target: [oneOf(...OVERLAP_TARGETS), 'required'],
     estimated: [oneOf(true), 'optional'],
   },
   unsupported: {},

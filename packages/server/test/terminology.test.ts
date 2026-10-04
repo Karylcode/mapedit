@@ -18,5 +18,7 @@ it('F24 the MCP pager names its pages instead of a vague bound()', async () => {
   };
   visit(ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true));
   expect(identifiers.has('bound')).toBe(false);
-  for (const required of ['firstPage', 'nextPage']) expect(identifiers.has(required)).toBe(true);
+  for (const required of ['paginate', 'nextPage']) expect(identifiers.has(required)).toBe(true);
+  // F37: it runs for every result, including continuation pages and errors.
+  expect(identifiers.has('firstPage')).toBe(false);
 });

@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,4 +89,23 @@ it('F33 keeps the copied editor build out of lint, but still lints the template 
       path.join(root, 'packages/cli/templates/project/modules/wall/model.ts'),
     ),
   ).toBe(false);
+});
+
+it('F37 finds packages whose sources changed after their last build', async () => {
+  const { staleBuilds } = await import('../../../scripts/build-freshness.mjs');
+  const root = await mkdtemp(path.join(tmpdir(), 'mapedit-freshness-'));
+  cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const write = async (file: string, time: number) => {
+    await mkdir(path.dirname(path.join(root, file)), { recursive: true });
+    await writeFile(path.join(root, file), file);
+    await utimes(path.join(root, file), time, time);
+  };
+  // fresh was built after its last edit; stale was edited after; unbuilt has no build.
+  await write('packages/fresh/src/nested/index.ts', 1_000);
+  await write('packages/fresh/tsconfig.tsbuildinfo', 2_000);
+  await write('packages/stale/src/index.ts', 1_000);
+  await write('packages/stale/src/nested/late.ts', 3_000);
+  await write('packages/stale/tsconfig.tsbuildinfo', 2_000);
+  await write('packages/unbuilt/src/index.ts', 1_000);
+  expect(await staleBuilds(root, ['fresh', 'stale', 'unbuilt'])).toEqual(['stale', 'unbuilt']);
 });

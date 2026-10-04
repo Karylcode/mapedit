@@ -37,7 +37,7 @@ import {
   yawOf,
 } from './math.js';
 import { createViolation } from './violation.js';
-import { socketAttachment, socketTypesCompatible } from './socket-rules.js';
+import { socketAddress, socketAttachment, socketTypesCompatible } from './socket-rules.js';
 import { createCompilerAdvice } from './compiler-suggestions.js';
 
 /** Map edges the bounds cross, and how far beyond each edge they reach, in metres. */
@@ -248,8 +248,8 @@ export function compileMap(
   /** Socket addresses as written in attach: `instance.socket`, or `structure/instance.socket`. */
   const socketAddresses = (modules: readonly ModuleInstance[], structureId?: string): string[] =>
     modules.flatMap((instance) =>
-      (parsed.modules[instance.module]?.sockets ?? []).map(
-        (socket) => `${structureId ? `${structureId}/` : ''}${instance.id}.${socket.id}`,
+      (parsed.modules[instance.module]?.sockets ?? []).map((socket) =>
+        socketAddress(instance.id, socket.id, structureId),
       ),
     );
   const socketPairParams = (own: PlacedSocket, target: PlacedSocket) => ({

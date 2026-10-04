@@ -9,7 +9,7 @@ import {
   transformBounds,
   transformMatrix,
 } from './math.js';
-import { socketAttachment, socketTypesCompatible } from './socket-rules.js';
+import { socketAddress, socketAttachment, socketTypesCompatible } from './socket-rules.js';
 import { moveSolid, type PlacedSolid } from './solid.js';
 import { supportedFrom } from './support.js';
 
@@ -269,12 +269,15 @@ export function createGeometryAdvice(context: AdviceContext): {
             matrix,
           ).clear;
         const relation = socketRelation(own, target);
-        const targetName = sameStructure
-          ? `${targetOwner.instanceId}.${target.id}`
-          : `${targetOwner.structureId}/${targetOwner.instanceId}.${target.id}`;
+        // Addresses as attach writes them; another Structure's Socket names its Structure.
+        const targetName = socketAddress(
+          targetOwner.instanceId,
+          target.id,
+          sameStructure ? undefined : targetOwner.structureId,
+        );
         const text = sameStructure
-          ? `Attach ${owner.instanceId} to ${targetOwner.instanceId}.${target.id} (${relation}): in ${instance.source.file} ${instance.attachTo ? `change the attach of ${owner.instanceId} to` : `replace the at and rotation of ${owner.instanceId} with`} attach: {socket: ${own.id}, to: ${targetOwner.instanceId}.${target.id}}`
-          : `Attach ${structureRef(owner.structureId)} to ${targetOwner.structureId}/${targetOwner.instanceId}.${target.id} (${relation}): in ${instance.source.file} replace the position, height and rotation of Structure ${owner.structureId} with attach: {socket: ${owner.instanceId}.${own.id}, to: ${targetOwner.structureId}/${targetOwner.instanceId}.${target.id}}`;
+          ? `Attach ${owner.instanceId} to ${targetName} (${relation}): in ${instance.source.file} ${instance.attachTo ? `change the attach of ${owner.instanceId} to` : `replace the at and rotation of ${owner.instanceId} with`} attach: {socket: ${own.id}, to: ${targetName}}`
+          : `Attach ${structureRef(owner.structureId)} to ${targetName} (${relation}): in ${instance.source.file} replace the position, height and rotation of Structure ${owner.structureId} with attach: {socket: ${socketAddress(owner.instanceId, own.id)}, to: ${targetName}}`;
         const note = targetSupported
           ? ''
           : ` ${targetOwner.instanceId} has no Support yet; give it Support first, as its own unsupported violation suggests.`;

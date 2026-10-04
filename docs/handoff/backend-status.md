@@ -888,3 +888,44 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
       both before and after the lazy test, because placements are cached and
       boxes use arithmetic; it stays as the measurement F20 lacked.
   - Deviation: none.
+- **F37 complete:**
+  - **Revision race:** `registerTool`'s `run` validates the arguments, flushes
+    file changes, reads the project revision right away, and only then runs
+    the tool. The handlers no longer flush themselves, so there is still one
+    flush per call. A change processed while the tool runs now voids the
+    continuation cursor; before, it was labelled with the newer revision.
+    Test: `server/test/mcp-paging.test.ts` "F37" processes a change during a
+    paged `query`. The continuation answers "Results changed…"; before, it
+    served the page.
+  - **Argument errors:** invalid arguments are explained one sentence each,
+    instead of zod's JSON report:
+    - "Missing required argument z (number)."
+    - "Argument x must be a number."
+    - "Unknown arguments "size", "depth"; remove them."
+    - "Argument command.operation must be one of …"
+
+    Tests: the same file, plus the updated F17 and paging tests in
+    `mcp-schema.test.ts` and `mcp-paging.test.ts`.
+  - **Enumerations:** `packages/protocol/src/violation-params.ts` declares
+    each one once as an `as const` list and derives its type from it:
+    `OFF_GRID_FIELDS`, `ROTATION_FIELDS`, `ROTATION_STEPS`, `MAP_EDGES`,
+    `MISSING_REFERENCE_REASONS`, `SOCKET_PROBLEMS` and `OVERLAP_TARGETS`. The
+    params check uses the same lists. Test: `protocol/test/catalogs.test.ts`
+    compares three of them with the lists in protocol.md section 3 and has
+    the check accept every value.
+  - **Socket addresses:** `socketAddress(instance, socket, structure?)` in
+    `socket-rules.ts` writes the `attach` format. The compiler's
+    `socketAddresses` and the geometry suggestions both use it. Test:
+    `core/test/suggestions.test.ts` "F37", plus the F27, F36 and performance
+    tests that read the addresses in suggestions.
+  - **Naming:** `ToolResultPager.firstPage` is now `paginate`, since every
+    result passes through it. Test: the F24 terminology test.
+  - **Types:** `StateStore.entries` and `cursor` are `readonly`. Test:
+    `server/test/history.test.ts` reads the modifiers from the source.
+  - **Packed acceptance:** `scripts/test-packed-cli.mjs` checks before packing
+    that no package's `src` is newer than its `tsconfig.tsbuildinfo`, using
+    the new `scripts/build-freshness.mjs`. If one is, it stops with "Run pnpm
+    build first: …". It loads the server's containment check from `dist` only
+    after that check. Test: `cli/test/package-assets.test.ts` "F37" with fake
+    packages that are fresh, stale and never built.
+  - Deviation: none.

@@ -83,7 +83,8 @@ describe('F17 MCP tool input schemas', () => {
       arguments: { x: 1 },
     })) as CallToolResult;
     expect(missing.isError).toBe(true);
-    expect(text(missing)).toContain('"z"');
+    // F37: one sentence instead of the schema library's JSON report.
+    expect(text(missing)).toBe('Missing required argument z (number).');
 
     const mixed = (await client.callTool({
       name: 'query',

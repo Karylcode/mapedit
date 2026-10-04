@@ -5,6 +5,7 @@ import { compileMap } from '../src/compiler.js';
 import type { Compilation } from '../src/domain.js';
 import { parseProject } from '../src/format.js';
 import { checkGeometry } from '../src/geometry.js';
+import { socketAddress } from '../src/socket-rules.js';
 import { box, union, type Shape } from '../src/model-api.js';
 import { buildModel, type ModelGeometry } from '../src/model.js';
 
@@ -722,5 +723,12 @@ describe('F36 suggestion search cost', () => {
     expect(violations.filter((item) => item.kind === 'unsupported')).toHaveLength(1000);
     expect(violations[0]!.suggestion).toMatch(/^Attach structure:f00 to g\d{4}\/base\.top/);
     expect(elapsed).toBeLessThan(2000);
+  });
+});
+
+describe('F37 one Socket address format', () => {
+  it('writes attach addresses like the compiler reads them', () => {
+    expect(socketAddress('wall_n', 'top')).toBe('wall_n.top');
+    expect(socketAddress('wall_n', 'top', 'house')).toBe('house/wall_n.top');
   });
 });

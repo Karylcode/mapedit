@@ -34,8 +34,11 @@ export class ToolResultPager {
     for (const [id, capture] of this.captures) if (capture.expiresAt <= Date.now()) this.remove(id);
   }
 
-  /** The whole result when it fits, otherwise its captured first page. */
-  firstPage(tool: string, result: CallToolResult, revision: number): CallToolResult {
+  /**
+   * The whole result when it fits, otherwise its captured first page. Every result passes
+   * through here, including continuation pages and errors.
+   */
+  paginate(tool: string, result: CallToolResult, revision: number): CallToolResult {
     const safe = { ...result };
     delete safe.structuredContent;
     const text = result.content

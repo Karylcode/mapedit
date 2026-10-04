@@ -3,7 +3,10 @@ import { expect, it } from 'vitest';
 import {
   EDIT_FAILURES,
   HISTORY_ACTIONS,
+  MISSING_REFERENCE_REASONS,
   NOTICE_CODES,
+  OFF_GRID_FIELDS,
+  ROTATION_FIELDS,
   VIOLATION_KINDS,
   violationParamsProblems,
 } from '../src/index.js';
@@ -30,6 +33,40 @@ it('exports the violation kinds and notice codes as runtime catalogs', () => {
     expect(
       violationParamsProblems({ id: 'x', kind, message: 'm', refs: [], params: {} }),
     ).not.toContain(`Unknown violation kind "${kind}".`);
+});
+
+/** The `- \`value\`：…` items listed under a `\`Name\`：` heading in protocol section 3. */
+function documentedList(name: string): string[] {
+  const block = protocol.split(`\`${name}\`：`)[1]?.split(/\n\n(?!- )/)[0] ?? '';
+  return [...block.matchAll(/^- `([a-z_]+)`：/gm)].map((match) => match[1]!);
+}
+
+it('F37 derives each params enumeration from one list, as protocol section 3 lists it', () => {
+  expect(OFF_GRID_FIELDS).toEqual(documentedList('OffGridField'));
+  expect(ROTATION_FIELDS).toEqual(documentedList('RotationField'));
+  expect(MISSING_REFERENCE_REASONS).toEqual(documentedList('MissingReferenceReason'));
+  const params = (kind: 'off_grid' | 'bad_rotation' | 'missing_reference', value: string) =>
+    kind === 'off_grid'
+      ? { field: value, values: [1], nearest: [1] }
+      : kind === 'bad_rotation'
+        ? { field: value, rotation: 7, step: 15, nearest: 0 }
+        : { reason: value, reference: 'x' };
+  for (const [kind, values] of [
+    ['off_grid', OFF_GRID_FIELDS],
+    ['bad_rotation', ROTATION_FIELDS],
+    ['missing_reference', MISSING_REFERENCE_REASONS],
+  ] as const)
+    for (const value of values)
+      expect(
+        violationParamsProblems({
+          id: 'x',
+          kind,
+          message: 'm',
+          refs: [],
+          params: params(kind, value),
+        }),
+        `${kind} ${value}`,
+      ).toEqual([]);
 });
 
 it('keeps every catalog identical to its union in docs/protocol.md', () => {
