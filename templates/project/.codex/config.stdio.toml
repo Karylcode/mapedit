@@ -1,0 +1,3 @@
+[mcp_servers.mapedit]
+command = "{{NODE}}"
+args = ["{{CLI}}", "mcp"]

@@ -1,16 +1,29 @@
 #!/usr/bin/env node
 import { createServer, buildProject, exportProject, connectStdio } from '@mapedit/server';
 import { spawn } from 'node:child_process';
+import { initProject } from './init.js';
 import { discoverServer, registerServer } from './discovery.js';
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
   const [command, ...flags] = args;
+  if (command === 'init') {
+    const directory = flags[0] ?? '.';
+    if (flags.length > 1 || directory.startsWith('--'))
+      throw new Error('Usage: mapedit init [directory]');
+    process.stdout.write(`Created Mapedit project at ${await initProject(directory)}\n`);
+    return;
+  }
   if (command === 'export') {
-    const outIndex = flags.indexOf('--out'), mapIndex = flags.indexOf('--map');
+    const outIndex = flags.indexOf('--out'),
+      mapIndex = flags.indexOf('--map');
     const out = flags[outIndex + 1];
-    if (outIndex < 0 || !out || out.startsWith('--')) throw new Error('export requires --out <directory>.');
-    if (mapIndex >= 0 && (!flags[mapIndex + 1] || flags[mapIndex + 1]!.startsWith('--'))) throw new Error('--map requires a map ID.');
-    process.stdout.write(`${await exportProject(process.cwd(), mapIndex >= 0 ? flags[mapIndex + 1] : undefined, out)}\n`);
+    if (outIndex < 0 || !out || out.startsWith('--'))
+      throw new Error('export requires --out <directory>.');
+    if (mapIndex >= 0 && (!flags[mapIndex + 1] || flags[mapIndex + 1]!.startsWith('--')))
+      throw new Error('--map requires a map ID.');
+    process.stdout.write(
+      `${await exportProject(process.cwd(), mapIndex >= 0 ? flags[mapIndex + 1] : undefined, out)}\n`,
+    );
     return;
   }
   if (command === 'mcp') {
@@ -19,31 +32,54 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     if (serverIndex >= 0) {
       if (!url) throw new Error('--server requires a local backend URL.');
       const parsed = new URL(url);
-      if (parsed.protocol !== 'http:' || !['127.0.0.1','localhost'].includes(parsed.hostname) || parsed.username || parsed.password) throw new Error('--server must refer to a local HTTP backend.');
+      if (
+        parsed.protocol !== 'http:' ||
+        !['127.0.0.1', 'localhost'].includes(parsed.hostname) ||
+        parsed.username ||
+        parsed.password
+      )
+        throw new Error('--server must refer to a local HTTP backend.');
     }
     let cleanup: (() => Promise<void>) | undefined;
     if (!url) {
-      const server = await createServer({root:process.cwd(),port:0});
+      const server = await createServer({ root: process.cwd(), port: 0 });
       url = server.url;
-      const unregister = await registerServer(process.cwd(),url);
-      cleanup = async () => { await server.close(); await unregister(); };
+      const unregister = await registerServer(process.cwd(), url);
+      cleanup = async () => {
+        await server.close();
+        await unregister();
+      };
     }
     let close: () => Promise<void>;
-    try { close = await connectStdio(url, cleanup); }
-    catch (error) { await cleanup?.(); throw error; }
-    for (const signal of ['SIGINT','SIGTERM'] as const) process.once(signal,()=>void close().then(()=>process.exit(0)));
+    try {
+      close = await connectStdio(url, cleanup);
+    } catch (error) {
+      await cleanup?.();
+      throw error;
+    }
+    for (const signal of ['SIGINT', 'SIGTERM'] as const)
+      process.once(signal, () => void close().then(() => process.exit(0)));
     return;
   }
   if (command === 'check') {
     const mapIndex = flags.indexOf('--map');
     if (mapIndex >= 0 && !flags[mapIndex + 1]) throw new Error('--map requires a map ID.');
-    const { compilation } = await buildProject(process.cwd(), mapIndex < 0 ? undefined : flags[mapIndex + 1]);
+    const { compilation } = await buildProject(
+      process.cwd(),
+      mapIndex < 0 ? undefined : flags[mapIndex + 1],
+    );
     const { violations, fileErrors } = compilation.scene;
     if (flags.includes('--json')) {
-      process.stdout.write(`${JSON.stringify({ map: compilation.scene.map.id, violations, fileErrors }, null, 2)}\n`);
+      process.stdout.write(
+        `${JSON.stringify({ map: compilation.scene.map.id, violations, fileErrors }, null, 2)}\n`,
+      );
     } else {
-      for (const error of fileErrors) process.stdout.write(`${error.file}:${error.line ?? 1}: ${error.message}\n`);
-      for (const violation of violations) process.stdout.write(`${violation.kind}: ${violation.message}${violation.suggestion ? ` ${violation.suggestion}` : ''}\n`);
+      for (const error of fileErrors)
+        process.stdout.write(`${error.file}:${error.line ?? 1}: ${error.message}\n`);
+      for (const violation of violations)
+        process.stdout.write(
+          `${violation.kind}: ${violation.message}${violation.suggestion ? ` ${violation.suggestion}` : ''}\n`,
+        );
       process.stdout.write(`${violations.length} violations, ${fileErrors.length} file errors.\n`);
     }
     process.exitCode = violations.length || fileErrors.length ? 1 : 0;
@@ -60,7 +96,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       mock: flags.includes('--mock'),
       root: process.cwd(),
     });
-    const unregister = await registerServer(process.cwd(),server.url);
+    const unregister = await registerServer(process.cwd(), server.url);
     process.stderr.write(`mapedit listening at ${server.url}\n`);
     if (flags.includes('--open')) {
       const platform = process.platform;
@@ -77,12 +113,21 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       child.unref();
     }
     for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-      process.once(signal, () => void server.close().then(unregister).then(() => process.exit(0)));
+      process.once(
+        signal,
+        () =>
+          void server
+            .close()
+            .then(unregister)
+            .then(() => process.exit(0)),
+      );
     }
     return;
   }
   if (command === '--help' || command === undefined) {
-    process.stdout.write('mapedit dev [--port <port>] [--mock] [--open]\nmapedit check [--map <id>] [--json]\nmapedit export [--map <id>] --out <directory>\nmapedit mcp\n');
+    process.stdout.write(
+      'mapedit init [directory]\nmapedit dev [--port <port>] [--mock] [--open]\nmapedit check [--map <id>] [--json]\nmapedit export [--map <id>] --out <directory>\nmapedit mcp\n',
+    );
     return;
   }
   throw new Error(`Unknown command: ${command}. Run mapedit --help.`);

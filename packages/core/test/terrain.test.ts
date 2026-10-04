@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { WebIO } from '@gltf-transform/core';
-import { applyTerrainCommand, createTerrain, decodeTerrain, encodeTerrain, terrainChunks, terrainChunkGlb, terrainHeightAt, terrainSurfaceAt, terrainTriangles } from '../src/terrain.js';
+import {
+  applyTerrainCommand,
+  createTerrain,
+  decodeTerrain,
+  encodeTerrain,
+  terrainChunks,
+  terrainChunkGlb,
+  terrainHeightAt,
+  terrainSurfaceAt,
+  terrainTriangles,
+} from '../src/terrain.js';
 
 describe('terrain PNG authoring', () => {
   it('round trips signed 16-bit heights exactly and rejects mismatched maps', () => {
@@ -22,19 +32,38 @@ describe('terrain PNG authoring', () => {
     expect(original.heights[55]).toBe(0);
     t = applyTerrainCommand(t, { operation: 'lower', region: circle, amount: 0.5 });
     expect(t.heights[55]).toBe(1.5);
-    t = applyTerrainCommand(t, { operation: 'set_height', region: { kind: 'rectangle', min: [2,2], max: [8,8] }, height: 3 });
+    t = applyTerrainCommand(t, {
+      operation: 'set_height',
+      region: { kind: 'rectangle', min: [2, 2], max: [8, 8] },
+      height: 3,
+    });
     expect(t.heights[55]).toBe(3);
     t = applyTerrainCommand(t, { operation: 'flatten', region: circle });
     expect(t.heights[55]).toBe(3);
     t = applyTerrainCommand(t, { operation: 'flatten', region: circle, height: 0.5 });
     expect(t.heights[55]).toBe(0.5);
-    t = applyTerrainCommand(t, { operation: 'paint', region: { kind: 'path', points: [[1,5],[9,5]], width: 2 }, surface: 'gravel' });
+    t = applyTerrainCommand(t, {
+      operation: 'paint',
+      region: {
+        kind: 'path',
+        points: [
+          [1, 5],
+          [9, 5],
+        ],
+        width: 2,
+      },
+      surface: 'gravel',
+    });
     expect(terrainSurfaceAt(t, 5, 5)).toBe('gravel');
     t = applyTerrainCommand(t, { operation: 'mountain', region: circle, height: 5 });
     expect(t.heights[55]).toBeGreaterThan(t.heights[53]!);
-    expect([...t.heights].every(h => Number.isInteger(h * 2))).toBe(true);
-    expect(() => applyTerrainCommand(t, { operation: 'raise', region: circle, amount: 0.1 })).toThrow('0.5');
-    expect(() => applyTerrainCommand(t, { operation: 'raise', region: { ...circle, radius: 0 }, amount: 1 })).toThrow('region');
+    expect([...t.heights].every((h) => Number.isInteger(h * 2))).toBe(true);
+    expect(() =>
+      applyTerrainCommand(t, { operation: 'raise', region: circle, amount: 0.1 }),
+    ).toThrow('0.5');
+    expect(() =>
+      applyTerrainCommand(t, { operation: 'raise', region: { ...circle, radius: 0 }, amount: 1 }),
+    ).toThrow('region');
   });
 });
 
@@ -54,11 +83,15 @@ describe('terrain geometry', () => {
     const glb = await terrainChunkGlb(chunk);
     const doc = await new WebIO().readBinary(glb);
     expect(doc.getRoot().listMeshes()).toHaveLength(1);
-    expect(doc.getRoot().listNodes()[0]!.getExtras()).toMatchObject({ mapedit: { collider: { type: 'mesh' } } });
+    expect(doc.getRoot().listNodes()[0]!.getExtras()).toMatchObject({
+      mapedit: { collider: { type: 'mesh' } },
+    });
   });
   it('streams every mesh of a 1000 by 1000 metre map with bounded chunk size', async () => {
     const t = createTerrain(1000, 1000);
-    let chunks = 0, triangles = 0, bytes = 0;
+    let chunks = 0,
+      triangles = 0,
+      bytes = 0;
     for (const chunk of terrainChunks(t)) {
       chunks++;
       triangles += chunk.positions.length / 9;

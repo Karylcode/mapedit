@@ -20,6 +20,7 @@ import type {
 } from './domain.js';
 import {
   clean,
+  compareText,
   directionVector,
   EPSILON,
   moduleTransform,
@@ -84,7 +85,7 @@ export function compileMap(
     sockets: CompiledSocket[] = [],
     socketConnections: Compilation['socketConnections'] = [];
   const usedSockets = new Set<string>();
-  const structures = [...map.structures].sort((a, b) => a.id.localeCompare(b.id));
+  const structures = [...map.structures].sort((a, b) => compareText(a.id, b.id));
   const byId = new Map(structures.map((s) => [s.id, s]));
   const terrainHeight = options.terrainHeight ?? (() => 0);
   const emit = (
@@ -131,7 +132,7 @@ export function compileMap(
       );
   };
   for (const [type, definition] of Object.entries(parsed.project.socketTypes).sort(([a], [b]) =>
-    a.localeCompare(b),
+    compareText(a, b),
   )) {
     for (const compatible of definition.compatibleWith)
       if (!parsed.project.socketTypes[compatible])
@@ -145,7 +146,7 @@ export function compileMap(
           { reference: compatible },
         );
   }
-  for (const definition of Object.values(parsed.modules).sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const definition of Object.values(parsed.modules).sort((a, b) => compareText(a.id, b.id))) {
     const refs = structures.flatMap((s) =>
       s.modules.filter((m) => m.module === definition.id).map((m) => `module:${s.id}/${m.id}`),
     );
@@ -361,7 +362,7 @@ export function compileMap(
       visiting.delete(instanceId);
       return result;
     };
-    for (const instance of [...structure.modules].sort((a, b) => a.id.localeCompare(b.id)))
+    for (const instance of [...structure.modules].sort((a, b) => compareText(a.id, b.id)))
       resolve(instance.id);
     localByStructure.set(structure.id, locals);
   }
@@ -447,7 +448,7 @@ export function compileMap(
           const targetId = local.instance.attach.to.split('.')[0]!;
           const target = locals.get(targetId);
           if (target) offset = offsetFor(target);
-        } else if (local.definition.terrainFollow) {
+        } else if (local.definition.terrainFollow && structure.height === 'auto') {
           const world = multiplyMatrices(placement.transform, local.transform);
           const bounds = transformBounds(world, local.definition.size);
           offset =
@@ -476,7 +477,7 @@ export function compileMap(
     map: { id: map.id, name: map.name, size: map.size, sun: map.sun },
     terrain: options.terrain ?? { revision: 0, chunks: [] },
     moduleTypes: Object.values(parsed.modules)
-      .sort((a, b) => a.id.localeCompare(b.id))
+      .sort((a, b) => compareText(a.id, b.id))
       .map((m) => ({
         id: m.id,
         name: m.name,
@@ -506,7 +507,7 @@ export function compileMap(
       });
     }
     for (const local of [...localByStructure.get(structure.id)!.values()].sort((a, b) =>
-      a.instance.id.localeCompare(b.instance.id),
+      compareText(a.instance.id, b.instance.id),
     )) {
       const ref = `module:${structure.id}/${local.instance.id}`;
       const transform = multiplyMatrices(placement.transform, local.transform);
@@ -555,8 +556,8 @@ export function compileMap(
       }
     }
   }
-  scene.structures = [...views.values()].sort((a, b) => a.ref.localeCompare(b.ref));
-  for (const marker of [...map.markers].sort((a, b) => a.id.localeCompare(b.id))) {
+  scene.structures = [...views.values()].sort((a, b) => compareText(a.ref, b.ref));
+  for (const marker of [...map.markers].sort((a, b) => compareText(a.id, b.id))) {
     const ref = `marker:${marker.id}`,
       shape = marker.shape,
       position = shape.kind === 'point' ? shape.position : shape.center;

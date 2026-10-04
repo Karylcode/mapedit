@@ -2,6 +2,8 @@ import type { Mat4, Vec3 } from '@mapedit/protocol';
 import type { Bounds, SocketDirection } from './domain.js';
 
 export const EPSILON = 1e-7;
+/** Locale-independent ordering for stable ids, paths, and compiled output. */
+export const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 export const snap = (value: number, step = 0.5): number => clean(Math.round(value / step) * step);
 export const clean = (value: number): number =>
   Math.abs(value) < 1e-10 ? 0 : Math.round(value * 1e10) / 1e10;

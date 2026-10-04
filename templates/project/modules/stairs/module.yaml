@@ -1,0 +1,6 @@
+id: stairs
+name: Two Stone Steps
+size: [2, 1, 2]
+material: stone_brick
+sockets:
+  - { id: upper, type: stair, position: [0, 1, 0], direction: up }

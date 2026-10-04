@@ -29,7 +29,8 @@ export async function readProjectTexts(root: string): Promise<Record<string, str
     }
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
       const child = `${relative}/${entry.name}`;
-      if (entry.isSymbolicLink()) throw new Error(`Symbolic links are not project inputs: ${child}`);
+      if (entry.isSymbolicLink())
+        throw new Error(`Symbolic links are not project inputs: ${child}`);
       if (entry.isDirectory()) await walk(child);
       else if (entry.isFile() && /\.ya?ml$/i.test(entry.name)) await read(child);
     }

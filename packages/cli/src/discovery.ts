@@ -17,6 +17,7 @@ const projectIdentity = (root: string) =>
 export async function registerServer(root: string, url: string): Promise<() => Promise<void>> {
   const canonicalRoot = await realpath(root);
   const response = await fetch(new URL('/api/project', url), {
+    method: 'HEAD',
     signal: AbortSignal.timeout(5000),
     redirect: 'error',
   });
@@ -69,6 +70,7 @@ export async function discoverServer(root: string): Promise<string | undefined> 
       return undefined;
     process.kill(record.pid, 0);
     const response = await fetch(new URL('/api/project', url), {
+      method: 'HEAD',
       signal: AbortSignal.timeout(1000),
       redirect: 'error',
     });
@@ -79,8 +81,7 @@ export async function discoverServer(root: string): Promise<string | undefined> 
       response.headers.get('X-Mapedit-Pid') !== String(record.pid)
     )
       return undefined;
-    const data: unknown = await response.json();
-    return data && typeof data === 'object' && 'maps' in data ? url.origin : undefined;
+    return url.origin;
   } catch {
     return undefined;
   }

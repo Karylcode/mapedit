@@ -1,0 +1,7 @@
+name: My Mapedit Project
+# Built-in socket types: foundation, floor, wall, roof, stair.
+# Extend compatibleWith symmetrically when adding custom socket types.
+socketTypes: {}
+markerTypes:
+  spawn: { shape: point }
+  trigger: { shape: box }

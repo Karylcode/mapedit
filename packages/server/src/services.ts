@@ -127,9 +127,14 @@ export function createAgentServices(
     async terrain(mapId, command) {
       await state.updateAgentFiles(async () => {
         const build = await state.getBuild(mapId);
+        const definition = build.parsed.maps[build.scene.map.id];
+        if (!definition)
+          throw new Error(
+            `Map '${mapId ?? build.scene.map.id}' does not exist or has invalid map.yaml. Fix its map file before changing terrain.`,
+          );
         const changed = applyTerrainCommand(build.terrain, command as unknown as TerrainCommand);
         const png = encodeTerrain(changed);
-        const folder = `${posix.dirname(build.parsed.maps[build.scene.map.id]!.source.file)}/terrain`;
+        const folder = `${posix.dirname(definition.source.file)}/terrain`;
         return { [`${folder}/height.png`]: png.height, [`${folder}/surface.png`]: png.surface };
       });
       const scene = await state.getScene(mapId);

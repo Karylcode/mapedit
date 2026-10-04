@@ -16,7 +16,7 @@ import {
   type SourceRef,
   type Structure,
 } from './domain.js';
-import { normalizeRotation, snap } from './math.js';
+import { compareText, normalizeRotation, snap } from './math.js';
 
 type Path = (string | number)[];
 type RecordValue = Record<string, unknown>;
@@ -29,10 +29,36 @@ class InvalidFormat extends Error {
   }
 }
 const object = (value: unknown, path: Path): RecordValue => {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+  )
     throw new InvalidFormat('Expected a mapping. Use key: value fields.', path);
   return value as RecordValue;
 };
+function jsonValue(value: unknown, path: Path, ancestors = new Set<object>()): void {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number' && Number.isFinite(value)) return;
+  if (!value || typeof value !== 'object')
+    throw new InvalidFormat(
+      'Marker properties must contain JSON-compatible values and finite numbers.',
+      path,
+    );
+  if (ancestors.has(value))
+    throw new InvalidFormat(
+      'Marker properties cannot contain cyclic YAML aliases. Use ordinary JSON-compatible data.',
+      path,
+    );
+  ancestors.add(value);
+  if (Array.isArray(value))
+    value.forEach((entry, index) => jsonValue(entry, [...path, index], ancestors));
+  else
+    for (const [key, entry] of Object.entries(object(value, path)))
+      jsonValue(entry, [...path, key], ancestors);
+  ancestors.delete(value);
+}
 const string = (value: unknown, path: Path, fallback?: string): string => {
   if (value === undefined && fallback !== undefined) return fallback;
   if (typeof value !== 'string' || !value.trim())
@@ -113,7 +139,7 @@ export function parseProject(inputFiles: Record<string, string>): ParsedProject 
   const files: Record<string, string> = Object.fromEntries(
     Object.entries(inputFiles)
       .map(([file, text]) => [file.replaceAll('\\', '/').replace(/^\.\//, ''), text])
-      .sort(([a], [b]) => a!.localeCompare(b!)),
+      .sort(([a], [b]) => compareText(a!, b!)),
   );
   const documents = new Map<string, Document>(),
     counters = new Map<string, LineCounter>();
@@ -433,11 +459,13 @@ export function parseProject(inputFiles: Record<string, string>): ParsedProject 
                   'shape',
                   'kind',
                 ]);
+              const properties = object(item.properties ?? {}, [...path, 'properties']);
+              jsonValue(properties, [...path, 'properties']);
               return {
                 id: id(item.id, [...path, 'id']),
                 type: id(item.type, [...path, 'type']),
                 shape: parsedShape,
-                properties: object(item.properties ?? {}, [...path, 'properties']),
+                properties,
                 source: source(markerFile, path),
               };
             }),

@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "mapedit": { "type": "stdio", "command": "{{NODE}}", "args": ["{{CLI}}", "mcp"] }
+  }
+}

@@ -1,0 +1,3 @@
+[mcp_servers.mapedit]
+url = "http://127.0.0.1:4790/mcp"
+# To switch to stdio, replace this section with config.stdio.toml.

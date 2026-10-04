@@ -125,6 +125,11 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       response.setHeader('X-Mapedit-Project', projectIdentity);
       response.setHeader('X-Mapedit-Pid', String(process.pid));
       const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
+      if (request.method === 'HEAD' && url.pathname === '/api/project') {
+        response.writeHead(200, { 'Cache-Control': 'no-store' });
+        response.end();
+        return;
+      }
       if (url.pathname === '/mcp') {
         await mcp.handle(request, response);
         return;

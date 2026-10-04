@@ -10,6 +10,7 @@
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
+    "e2e": "node scripts/e2e.mjs",
     "lint": "eslint packages",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

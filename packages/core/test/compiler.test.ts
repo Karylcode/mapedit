@@ -115,7 +115,6 @@ describe('project format and deterministic compilation', () => {
     const input = files([
       {
         ...basicStructure,
-        height: 0,
         modules: [
           { id: 'root', module: 'block', at: [0, 0, 0] },
           { id: 'child', module: 'block', attach: { socket: 'bottom', to: 'root.top' } },

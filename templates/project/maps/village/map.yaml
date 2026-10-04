@@ -1,0 +1,4 @@
+id: village
+name: Example Village
+size: { x: 100, z: 100 }
+sun: { azimuth: 135, elevation: 45 }

@@ -1,9 +1,22 @@
 # Backend implementation status
 
+**Review entry point for Claude:** M0–M7 backend implementation and local acceptance
+are complete. Start with `docs/protocol.md`, `docs/map-format.md`,
+`docs/model-api.md` and `docs/export-format.md`; the executable boundaries are
+`packages/core/src/index.ts`, `packages/server/src/index.ts` and the CLI.
+Protocol stays at version 1; the only additive HTTP contract detail is CLI identity
+headers and a cheap HEAD discovery request. `packages/web` has not been created or
+modified. The mock remains available through `mapedit dev --mock`.
+On this Windows machine: 93 tests, strict typecheck and ESLint passed; the no-AI
+village script reached zero violations and exported a GLB; real Unity 6 batchmode
+verified 40 MeshColliders, the spawn prefab and trigger. Frontend rendering and the
+two-agent/Unity Play experience remain the planned joint acceptance after the
+frontend exists. GitHub publication and CI status are recorded below.
+
 ## 目前進度
 
-M0–M6 complete on `backend`. Template/end-to-end acceptance has passed.
-Next: commit M7 and finish the GitHub PR/CI verification.
+M0–M7 complete on `backend`, each with its own milestone commit.
+Next: publish the branch, create the PR to `main`, and verify the CI matrix.
 
 ## 每個里程碑完成了什麼、怎麼驗證
 
@@ -64,7 +77,16 @@ Next: commit M7 and finish the GitHub PR/CI verification.
   three-house village: 40 mesh colliders, 2 markers, mapped spawn prefab and trigger.
   Reproduce with `scripts/test-unity.ps1 -GlbPath <village.glb>`. Local evidence:
   `.cache/unity/project/mapedit-verification.json` and `mapedit-import.log`.
-- M7: pending milestone documentation/commit.
+- M7: `mapedit init` safely creates seven model types, a complete example house,
+  spawn/trigger markers, PNG terrain, English AGENTS/skill instructions, Claude Code
+  and Codex HTTP/stdio configs. Existing files and symlink/junction paths are checked
+  before writing. `scripts/e2e.mjs` uses the real CLI to initialize, author three
+  houses (including 15/30-degree rotations), a mountain and a road, check zero
+  violations, and export a self-contained 5 MB GLB. Final Windows acceptance:
+  **93 tests across 16 test files**, `pnpm typecheck`, `pnpm lint`, `pnpm e2e` and
+  the Unity batchmode test all passed. Final audit added JSON-safe marker properties,
+  locale-independent ordering, exact project/process stdio discovery, concurrent
+  terrain transactions, and map IDs independent of their source-directory names.
 
 ## 自行決定的事
 
@@ -85,19 +107,39 @@ Next: commit M7 and finish the GitHub PR/CI verification.
   handles previews without rereading models or re-encoding terrain.
 - The export core is introduced with the MCP export tool; M6 adds the formal
   engine contract and Unity adapter. Exports independently rerun geometry checks.
+- Explicit structure height takes precedence over per-module terrain following.
+- Undo/redo history is per running project server and includes source/PNG/model
+  changes. Git remains the durable authoring history across server restarts.
+- Generated MCP stdio configs use the actual installed Node and CLI paths to avoid
+  Windows `npx` launch differences; regenerate/update paths if the installation moves.
 
 ## 偏離設計
 
-None identified yet.
+No required backend milestone was skipped. QuickJS supplements Node permissions
+because Node's permission model alone is not an untrusted-code sandbox. The sample
+render page exists only under server test fixtures, as requested.
 
 ## 需要人處理
 
-None identified yet. GitHub authentication is available.
+None. GitHub authentication, system Edge and licensed Unity 6 were available.
 
 ## 需要前端配合
 
-Implement the existing protocol v1 and `/render` contract after backend review.
+- Implement protocol v1 and `/render` exactly as documented; rendering waits for
+  `minRevision` and returns a montage PNG. The server serves `packages/web/dist`
+  automatically when it exists.
+- Module URLs contain local-space GLBs; terrain/generated URLs contain map-space
+  GLBs. Both snapshot transforms and glTF matrices are column-major.
+- Bundle browser core consumers with `node:*` external and serve manifold.wasm
+  adjacent to the bundle; this is exercised by the real Edge browser test.
+- Complete the planned real Claude Code/Codex prompt-to-village and Unity Play
+  acceptance after the frontend exists. Backend tests deliberately use no AI.
 
 ## 已知問題
 
-Implementation and acceptance work are in progress; no completion claim yet.
+- No known backend implementation blocker remains. Real screenshots from the
+  product frontend are pending that separately owned frontend; the complete
+  screenshot transport/render contract has passed using the test renderer.
+- UnityGLTF emits optional URP/VisualScripting assembly-reference warnings in the
+  minimal built-in-renderer test project; compilation and actual import pass.
+- GitHub PR and CI verification are the remaining publication step for this run.

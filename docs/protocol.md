@@ -18,7 +18,7 @@
 | `/` | GET | 前端 | 編輯器網頁 |
 | `/render` | GET | 前端 | 截圖用頁面（見第 6 節） |
 | `/ws` | WebSocket | 後端 | 即時通道（見第 4 節） |
-| `/api/project` | GET | 後端 | 回傳 `ProjectInfo` |
+| `/api/project` | GET、HEAD | 後端 | GET 回傳 `ProjectInfo`；HEAD 只回本機程序識別 headers，供 CLI 發現伺服器 |
 | `/api/scene?map=<mapId>` | GET | 後端 | 回傳目前的 `SceneSnapshot`，給截圖頁面和除錯用 |
 | `/assets/...` | GET | 後端 | 產生出來的 glb。網址由 `SceneSnapshot` 提供，前端不要自己拼 |
 | `/mcp` | POST、GET | 後端 | MCP（Streamable HTTP），前端不使用 |

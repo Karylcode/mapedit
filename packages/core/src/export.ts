@@ -86,18 +86,16 @@ export async function exportMapGlb(input: ExportInput): Promise<Uint8Array> {
       `Export refused: ${checked.violations.length} geometry violations. ${checked.violations[0]!.message} Run check and fix them first.`,
     );
   const doc = new Document();
-  const map = doc
-    .createNode(scene.map.id)
-    .setExtras({
-      mapedit: {
-        version: 1,
-        kind: 'map',
-        id: scene.map.id,
-        units: 'meters',
-        size: scene.map.size,
-        sun: scene.map.sun,
-      },
-    });
+  const map = doc.createNode(scene.map.id).setExtras({
+    mapedit: {
+      version: 1,
+      kind: 'map',
+      id: scene.map.id,
+      units: 'meters',
+      size: scene.map.size,
+      sun: scene.map.sun,
+    },
+  });
   doc.createScene(scene.map.name).addChild(map);
   const terrain = doc.createNode('Terrain').setExtras({ mapedit: { kind: 'terrainGroup' } });
   map.addChild(terrain);

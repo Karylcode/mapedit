@@ -4,7 +4,7 @@ All distances are meters. +Y is up, +X is east, and -Z is north. Positive rotati
 
 The compiler reads project-relative paths with `/` separators. YAML is authoritative. Files may temporarily contain violations while being edited; checking reports them and export refuses them. Unknown fields, non-finite numbers, duplicate ids, unsupported shapes, and malformed YAML produce file errors with filenames and one-based line numbers. Rule violations include a filename and line in `params` and an English suggestion.
 
-Ids start with a letter and contain letters, digits, `_` or `-`. Choose meaningful, stable ids. Module ids are project-wide; structure and marker ids are map-wide; module instance ids are unique inside their source structure. Referencing files by insertion order never affects compilation.
+Ids start with a letter and contain letters, digits, `_` or `-`. Choose meaningful, stable ids. Module ids are project-wide; structure and marker ids are map-wide; module instance ids are unique inside their source structure. Ids and paths use code-point ordering, independent of the host locale. Referencing files by insertion order never affects compilation.
 
 ## Project
 
@@ -48,7 +48,7 @@ sockets:
     rotation: 0
 ```
 
-`name` defaults to id. `isFoundation`, `canFloat`, and `terrainFollow` default to false. `foundationStyle` is `skirt` (default) or `pillars`; it selects how the foundation extends down to terrain. `canFloat` exempts the module from the support requirement. `terrainFollow` adapts a directly placed module's height to terrain beneath its center. `material` is optional; recipes may assign materials themselves.
+`name` defaults to id. `isFoundation`, `canFloat`, and `terrainFollow` default to false. `foundationStyle` is `skirt` (default) or `pillars`; it selects how the foundation extends down to terrain. `canFloat` exempts the module from the support requirement. `terrainFollow` adapts a directly placed module's height to terrain beneath its center when the structure height is automatic. An explicit structure height takes precedence, including for floating islands. `material` is optional; recipes may assign materials themselves.
 
 `sockets` defaults to an empty list. Every socket has an id, type, and local position. `direction` is north/east/south/west/up/down (default south). `rotation` defaults to 0 and is a multiple of 90 degrees; it rotates a horizontal direction or sets the twist of a vertical socket. Up connects to down; horizontal sockets face each other after attachment. Each socket has capacity one.
 
@@ -123,7 +123,7 @@ markers:
     properties: { event: enter_village }
 ```
 
-Marker rotation uses 15-degree increments and defaults to 0. Box size is positive. `properties` is an arbitrary mapping, defaults to `{}`, and is exported unchanged as game data. Only point and box shapes are supported in version 1; routes are deferred.
+Marker rotation uses 15-degree increments and defaults to 0. Box size is positive. `properties` is an arbitrary JSON-compatible mapping, defaults to `{}`, and is exported unchanged as game data. Nested arrays and mappings are allowed; cyclic YAML aliases, non-finite numbers, and YAML-only types such as sets are file errors. Only point and box shapes are supported in version 1; routes are deferred.
 
 ## Terrain files
 

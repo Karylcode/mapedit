@@ -91,7 +91,6 @@ describe('real model and terrain project compilation', () => {
         {
           id: 'props',
           position: [10, 10],
-          height: 0,
           modules: [
             { id: 'low', module: 'block', at: [0, 0, 0] },
             { id: 'high', module: 'block', at: [10, 0, 0] },

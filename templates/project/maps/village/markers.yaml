@@ -1,0 +1,9 @@
+markers:
+  - id: player_spawn
+    type: spawn
+    shape: { kind: point, position: [22, 0, 28], rotation: 0 }
+    properties: { team: player }
+  - id: welcome
+    type: trigger
+    shape: { kind: box, center: [22, 1, 27], size: [4, 2, 2], rotation: 0 }
+    properties: { event: welcome_to_village }

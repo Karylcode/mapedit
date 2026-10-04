@@ -1,0 +1,6 @@
+id: roof
+name: Gabled Tile Roof 4m
+size: [4, 1, 4]
+material: roof_tiles
+sockets:
+  - { id: bottom, type: roof, position: [0, 0, 0], direction: down }
