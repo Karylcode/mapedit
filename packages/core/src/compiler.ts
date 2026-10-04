@@ -600,7 +600,7 @@ export function compileMap(
   const scene: SceneSnapshot = {
     protocolVersion: 1,
     revision: options.revision ?? 0,
-    map: { id: map.id, name: map.name, size: map.size, sun: map.sun },
+    map: { id: map.id, name: map.name, size: map.size, sun: map.sun, kind: 'map' },
     terrain: options.terrain ?? { revision: 0, chunks: [] },
     moduleTypes: Object.values(parsed.modules)
       .sort((a, b) => compareText(a.id, b.id))

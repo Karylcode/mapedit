@@ -803,3 +803,24 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
     `test-packed-cli.mjs` so the installed `mapedit dev` serves the editor at
     `/` and MCP `screenshot` returns a PNG (marked `TODO(F33)` there).
     Deviation: none.
+- **F34 complete:** `docs/protocol.md` adds, as optional fields that this
+  backend always sends:
+  - `HistoryEntry.action` (`HistoryAction`: `move`, `delete`, `agent_change`)
+    and `HistoryEntry.refs`: the moved or deleted object, or the objects an
+    Agent change affected. These are the same refs as that change's
+    `agent_changed` notice.
+  - `MapInfo.kind`: `'map'` for project maps, `'module_preview'` for the
+    one-Module scene that MCP `build_module` renders through `/render`
+    (section 6 now says to use it instead of the `__module_` id prefix).
+
+  `editResult.failure` codes for nothing to undo or redo, rejection, unknown
+  objects and file errors came with F28. `packages/protocol` exports
+  `HISTORY_ACTIONS`/`HistoryAction`. `ProjectHistory.record` takes the new
+  fields, and both `DiskState` and the mock state fill them. Tests:
+  `server/test/structured-fields.test.ts` records a move, a delete and an
+  Agent file change on a real project and in mock mode, and captures the
+  `build_module` preview scene through a stub screenshot service to check
+  `kind: 'module_preview'` (project and mock maps are `'map'`).
+  `protocol/test/catalogs.test.ts` compares `HISTORY_ACTIONS` with the
+  documented union, and the golden compiler snapshot gained `kind: 'map'`.
+  Deviation: none.

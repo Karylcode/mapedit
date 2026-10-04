@@ -22,12 +22,16 @@ export class ProjectHistory<Snapshot> {
     return this.position;
   }
 
-  record(entry: Pick<HistoryEntry, 'author' | 'summary' | 'files'>, snapshot: Snapshot): void {
+  record(
+    entry: Pick<HistoryEntry, 'author' | 'summary' | 'files' | 'action' | 'refs'>,
+    snapshot: Snapshot,
+  ): void {
     this.entries.splice(this.position);
     this.snapshots.splice(this.position + 1);
     this.entries.push({
       ...entry,
       files: [...entry.files],
+      ...(entry.refs ? { refs: [...entry.refs] } : {}),
       id: this.nextId++,
       time: new Date().toISOString(),
     });

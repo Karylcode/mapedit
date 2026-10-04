@@ -21,6 +21,8 @@ export interface MapInfo {
   name: string;
   size: { x: number; z: number };
   sun: { azimuth: number; elevation: number };
+  /** 'module_preview' is the one-Module scene MCP build_module renders through /render. */
+  kind?: 'map' | 'module_preview';
 }
 export interface TerrainView {
   revision: number;
@@ -139,12 +141,18 @@ export const EDIT_FAILURES = [
   'internal_error',
 ] as const;
 export type EditFailure = (typeof EDIT_FAILURES)[number];
+/** What a history entry did, in protocol section 4 order. */
+export const HISTORY_ACTIONS = ['move', 'delete', 'agent_change'] as const;
+export type HistoryAction = (typeof HISTORY_ACTIONS)[number];
 export interface HistoryEntry {
   id: number;
   author: 'human' | 'agent';
   time: string;
   summary: string;
   files: string[];
+  action?: HistoryAction;
+  /** The moved or deleted object, or the objects an Agent change affected. */
+  refs?: ObjectRef[];
 }
 /** Every notice code, in protocol section 4 order. */
 export const NOTICE_CODES = [

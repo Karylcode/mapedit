@@ -39,6 +39,7 @@ export function mockScene(): SceneSnapshot {
       name: 'Mock village',
       size: { x: 100, z: 100 },
       sun: { azimuth: 135, elevation: 45 },
+      kind: 'map',
     },
     terrain: { revision: 0, chunks: [{ cx: 0, cz: 0, url: '/assets/mock/terrain.glb' }] },
     moduleTypes: [
