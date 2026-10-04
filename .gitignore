@@ -17,6 +17,9 @@ playwright-report/
 *.log
 .cache/
 
+# Running mapedit server address, written by `mapedit dev`
+.mapedit/
+
 # Environment
 .env
 .env.*

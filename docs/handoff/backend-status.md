@@ -514,3 +514,14 @@ by Claude. Each entry records the change, the tests and any deviation.
   the previous producers). `server/test/build-project.test.ts` now reads
   `params.target`. Deviation: none; `immovable_object` was added to the reasons for
   editor previews that try to move a Module or an attached Structure.
+- **F23b complete:** the repository `.gitignore` ignores `.mapedit/`. The project
+  template ships `templates/project/gitignore` (stored without the dot because
+  package managers drop `.gitignore` files from tarballs) and `mapedit init`
+  writes it as `.gitignore` containing `.mapedit/`. When the target folder
+  already has a `.gitignore`, init keeps it and appends only the missing rule
+  (matching its line endings) instead of refusing, which is what it does for
+  every other existing file. Tests: `cli/test/init.test.ts` "F23b" (new project
+  and this repository; existing file with and without the rule), and the packed
+  CLI acceptance in `scripts/test-packed-cli.mjs` now asserts the installed CLI
+  creates the `.gitignore`. The first test failed before the change. Deviation:
+  none.

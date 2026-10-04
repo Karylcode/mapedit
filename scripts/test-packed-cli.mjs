@@ -180,6 +180,10 @@ try {
     'utf8',
   );
   assert.equal(await readFile(path.join(project, 'AGENTS.md'), 'utf8'), packagedGuide);
+  assert(
+    (await readFile(path.join(project, '.gitignore'), 'utf8')).split(/\r?\n/).includes('.mapedit/'),
+    'Initialized projects must ignore the runtime .mapedit folder.',
+  );
   const config = JSON.parse(await readFile(path.join(project, '.mcp.stdio.json'), 'utf8'));
   assert.equal(await realpath(config.mcpServers.mapedit.args[0]), cli);
   assert.equal(config.mcpServers.mapedit.command, process.execPath);
