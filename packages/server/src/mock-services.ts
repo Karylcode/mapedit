@@ -6,6 +6,7 @@ import type { AgentServices } from './mcp.js';
 import type { MemoryState } from './state.js';
 import type { ScreenshotService } from './screenshot.js';
 import { boxGlb, mockScene } from './mock.js';
+import { UnknownMapError } from './notice.js';
 
 export function parseMockNotice(value: unknown): NoticeCode {
   const code =
@@ -70,6 +71,10 @@ export async function triggerMockNotice(state: MemoryState, code: NoticeCode): P
       state.replaceFromAgent(scene, [], [file]);
       return;
     }
+    case 'unknown_map':
+      // What openMap answers for a map the Agent has just deleted.
+      state.notice('unknown_map', new UnknownMapError('deleted_map').message);
+      return;
   }
 }
 

@@ -52,3 +52,9 @@ describe.skipIf(!browserAvailable)('screenshot page errors and WebGL', () => {
     expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
   });
 });
+
+it('exports the browser lookup and launch flags for the frontend browser tests', async () => {
+  const server = await import('../src/index.js');
+  expect(server.findBrowser).toBe(findBrowser);
+  expect(server.SCREENSHOT_BROWSER_ARGS).toBe(SCREENSHOT_BROWSER_ARGS);
+});

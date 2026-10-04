@@ -63,14 +63,17 @@ export function markerPosition(shape: MarkerView['shape']): Vec3 {
   return shape.kind === 'point' ? shape.position : shape.center;
 }
 
-export type ViolationKind =
-  | 'overlap'
-  | 'incompatible_socket'
-  | 'unsupported'
-  | 'off_grid'
-  | 'bad_rotation'
-  | 'out_of_bounds'
-  | 'missing_reference';
+/** Every violation kind, in protocol section 3 order. */
+export const VIOLATION_KINDS = [
+  'overlap',
+  'incompatible_socket',
+  'unsupported',
+  'off_grid',
+  'bad_rotation',
+  'out_of_bounds',
+  'missing_reference',
+] as const;
+export type ViolationKind = (typeof VIOLATION_KINDS)[number];
 export interface ViolationView {
   /** Stable for the same violation across revisions, including reordered diagnostics. */
   id: string;
@@ -114,8 +117,9 @@ export type ServerMessage =
       ok: boolean;
       transform?: Mat4;
       violations: ViolationView[];
+      failure?: EditFailure;
     }
-  | { type: 'editResult'; requestId: number; ok: boolean; reason?: string }
+  | { type: 'editResult'; requestId: number; ok: boolean; reason?: string; failure?: EditFailure }
   | { type: 'history'; entries: HistoryEntry[]; cursor: number }
   | {
       type: 'notice';
@@ -124,6 +128,17 @@ export type ServerMessage =
       message: string;
       refs?: ObjectRef[];
     };
+/** Why a previewEdit, applyEdit, undo or redo did not succeed (protocol section 4). */
+export const EDIT_FAILURES = [
+  'violations',
+  'unknown_object',
+  'immovable_object',
+  'file_errors',
+  'nothing_to_undo',
+  'nothing_to_redo',
+  'internal_error',
+] as const;
+export type EditFailure = (typeof EDIT_FAILURES)[number];
 export interface HistoryEntry {
   id: number;
   author: 'human' | 'agent';
@@ -138,6 +153,7 @@ export const NOTICE_CODES = [
   'agent_change_overridden',
   'edit_rejected',
   'file_error',
+  'unknown_map',
 ] as const;
 export type NoticeCode = (typeof NOTICE_CODES)[number];
 export interface RenderSpec {

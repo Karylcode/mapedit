@@ -12,8 +12,8 @@ import type {
   NoticeCode,
 } from '@mapedit/protocol';
 import { mockScene, mockAsset } from './mock.js';
-import { ProjectHistory } from './history.js';
-import { noticeMessage } from './notice.js';
+import { ProjectHistory, type EditRefusal } from './history.js';
+import { UnknownMapError, noticeMessage } from './notice.js';
 import { createMockServices, triggerMockNotice } from './mock-services.js';
 import type { AgentServices } from './mcp.js';
 import type { ScreenshotService } from './screenshot.js';
@@ -32,8 +32,9 @@ export interface StateStore {
   asset(path: string): Uint8Array | undefined;
   createAgentServices(screenshots: ScreenshotService): AgentServices;
   preview(edit: Edit, requestId: number, mapId?: string): Promise<Preview>;
-  apply(edit: Edit, baseRevision: number, mapId?: string): Promise<string | undefined>;
-  travel(direction: -1 | 1): Promise<string | undefined>;
+  /** Undefined when the edit was written; otherwise why it was refused. */
+  apply(edit: Edit, baseRevision: number, mapId?: string): Promise<EditRefusal | undefined>;
+  travel(direction: -1 | 1): Promise<EditRefusal | undefined>;
   on(event: 'message', listener: (message: ServerMessage) => void): this;
   close(): Promise<void>;
 }
@@ -64,7 +65,7 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
     await this.getScene(id);
   }
   async getScene(id = this.scene.map.id): Promise<SceneSnapshot> {
-    if (id !== this.scene.map.id) throw new Error(`Map '${id}' does not exist.`);
+    if (id !== this.scene.map.id) throw new UnknownMapError(id);
     return this.scene;
   }
   asset(path: string): Uint8Array | undefined {
@@ -104,6 +105,7 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
         type: 'previewResult',
         requestId,
         ok: false,
+        failure: exists ? 'immovable_object' : 'unknown_object',
         violations: [
           createViolation({
             kind: 'missing_reference',
@@ -150,16 +152,18 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
       ok: violations.length === 0,
       transform: transformMatrix(position, rotation),
       violations,
+      ...(violations.length ? { failure: 'violations' as const } : {}),
     };
   }
   protected record(author: 'human' | 'agent', summary: string, files: string[]): void {
     this.history.record({ author, summary, files }, structuredClone(this.scene));
   }
-  async apply(edit: Edit, baseRevision: number): Promise<string | undefined> {
+  async apply(edit: Edit, baseRevision: number): Promise<EditRefusal | undefined> {
     const preview = await this.preview(edit, 0);
     if (!preview.ok) {
-      this.notice('edit_rejected', preview.violations[0]!.message, [edit.ref]);
-      return preview.violations[0]!.message;
+      const reason = preview.violations[0]!.message;
+      this.notice('edit_rejected', reason, [edit.ref]);
+      return { reason, failure: preview.failure ?? 'violations' };
     }
     const structure = this.scene.structures.find(
       (s) => s.ref === edit.ref || s.instances.some((i) => i.ref === edit.ref),
@@ -211,7 +215,7 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
     this.lastHuman.add(edit.ref);
     return undefined;
   }
-  async travel(direction: -1 | 1): Promise<string | undefined> {
+  async travel(direction: -1 | 1): Promise<EditRefusal | undefined> {
     return this.history.travel(direction, (snapshot) => {
       const revision = this.scene.revision + 1;
       this.scene = structuredClone(snapshot);

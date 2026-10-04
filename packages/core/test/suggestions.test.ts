@@ -482,3 +482,71 @@ describe('F18 unsupported suggestions inside the same Structure', () => {
     expect((await checkGeometry(fixed, models)).violations).toEqual([]);
   });
 });
+
+describe('F27 compatible Sockets in the same Structure always beat canFloat', () => {
+  const modules: TestModule[] = [
+    {
+      id: 'wall',
+      size: [2, 2, 1],
+      sockets: [{ id: 'top', type: 'wall', position: [1, 2, 0.5], direction: 'up' }],
+    },
+    {
+      id: 'roof',
+      size: [2, 0.5, 2],
+      sockets: [{ id: 'bottom', type: 'roof', position: [1, 0, 0.5], direction: 'down' }],
+    },
+  ];
+  const models = () => geometryModels({ wall: box([2, 2, 1]), roof: box([2, 0.5, 2]) });
+  const suggestionFor = (violations: ViolationView[], ref: string): string => {
+    const violation = violations.find(
+      (item) => item.kind === 'unsupported' && item.refs.includes(ref),
+    );
+    expect(violation, `Expected ${ref} to be unsupported`).toBeDefined();
+    return violation!.suggestion ?? '';
+  };
+
+  it('(a) attaches to a Socket whose own Module still needs Support', async () => {
+    const compiled = fixture(
+      [
+        {
+          id: 'house',
+          position: [10, 10],
+          height: 2,
+          modules: [
+            { id: 'wall_n', module: 'wall', at: [0, 0, 0] },
+            { id: 'roof', module: 'roof', at: [0, 3, 0] },
+          ],
+        },
+      ],
+      modules,
+    );
+    const { violations } = await checkGeometry(compiled, await models());
+    expect(suggestionFor(violations, 'module:house/wall_n')).toMatch(
+      /Lower structure:house by 2 m/,
+    );
+    const roof = suggestionFor(violations, 'module:house/roof');
+    expect(roof).toContain('Attach roof to wall_n.top (1 m below)');
+    expect(roof).toContain('wall_n has no Support yet');
+    expect(roof).not.toContain('canFloat');
+  });
+
+  it('(b) attaches to a compatible Socket of the same Structure beyond 5 m', async () => {
+    const compiled = fixture(
+      [
+        {
+          id: 'house',
+          position: [10, 10],
+          modules: [
+            { id: 'wall_n', module: 'wall', at: [0, 0, 0] },
+            { id: 'roof', module: 'roof', at: [0, 8, 0] },
+          ],
+        },
+      ],
+      modules,
+    );
+    const { violations } = await checkGeometry(compiled, await models());
+    const roof = suggestionFor(violations, 'module:house/roof');
+    expect(roof).toContain('Attach roof to wall_n.top (6 m below)');
+    expect(roof).not.toContain('canFloat');
+  });
+});

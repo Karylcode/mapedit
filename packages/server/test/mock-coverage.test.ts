@@ -141,6 +141,7 @@ describe('F8 public mock coverage', () => {
     'agent_change_overridden',
     'edit_rejected',
     'file_error',
+    'unknown_map',
   ];
   for (const notice of notices)
     it(`simulates ${notice} through POST and sends its WebSocket notice`, async () => {
@@ -163,6 +164,12 @@ describe('F8 public mock coverage', () => {
         expect(await scene(server)).toEqual(next);
       } else if (notice === 'edit_rejected') {
         expect((await scene(server)).revision).toBe(initial.revision);
+      } else if (notice === 'unknown_map') {
+        expect(result).toMatchObject({
+          level: 'error',
+          message: expect.stringContaining('deleted_map'),
+        });
+        expect(await scene(server)).toEqual(initial);
       } else {
         expect(result.refs?.length).toBeGreaterThan(0);
         await wait('scene', (message) => message.scene.revision > initial.revision);

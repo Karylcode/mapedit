@@ -8,7 +8,7 @@ import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { ClientMessage, Edit, ServerMessage } from '@mapedit/protocol';
+import type { ClientMessage, Edit, SceneSnapshot, ServerMessage } from '@mapedit/protocol';
 import { MemoryState, canTriggerMockNotices, type StateStore } from './state.js';
 import { DiskState } from './disk-state.js';
 import { buildProject, buildFromParsed } from './build-project.js';
@@ -17,6 +17,7 @@ import { createMcpHttpHandler, type AgentServices } from './mcp.js';
 import { parseMockNotice } from './mock-services.js';
 import { projectIdentity } from './project-identity.js';
 import { containsPath } from './paths.js';
+import { UnknownMapError, noticeMessage } from './notice.js';
 export { projectIdentity } from './project-identity.js';
 export { MemoryState } from './state.js';
 export { mockScene } from './mock.js';
@@ -26,6 +27,7 @@ export { buildProject, buildProjects, buildFromParsed } from './build-project.js
 export { exportProject } from './export-project.js';
 export { connectStdio } from './mcp.js';
 export { DiskState } from './disk-state.js';
+export { findBrowser, SCREENSHOT_BROWSER_ARGS } from './screenshot.js';
 
 export interface ServerOptions {
   port?: number;
@@ -134,6 +136,12 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       (value) => (value.isDirectory() ? defaultWebRoot : undefined),
       () => undefined,
     ));
+  /** A map's scene, or the error for an id that is not a project map (protocol section 4, flow 2). */
+  const sceneOrUnknown = (mapId?: string): Promise<SceneSnapshot | UnknownMapError> =>
+    state.getScene(mapId).catch((error: unknown) => {
+      if (error instanceof UnknownMapError) return error;
+      throw error;
+    });
   let port = 0;
   const validRequest = (request: IncomingMessage): boolean => {
     const host = request.headers.host;
@@ -177,8 +185,10 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       if (url.pathname.startsWith('/api/')) await state.flush();
       if (url.pathname === '/api/project') return json(response, 200, state.project);
       if (url.pathname === '/api/scene') {
-        const id = url.searchParams.get('map');
-        return json(response, 200, await state.getScene(id ?? undefined));
+        const scene = await sceneOrUnknown(url.searchParams.get('map') ?? undefined);
+        return scene instanceof UnknownMapError
+          ? json(response, 404, { error: scene.message })
+          : json(response, 200, scene);
       }
       if (url.pathname.startsWith('/assets/')) {
         const data = state.asset(url.pathname);
@@ -249,6 +259,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
     let welcomed = false;
     client.on('close', () => opened.delete(client));
     client.on('message', (data) => {
+      // A request still waiting for its one answer; a failure answers it (protocol section 4, flow 10).
+      let pending: Extract<ClientMessage, { requestId: number }> | undefined;
       queue = queue
         .then(async () => {
           let value: unknown;
@@ -263,6 +275,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
             return;
           }
           const message = value;
+          if ('requestId' in message) pending = message;
           if (message.type === 'hello') {
             welcomed = true;
             send(client, { type: 'welcome', protocolVersion: 1, project: state.project });
@@ -276,7 +289,11 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
           // background; commits and other requests still establish a disk-read barrier.
           if (message.type !== 'previewEdit') await state.flush();
           if (message.type === 'openMap') {
-            const scene = await state.getScene(message.mapId);
+            const scene = await sceneOrUnknown(message.mapId);
+            if (scene instanceof UnknownMapError) {
+              send(client, noticeMessage('unknown_map', scene.message));
+              return;
+            }
             opened.set(client, message.mapId);
             send(client, { type: 'scene', scene });
             send(client, { type: 'history', entries: state.entries, cursor: state.cursor });
@@ -287,33 +304,55 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
             return;
           }
           if (message.type === 'previewEdit') {
-            send(client, await state.preview(message.edit, message.requestId, opened.get(client)));
+            const preview = await state.preview(
+              message.edit,
+              message.requestId,
+              opened.get(client),
+            );
+            pending = undefined;
+            send(client, preview);
             return;
           }
-          const reason =
+          const refusal =
             message.type === 'applyEdit'
               ? await state.apply(message.edit, message.baseRevision, opened.get(client))
               : await state.travel(message.type === 'undo' ? -1 : 1);
+          pending = undefined;
           send(client, {
             type: 'editResult',
             requestId: message.requestId,
-            ok: reason === undefined,
-            ...(reason ? { reason } : {}),
+            ok: refusal === undefined,
+            ...(refusal ? { reason: refusal.reason, failure: refusal.failure } : {}),
           });
-          if (!reason) {
-            for (const mapId of new Set(opened.values()))
-              broadcast({ type: 'scene', scene: await state.getScene(mapId) });
+          if (!refusal) {
+            // A module preview a render page still has open may already be gone.
+            for (const mapId of new Set(opened.values())) {
+              const scene = await sceneOrUnknown(mapId);
+              if (!(scene instanceof UnknownMapError)) broadcast({ type: 'scene', scene });
+            }
             broadcast({ type: 'history', entries: state.entries, cursor: state.cursor });
           }
         })
-        .catch((error) =>
-          send(client, {
-            type: 'notice',
-            level: 'error',
-            code: 'file_error',
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        );
+        .catch((error: unknown) => {
+          const reason = error instanceof Error ? error.message : String(error);
+          if (pending?.type === 'previewEdit')
+            send(client, {
+              type: 'previewResult',
+              requestId: pending.requestId,
+              ok: false,
+              violations: [],
+              failure: 'internal_error',
+            });
+          else if (pending)
+            send(client, {
+              type: 'editResult',
+              requestId: pending.requestId,
+              ok: false,
+              reason,
+              failure: 'internal_error',
+            });
+          else send(client, noticeMessage('file_error', reason));
+        });
     });
   });
   await new Promise<void>((resolveListening, reject) => {

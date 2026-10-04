@@ -1,4 +1,10 @@
-import type { HistoryEntry } from '@mapedit/protocol';
+import type { EditFailure, HistoryEntry } from '@mapedit/protocol';
+
+/** A refused edit, undo or redo: an English reason and its protocol failure code. */
+export interface EditRefusal {
+  reason: string;
+  failure: EditFailure;
+}
 
 /** Shared linear history; each state store supplies its own immutable checkpoint. */
 export class ProjectHistory<Snapshot> {
@@ -36,10 +42,12 @@ export class ProjectHistory<Snapshot> {
   async travel(
     direction: -1 | 1,
     restore: (snapshot: Snapshot) => void | Promise<void>,
-  ): Promise<string | undefined> {
+  ): Promise<EditRefusal | undefined> {
     const cursor = this.position + direction;
     if (cursor < 0 || cursor > this.entries.length)
-      return direction < 0 ? 'Nothing to undo.' : 'Nothing to redo.';
+      return direction < 0
+        ? { reason: 'Nothing to undo.', failure: 'nothing_to_undo' }
+        : { reason: 'Nothing to redo.', failure: 'nothing_to_redo' };
     await restore(this.snapshots[cursor]!);
     this.position = cursor;
     return undefined;
