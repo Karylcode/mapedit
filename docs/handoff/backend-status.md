@@ -424,3 +424,26 @@ by Claude. Each entry records the change, the tests and any deviation.
   Tests: `core/test/terrain.test.ts` "terrain chunk materials" and an added check
   in `core/test/export.test.ts`; both failed first with metallicFactor 1. The
   frontend's temporary override of `surface:*` metalness is no longer needed.
+- **F20 complete:** three changes in the geometry check. (1) Only the first 50
+  geometry violations, in report order, get a searched suggestion
+  (`SEARCHED_ADVICE_LIMIT` in `core/src/geometry.ts`); the others keep a brief
+  suggestion ending with "Specific suggestions are searched for the first 50
+  geometry violations only; fix those, then run check again." (2) An overlapping
+  pair now costs one exact Boolean instead of four: the same intersection gives the
+  location, and overlapping Modules are linked for Support directly instead of
+  running two downward probes; probes are also skipped when the bounds only share
+  a face. (3) A placed solid whose volume equals its axis-aligned bounds is exactly
+  that box (`PlacedSolid.box`), so two such solids use box arithmetic, which gives
+  the same answer as the Boolean. Shapes with openings and Structures rotated off
+  90° still use exact Booleans. The shared solid helpers live in
+  `core/src/solid.ts`. Measured on this machine for 2,000 box Modules spaced
+  1.5 m (7,732 overlaps), compile plus check: 8.2 s before, 0.35 s after; 2,000
+  floating Modules 0.2 s. Without the box shortcut but with (1) and (2): box grid
+  0.9 s, door-model grid 1.35 s, 15°-rotated grid 1.07 s, and 30°-rotated door
+  models spaced 1.0 m (15,286 overlaps) 4.3 s, because every non-box overlap still
+  needs one exact Boolean (about 0.15–0.3 ms each). Tests:
+  `core/test/geometry.test.ts` "F20" (2,000 densely overlapping Modules with brief
+  advice after the first 50, and 2,000 floating, partly overlapping Modules, both
+  under 2 s; the first took 8 s before the fix) and `core/test/solid.test.ts`
+  (box detection, box arithmetic equal to the Boolean result for overlap, contact
+  and separation, and box tracking through moves). Deviation: none.

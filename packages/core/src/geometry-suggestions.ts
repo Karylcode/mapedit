@@ -1,26 +1,21 @@
-import type { Manifold, Mat4 as ManifoldMat4 } from 'manifold-3d';
 import { parseObjectRef, structureRef, type Mat4, type Vec3 } from '@mapedit/protocol';
-import type { Bounds, Compilation, CompiledInstance, CompiledSocket } from './domain.js';
+import type { Bounds, Compilation, CompiledSocket } from './domain.js';
 import { clean, compareText, inverseRigid, multiplyMatrices, transformMatrix } from './math.js';
 import { socketAttachment, socketTypesCompatible } from './socket-rules.js';
+import { moveSolid, type PlacedSolid } from './solid.js';
 
-export interface AdviceSolid {
-  instance: CompiledInstance;
-  solid: Manifold;
-  bounds: Bounds;
-}
 export interface TerrainContact {
   overlap: boolean;
   supported: boolean;
 }
 interface AdviceContext {
   compilation: Compilation;
-  entries: readonly AdviceSolid[];
+  entries: readonly PlacedSolid[];
   supportSeeds: ReadonlySet<string>;
   supportLinks: ReadonlyMap<string, ReadonlySet<string>>;
-  nearby(bounds: Bounds): AdviceSolid[];
-  overlaps(a: AdviceSolid, b: AdviceSolid): boolean;
-  terrainContact(entry: AdviceSolid): TerrainContact;
+  nearby(bounds: Bounds): PlacedSolid[];
+  overlaps(a: PlacedSolid, b: PlacedSolid): boolean;
+  terrainContact(entry: PlacedSolid): TerrainContact;
   tolerance: number;
 }
 /** The result of moving some Modules rigidly while every other Module stays in place. */
@@ -60,10 +55,10 @@ function socketRelation(own: CompiledSocket, target: CompiledSocket): string {
 
 /** Bounded advice searches reuse the current solids and never recursively run validation. */
 export function createGeometryAdvice(context: AdviceContext): {
-  overlap(a: AdviceSolid, b: AdviceSolid | undefined, location: Vec3): string;
-  unsupported(entry: AdviceSolid): string;
+  overlap(a: PlacedSolid, b: PlacedSolid | undefined, location: Vec3): string;
+  unsupported(entry: PlacedSolid): string;
 } {
-  const solidsByStructure = new Map<string, AdviceSolid[]>();
+  const solidsByStructure = new Map<string, PlacedSolid[]>();
   const byRef = new Map(context.entries.map((entry) => [entry.instance.ref, entry]));
   const instances = new Map(context.compilation.instances.map((item) => [item.ref, item]));
   const attachedChildren = new Map<string, string[]>();
@@ -103,12 +98,8 @@ export function createGeometryAdvice(context: AdviceContext): {
     }
     return result;
   };
-  const moved = (entry: AdviceSolid, matrix: Mat4): AdviceSolid => {
-    const solid = entry.solid.transform(matrix as ManifoldMat4);
-    return { instance: entry.instance, solid, bounds: solid.boundingBox() };
-  };
   /** Test a rigid move of `group`, identified by `key`, against all Modules that stay. */
-  const place = (key: string, group: readonly AdviceSolid[], matrix: Mat4): Placement => {
+  const place = (key: string, group: readonly PlacedSolid[], matrix: Mat4): Placement => {
     const cacheKey = `${key}|${matrix.map(clean).join(',')}`;
     const cached = placements.get(cacheKey);
     if (cached) return cached;
@@ -118,7 +109,7 @@ export function createGeometryAdvice(context: AdviceContext): {
     const seeds = new Set<string>();
     const restsOn = new Map<string, string>();
     for (const original of group) {
-      const entry = moved(original, matrix);
+      const entry = moveSolid(original, matrix);
       try {
         const { bounds, instance } = entry;
         if (
@@ -146,7 +137,7 @@ export function createGeometryAdvice(context: AdviceContext): {
           !seeds.has(instance.ref) &&
           neighbors.some((other) => outside.has(other.instance.ref))
         ) {
-          const probe = moved(entry, transformMatrix([0, -context.tolerance * 2, 0]));
+          const probe = moveSolid(entry, transformMatrix([0, -context.tolerance * 2, 0]));
           try {
             const support = neighbors.find(
               (other) => outside.has(other.instance.ref) && context.overlaps(probe, other),
@@ -171,13 +162,13 @@ export function createGeometryAdvice(context: AdviceContext): {
     return result;
   };
   /** A Module moves together with every Module attached to it through its own Sockets. */
-  const attachmentChain = (ref: string): AdviceSolid[] => {
+  const attachmentChain = (ref: string): PlacedSolid[] => {
     const refs = [ref];
     for (let index = 0; index < refs.length; index++)
       refs.push(...(attachedChildren.get(refs[index]!) ?? []));
     return refs.flatMap((item) => byRef.get(item) ?? []);
   };
-  const overlap = (a: AdviceSolid, b: AdviceSolid | undefined, location: Vec3): string => {
+  const overlap = (a: PlacedSolid, b: PlacedSolid | undefined, location: Vec3): string => {
     const first = structureRef(a.instance.structureId);
     const second = b ? structureRef(b.instance.structureId) : 'terrain';
     if (b && a.instance.structureId === b.instance.structureId) {
@@ -204,7 +195,7 @@ export function createGeometryAdvice(context: AdviceContext): {
     return `${first} (${a.instance.ref}) overlaps ${second}${b ? ` (${b.instance.ref})` : ''} at ${locationText(location)}. No cardinal move in 0.5 m steps within 5 m clears the current geometry; change its shape or height and run check again.`;
   };
   /** Compatible free Sockets of supported Modules, nearest first, including the own Structure. */
-  const socketOptions = (entry: AdviceSolid): SocketOption[] => {
+  const socketOptions = (entry: PlacedSolid): SocketOption[] => {
     const { instance } = entry;
     const owner = parseObjectRef(instance.ref);
     if (owner?.kind !== 'module') return [];
@@ -283,7 +274,7 @@ export function createGeometryAdvice(context: AdviceContext): {
     );
   };
   /** Lower only this Module and the Modules attached to it onto terrain or a supported Module. */
-  const lowerModule = (entry: AdviceSolid): string | undefined => {
+  const lowerModule = (entry: PlacedSolid): string | undefined => {
     const { instance } = entry;
     const owner = parseObjectRef(instance.ref);
     // Attached and terrain-following Modules take their height from elsewhere.
@@ -299,7 +290,7 @@ export function createGeometryAdvice(context: AdviceContext): {
     }
     return undefined;
   };
-  const unsupported = (entry: AdviceSolid): string => {
+  const unsupported = (entry: PlacedSolid): string => {
     const { instance } = entry;
     // Moving the whole Structure keeps its layout, so it comes first.
     const solids = solidsByStructure.get(instance.structureId)!;
