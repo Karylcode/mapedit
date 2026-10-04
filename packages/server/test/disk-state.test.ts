@@ -7,7 +7,8 @@ import { join, dirname } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { WebSocket } from 'ws';
 import { compileMap, type ParsedProject } from '@mapedit/core';
-import { DiskState, type ProjectBuild } from '../src/disk-state.js';
+import { DiskState } from '../src/disk-state.js';
+import type { BuiltProject } from '../src/build-project.js';
 import { readProject } from '../src/project-files.js';
 import { createServer, type MapeditServer } from '../src/index.js';
 import type { ServerMessage } from '@mapedit/protocol';
@@ -38,7 +39,7 @@ async function fixture() {
     await mkdir(dirname(join(root, file)), { recursive: true });
     await writeFile(join(root, file), data);
   }
-  const build = (parsed: ParsedProject, id: string | undefined, revision: number): ProjectBuild => {
+  const build = (parsed: ParsedProject, id: string | undefined, revision: number): BuiltProject => {
     const compilation = compileMap(parsed, id, { revision, terrainHeight: () => 1 });
     return {
       root,

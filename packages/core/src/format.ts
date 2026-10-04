@@ -1,6 +1,7 @@
 import { isNode, isScalar, LineCounter, parseDocument, type Document } from 'yaml';
 import {
   isObjectId,
+  markerPosition,
   parseObjectRef,
   type Edit,
   type FileErrorView,
@@ -532,8 +533,7 @@ export function normalizeEdit(
       : undefined;
   const x = snap(edit.position[0]),
     z = snap(edit.position[2]);
-  const oldPosition =
-    marker && (marker.shape.kind === 'point' ? marker.shape.position : marker.shape.center);
+  const oldPosition = marker && markerPosition(marker.shape);
   const y = oldPosition
     ? snap(oldPosition[1] + terrainHeight(x, z) - terrainHeight(oldPosition[0], oldPosition[2]))
     : structure && structure.height !== 'auto'

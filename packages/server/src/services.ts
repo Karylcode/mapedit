@@ -11,8 +11,8 @@ import {
 } from '@mapedit/core';
 import { moduleRef, structureRef, type SceneSnapshot } from '@mapedit/protocol';
 import type { AgentServices } from './mcp.js';
-import { DiskState } from './disk-state.js';
-import { ScreenshotService } from './screenshot.js';
+import type { DiskState } from './disk-state.js';
+import type { ScreenshotService } from './screenshot.js';
 import { exportBuiltProject } from './export-project.js';
 
 export function createAgentServices(

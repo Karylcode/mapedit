@@ -57,6 +57,11 @@ export interface MarkerView {
     | { kind: 'box'; center: Vec3; size: Vec3; rotation: number };
   properties: Record<string, unknown>;
 }
+
+export function markerPosition(shape: MarkerView['shape']): Vec3 {
+  return shape.kind === 'point' ? shape.position : shape.center;
+}
+
 export type ViolationKind =
   | 'overlap'
   | 'incompatible_socket'

@@ -1,12 +1,5 @@
-import type {
-  Mat4,
-  SceneSnapshot,
-  TerrainView,
-  Vec3,
-  ViolationKind,
-  ViolationView,
-} from '@mapedit/protocol';
-import { markerRef, moduleRef, structureRef } from '@mapedit/protocol';
+import type { Mat4, SceneSnapshot, TerrainView, Vec3, ViolationView } from '@mapedit/protocol';
+import { markerPosition, markerRef, moduleRef, structureRef } from '@mapedit/protocol';
 import type {
   Compilation,
   Bounds,
@@ -35,7 +28,7 @@ import {
   transformPoint,
   yawOf,
 } from './math.js';
-import { violationId } from './violation.js';
+import { createViolation } from './violation.js';
 import { compatibleSocketTypes, socketTypesCompatible } from './socket-rules.js';
 
 function referenceSuggestion(value: string, candidates: string[], fallback: string): string {
@@ -130,27 +123,8 @@ export function compileMap(
   const structures = [...map.structures].sort((a, b) => compareText(a.id, b.id));
   const byId = new Map(structures.map((s) => [s.id, s]));
   const terrainHeight = options.terrainHeight ?? (() => 0);
-  const emit = (
-    kind: ViolationKind,
-    message: string,
-    refs: string[],
-    source: SourceRef,
-    suggestion: string,
-    location?: Vec3,
-    params: Record<string, unknown> = {},
-    rule = '',
-  ): void => {
-    violations.push({
-      id: violationId({ kind, refs, rule }),
-      kind,
-      message,
-      refs,
-      params: { file: source.file, line: source.line, ...params },
-      suggestion,
-      ...(location ? { location } : {}),
-    });
-  };
-  const grid = (
+
+  const checkGridAlignment = (
     values: number[],
     ref: string | undefined,
     source: SourceRef,
@@ -160,19 +134,20 @@ export function compileMap(
   ): void => {
     if (values.some((n) => !onGrid(n))) {
       const nearest = values.map((value) => (positive ? Math.max(0.5, snap(value)) : snap(value)));
-      emit(
-        'off_grid',
-        `${label} must use multiples of 0.5 meters.`,
-        ref ? [ref] : [],
-        source,
-        `Set ${label} to ${nearest.length === 1 ? nearest[0] : `[${nearest.join(', ')}]`} m (nearest legal 0.5 m values).`,
-        undefined,
-        { values, ...diagnostic.params },
-        diagnostic.rule ?? label,
+      violations.push(
+        createViolation({
+          kind: 'off_grid',
+          message: `${label} must use multiples of 0.5 meters.`,
+          refs: ref ? [ref] : [],
+          source,
+          suggestion: `Set ${label} to ${nearest.length === 1 ? nearest[0] : `[${nearest.join(', ')}]`} m (nearest legal 0.5 m values).`,
+          params: { values, ...diagnostic.params },
+          rule: diagnostic.rule ?? label,
+        }),
       );
     }
   };
-  const rotation = (
+  const checkRotation = (
     value: number,
     step: number,
     ref: string | undefined,
@@ -181,15 +156,16 @@ export function compileMap(
     params: Record<string, unknown> = {},
   ): void => {
     if (!onGrid(value, step))
-      emit(
-        'bad_rotation',
-        `Rotation ${value} degrees must be a multiple of ${step}.`,
-        ref ? [ref] : [],
-        source,
-        `Use ${snap(value, step)} degrees.`,
-        undefined,
-        { rotation: value, step, ...params },
-        rule,
+      violations.push(
+        createViolation({
+          kind: 'bad_rotation',
+          message: `Rotation ${value} degrees must be a multiple of ${step}.`,
+          refs: ref ? [ref] : [],
+          source,
+          suggestion: `Use ${snap(value, step)} degrees.`,
+          params: { rotation: value, step, ...params },
+          rule,
+        }),
       );
   };
   for (const [type, definition] of Object.entries(parsed.project.socketTypes).sort(([a], [b]) =>
@@ -197,26 +173,27 @@ export function compileMap(
   )) {
     for (const compatible of definition.compatibleWith)
       if (!parsed.project.socketTypes[compatible])
-        emit(
-          'missing_reference',
-          `Socket type "${type}" references unknown type "${compatible}".`,
-          [],
-          parsed.project.source,
-          referenceSuggestion(
-            compatible,
-            Object.keys(parsed.project.socketTypes),
-            `Correct compatibleWith or define socketTypes.${compatible}.`,
-          ),
-          undefined,
-          { reference: compatible },
-          `socket-type:${type}:compatible-with:${compatible}`,
+        violations.push(
+          createViolation({
+            kind: 'missing_reference',
+            message: `Socket type "${type}" references unknown type "${compatible}".`,
+            refs: [],
+            source: parsed.project.source,
+            suggestion: referenceSuggestion(
+              compatible,
+              Object.keys(parsed.project.socketTypes),
+              `Correct compatibleWith or define socketTypes.${compatible}.`,
+            ),
+            params: { reference: compatible },
+            rule: `socket-type:${type}:compatible-with:${compatible}`,
+          }),
         );
   }
   for (const definition of Object.values(parsed.modules).sort((a, b) => compareText(a.id, b.id))) {
     const refs = structures.flatMap((s) =>
       s.modules.filter((m) => m.module === definition.id).map((m) => moduleRef(s.id, m.id)),
     );
-    grid(
+    checkGridAlignment(
       definition.size,
       refs[0],
       definition.source,
@@ -228,28 +205,38 @@ export function compileMap(
       },
     );
     if (definition.material && !parsed.project.materials.includes(definition.material))
-      emit(
-        'missing_reference',
-        `Unknown material "${definition.material}".`,
-        refs,
-        definition.source,
-        referenceSuggestion(
-          definition.material,
-          parsed.project.materials,
-          'Choose an existing material id.',
-        ),
-        undefined,
-        { reference: definition.material, moduleType: definition.id },
-        refs.length ? `module:${definition.id}:material` : `definition:${definition.id}:material`,
+      violations.push(
+        createViolation({
+          kind: 'missing_reference',
+          message: `Unknown material "${definition.material}".`,
+          refs,
+          source: definition.source,
+          suggestion: referenceSuggestion(
+            definition.material,
+            parsed.project.materials,
+            'Choose an existing material id.',
+          ),
+          params: { reference: definition.material, moduleType: definition.id },
+          rule: refs.length
+            ? `module:${definition.id}:material`
+            : `definition:${definition.id}:material`,
+        }),
       );
     for (const socket of definition.sockets) {
-      grid(socket.position, refs[0], socket.source, `Socket "${socket.id}" position`, false, {
-        params: { moduleType: definition.id },
-        ...(!refs.length
-          ? { rule: `definition:${definition.id}:socket:${socket.id}:position` }
-          : {}),
-      });
-      rotation(
+      checkGridAlignment(
+        socket.position,
+        refs[0],
+        socket.source,
+        `Socket "${socket.id}" position`,
+        false,
+        {
+          params: { moduleType: definition.id },
+          ...(!refs.length
+            ? { rule: `definition:${definition.id}:socket:${socket.id}:position` }
+            : {}),
+        },
+      );
+      checkRotation(
         socket.rotation,
         90,
         refs[0],
@@ -260,21 +247,22 @@ export function compileMap(
         { moduleType: definition.id },
       );
       if (!parsed.project.socketTypes[socket.type])
-        emit(
-          'missing_reference',
-          `Unknown socket type "${socket.type}".`,
-          refs,
-          socket.source,
-          referenceSuggestion(
-            socket.type,
-            Object.keys(parsed.project.socketTypes),
-            `Correct the type or define socketTypes.${socket.type} in project.yaml.`,
-          ),
-          undefined,
-          { moduleType: definition.id },
-          refs.length
-            ? `socket:${definition.id}/${socket.id}:type`
-            : `definition:${definition.id}:socket:${socket.id}:type`,
+        violations.push(
+          createViolation({
+            kind: 'missing_reference',
+            message: `Unknown socket type "${socket.type}".`,
+            refs,
+            source: socket.source,
+            suggestion: referenceSuggestion(
+              socket.type,
+              Object.keys(parsed.project.socketTypes),
+              `Correct the type or define socketTypes.${socket.type} in project.yaml.`,
+            ),
+            params: { moduleType: definition.id },
+            rule: refs.length
+              ? `socket:${definition.id}/${socket.id}:type`
+              : `definition:${definition.id}:socket:${socket.id}:type`,
+          }),
         );
     }
   }
@@ -289,26 +277,28 @@ export function compileMap(
     const a = `${own.instanceRef}.${own.socket.id}`,
       b = `${target.instanceRef}.${target.socket.id}`;
     if (!socketTypesCompatible(parsed.project.socketTypes, own.socket.type, target.socket.type))
-      emit(
-        'incompatible_socket',
-        `Socket types "${own.socket.type}" and "${target.socket.type}" cannot connect.`,
-        [own.instanceRef, target.instanceRef],
-        source,
-        `${socketAdvice(own, target)} Use one of these types or update the compatibility rules in project.yaml.`,
-        undefined,
-        { socketA: a, socketB: b },
-        `socket-types:${JSON.stringify([a, b].sort())}`,
+      violations.push(
+        createViolation({
+          kind: 'incompatible_socket',
+          message: `Socket types "${own.socket.type}" and "${target.socket.type}" cannot connect.`,
+          refs: [own.instanceRef, target.instanceRef],
+          source,
+          suggestion: `${socketAdvice(own, target)} Use one of these types or update the compatibility rules in project.yaml.`,
+          params: { socketA: a, socketB: b },
+          rule: `socket-types:${JSON.stringify([a, b].sort())}`,
+        }),
       );
     if (usedSockets.has(a) || usedSockets.has(b))
-      emit(
-        'incompatible_socket',
-        'A socket is already occupied by another connection.',
-        [own.instanceRef, target.instanceRef],
-        source,
-        `Free ${[a, b].filter((ref) => usedSockets.has(ref)).join(' and ')} by removing its existing attachment, or choose another free socket; each permits one connection. ${socketAdvice(own, target)}`,
-        undefined,
-        { socketA: a, socketB: b },
-        `socket-occupied:${JSON.stringify([a, b].sort())}`,
+      violations.push(
+        createViolation({
+          kind: 'incompatible_socket',
+          message: 'A socket is already occupied by another connection.',
+          refs: [own.instanceRef, target.instanceRef],
+          source,
+          suggestion: `Free ${[a, b].filter((ref) => usedSockets.has(ref)).join(' and ')} by removing its existing attachment, or choose another free socket; each permits one connection. ${socketAdvice(own, target)}`,
+          params: { socketA: a, socketB: b },
+          rule: `socket-occupied:${JSON.stringify([a, b].sort())}`,
+        }),
       );
     usedSockets.add(a);
     usedSockets.add(b);
@@ -329,15 +319,15 @@ export function compileMap(
         Math.abs(ownDirection[1] + targetDirection[1]) > EPSILON ||
         Math.abs(ownDirection[1]) < EPSILON
       )
-        emit(
-          'incompatible_socket',
-          'Socket directions cannot face each other with a Y-axis rotation.',
-          [own.instanceRef, target.instanceRef],
-          source,
-          `Choose an ${targetDirection[1] > EPSILON ? 'own Socket facing down' : targetDirection[1] < -EPSILON ? 'own Socket facing up' : 'own horizontal Socket'} to face ${target.instanceRef}.${target.socket.id}; a Y-axis rotation cannot align the current directions. ${socketAdvice(own, target)}`,
-          undefined,
-          {},
-          `socket-directions:${JSON.stringify([`${own.instanceRef}.${own.socket.id}`, `${target.instanceRef}.${target.socket.id}`].sort())}`,
+        violations.push(
+          createViolation({
+            kind: 'incompatible_socket',
+            message: 'Socket directions cannot face each other with a Y-axis rotation.',
+            refs: [own.instanceRef, target.instanceRef],
+            source,
+            suggestion: `Choose an ${targetDirection[1] > EPSILON ? 'own Socket facing down' : targetDirection[1] < -EPSILON ? 'own Socket facing up' : 'own horizontal Socket'} to face ${target.instanceRef}.${target.socket.id}; a Y-axis rotation cannot align the current directions. ${socketAdvice(own, target)}`,
+            rule: `socket-directions:${JSON.stringify([`${own.instanceRef}.${own.socket.id}`, `${target.instanceRef}.${target.socket.id}`].sort())}`,
+          }),
         );
       yaw =
         yawOf(target.transform) +
@@ -360,20 +350,20 @@ export function compileMap(
     const structureReference = structureRef(structure.id);
     sourceRefs[structureReference] = structure.source;
     if (!structure.attach) {
-      grid(
+      checkGridAlignment(
         structure.position,
         structureReference,
         structure.source,
         `Structure "${structure.id}" position`,
       );
       if (structure.height !== 'auto')
-        grid(
+        checkGridAlignment(
           [structure.height],
           structureReference,
           structure.source,
           `Structure "${structure.id}" height`,
         );
-      rotation(structure.rotation, 15, structureReference, structure.source);
+      checkRotation(structure.rotation, 15, structureReference, structure.source);
     }
     const locals = new Map<string, LocalInstance>(),
       definitions = new Map(structure.modules.map((m) => [m.id, m])),
@@ -387,34 +377,35 @@ export function compileMap(
       const ref = moduleRef(structure.id, instance.id);
       sourceRefs[ref] = instance.source;
       if (visiting.has(instanceId)) {
-        emit(
-          'missing_reference',
-          `Cyclic module attachment involving "${instance.id}".`,
-          [ref],
-          instance.source,
-          'Give one module an at position and remove the attachment cycle.',
-          undefined,
-          {},
-          'module-attachment-cycle',
+        violations.push(
+          createViolation({
+            kind: 'missing_reference',
+            message: `Cyclic module attachment involving "${instance.id}".`,
+            refs: [ref],
+            source: instance.source,
+            suggestion: 'Give one module an at position and remove the attachment cycle.',
+            rule: 'module-attachment-cycle',
+          }),
         );
         failed.add(instanceId);
         return;
       }
       const definition = parsed.modules[instance.module];
       if (!definition) {
-        emit(
-          'missing_reference',
-          `Module "${instance.module}" does not exist.`,
-          [ref],
-          instance.source,
-          referenceSuggestion(
-            instance.module,
-            Object.keys(parsed.modules),
-            'Use an existing module id or create its module.yaml and model.ts.',
-          ),
-          undefined,
-          { reference: instance.module },
-          'module-type',
+        violations.push(
+          createViolation({
+            kind: 'missing_reference',
+            message: `Module "${instance.module}" does not exist.`,
+            refs: [ref],
+            source: instance.source,
+            suggestion: referenceSuggestion(
+              instance.module,
+              Object.keys(parsed.modules),
+              'Use an existing module id or create its module.yaml and model.ts.',
+            ),
+            params: { reference: instance.module },
+            rule: 'module-type',
+          }),
         );
         failed.add(instanceId);
         return;
@@ -430,29 +421,30 @@ export function compileMap(
           targetSocketDefinition = target?.definition.sockets.find((s) => s.id === match?.[2]);
         if (!target || !ownSocket || !targetSocketDefinition) {
           if (!failed.has(instanceId))
-            emit(
-              'missing_reference',
-              `Cannot resolve attachment "${instance.attach.socket}" to "${instance.attach.to}".`,
-              [ref],
-              instance.source,
-              `${referenceSuggestion(
-                instance.attach.socket,
-                definition.sockets.map((socket) => socket.id),
-                'Set attach.socket to an own Socket id.',
-              )} ${referenceSuggestion(
-                instance.attach.to,
-                structure.modules
-                  .filter((other) => other.id !== instance.id)
-                  .flatMap((other) =>
-                    (parsed.modules[other.module]?.sockets ?? []).map(
-                      (socket) => `${other.id}.${socket.id}`,
+            violations.push(
+              createViolation({
+                kind: 'missing_reference',
+                message: `Cannot resolve attachment "${instance.attach.socket}" to "${instance.attach.to}".`,
+                refs: [ref],
+                source: instance.source,
+                suggestion: `${referenceSuggestion(
+                  instance.attach.socket,
+                  definition.sockets.map((socket) => socket.id),
+                  'Set attach.socket to an own Socket id.',
+                )} ${referenceSuggestion(
+                  instance.attach.to,
+                  structure.modules
+                    .filter((other) => other.id !== instance.id)
+                    .flatMap((other) =>
+                      (parsed.modules[other.module]?.sockets ?? []).map(
+                        (socket) => `${other.id}.${socket.id}`,
+                      ),
                     ),
-                  ),
-                'Set attach.to to instance_id.socket_id.',
-              )}`,
-              undefined,
-              { reference: instance.attach.to },
-              'module-attachment',
+                  'Set attach.to to instance_id.socket_id.',
+                )}`,
+                params: { reference: instance.attach.to },
+                rule: 'module-attachment',
+              }),
             );
           visiting.delete(instanceId);
           failed.add(instanceId);
@@ -471,16 +463,16 @@ export function compileMap(
           };
         transform = attachmentMatrix(own, targetSocket, instance.source);
         connect(own, targetSocket, instance.source);
-        rotation(yawOf(transform), 90, ref, instance.source);
-        grid(
+        checkRotation(yawOf(transform), 90, ref, instance.source);
+        checkGridAlignment(
           transformBounds(transform, definition.size).min,
           ref,
           instance.source,
           'Attached module position',
         );
       } else {
-        grid(instance.at!, ref, instance.source, `Module "${instance.id}" position`);
-        rotation(instance.rotation, 90, ref, instance.source);
+        checkGridAlignment(instance.at!, ref, instance.source, `Module "${instance.id}" position`);
+        checkRotation(instance.rotation, 90, ref, instance.source);
         transform = moduleTransform(instance.at!, definition.size, instance.rotation);
       }
       const result: LocalInstance = {
@@ -518,15 +510,15 @@ export function compileMap(
     if (failed.has(structure.id)) return;
     const ref = structureRef(structure.id);
     if (visiting.has(structure.id)) {
-      emit(
-        'missing_reference',
-        `Cyclic structure attachment involving "${structure.id}".`,
-        [ref],
-        structure.source,
-        'Keep one structure positioned and remove the attachment cycle.',
-        undefined,
-        {},
-        'structure-attachment-cycle',
+      violations.push(
+        createViolation({
+          kind: 'missing_reference',
+          message: `Cyclic structure attachment involving "${structure.id}".`,
+          refs: [ref],
+          source: structure.source,
+          suggestion: 'Keep one structure positioned and remove the attachment cycle.',
+          rule: 'structure-attachment-cycle',
+        }),
       );
       failed.add(structure.id);
       return;
@@ -542,35 +534,35 @@ export function compileMap(
           targetStructure && match ? localSocket(targetStructure.id, match[2]!) : undefined;
       if (!own || !targetLocal || !targetPlacement) {
         if (!failed.has(structure.id))
-          emit(
-            'missing_reference',
-            `Cannot resolve structure attachment to "${structure.attach.to}".`,
-            [ref],
-            structure.source,
-            `${referenceSuggestion(
-              structure.attach.socket,
-              structure.modules.flatMap((instance) =>
-                (parsed.modules[instance.module]?.sockets ?? []).map(
-                  (socket) => `${instance.id}.${socket.id}`,
-                ),
-              ),
-              'Set attach.socket to own_instance.socket.',
-            )} ${referenceSuggestion(
-              structure.attach.to,
-              structures
-                .filter((other) => other.id !== structure.id)
-                .flatMap((other) =>
-                  other.modules.flatMap((instance) =>
-                    (parsed.modules[instance.module]?.sockets ?? []).map(
-                      (socket) => `${other.id}/${instance.id}.${socket.id}`,
-                    ),
+          violations.push(
+            createViolation({
+              kind: 'missing_reference',
+              message: `Cannot resolve structure attachment to "${structure.attach.to}".`,
+              refs: [ref],
+              source: structure.source,
+              suggestion: `${referenceSuggestion(
+                structure.attach.socket,
+                structure.modules.flatMap((instance) =>
+                  (parsed.modules[instance.module]?.sockets ?? []).map(
+                    (socket) => `${instance.id}.${socket.id}`,
                   ),
                 ),
-              'Set attach.to to other_structure/instance.socket.',
-            )}`,
-            undefined,
-            {},
-            'structure-attachment',
+                'Set attach.socket to own_instance.socket.',
+              )} ${referenceSuggestion(
+                structure.attach.to,
+                structures
+                  .filter((other) => other.id !== structure.id)
+                  .flatMap((other) =>
+                    other.modules.flatMap((instance) =>
+                      (parsed.modules[instance.module]?.sockets ?? []).map(
+                        (socket) => `${other.id}/${instance.id}.${socket.id}`,
+                      ),
+                    ),
+                  ),
+                'Set attach.to to other_structure/instance.socket.',
+              )}`,
+              rule: 'structure-attachment',
+            }),
           );
         visiting.delete(structure.id);
         failed.add(structure.id);
@@ -583,7 +575,7 @@ export function compileMap(
       const transform = attachmentMatrix(own, target, structure.source);
       connect(own, target, structure.source);
       const relativeRotation = yawOf(transform) - yawOf(targetPlacement.transform);
-      rotation(relativeRotation, 90, ref, structure.source);
+      checkRotation(relativeRotation, 90, ref, structure.source);
       placement = { transform, root: targetPlacement.root };
     } else {
       const [x, z] = structure.position,
@@ -711,14 +703,20 @@ export function compileMap(
         bounds.max[0] > map.size.x + EPSILON ||
         bounds.max[2] > map.size.z + EPSILON
       )
-        emit(
-          'out_of_bounds',
-          `Module "${ref}" extends outside the map.`,
-          [ref, structureRef(placement.root)],
-          local.instance.source,
-          boundsSuggestion(structureRef(placement.root), boundsForRoot(placement.root), map.size),
-          bounds.min,
-          { bounds, size: map.size },
+        violations.push(
+          createViolation({
+            kind: 'out_of_bounds',
+            message: `Module "${ref}" extends outside the map.`,
+            refs: [ref, structureRef(placement.root)],
+            source: local.instance.source,
+            suggestion: boundsSuggestion(
+              structureRef(placement.root),
+              boundsForRoot(placement.root),
+              map.size,
+            ),
+            location: bounds.min,
+            params: { bounds, size: map.size },
+          }),
         );
       for (const socket of local.definition.sockets) {
         const socketRef = `${ref}.${socket.id}`;
@@ -738,27 +736,27 @@ export function compileMap(
   for (const marker of [...map.markers].sort((a, b) => compareText(a.id, b.id))) {
     const ref = markerRef(marker.id),
       shape = marker.shape,
-      position = shape.kind === 'point' ? shape.position : shape.center;
+      position = markerPosition(shape);
     sourceRefs[ref] = marker.source;
-    grid(position, ref, marker.source, `Marker "${marker.id}" position`);
-    rotation(shape.rotation, 15, ref, marker.source);
+    checkGridAlignment(position, ref, marker.source, `Marker "${marker.id}" position`);
+    checkRotation(shape.rotation, 15, ref, marker.source);
     if (shape.kind === 'box')
-      grid(shape.size, ref, marker.source, `Marker "${marker.id}" size`, true);
+      checkGridAlignment(shape.size, ref, marker.source, `Marker "${marker.id}" size`, true);
     const definition = parsed.project.markerTypes[marker.type];
     if (!definition)
-      emit(
-        'missing_reference',
-        `Unknown marker type "${marker.type}".`,
-        [ref],
-        marker.source,
-        referenceSuggestion(
-          marker.type,
-          Object.keys(parsed.project.markerTypes),
-          `Correct the type or define markerTypes.${marker.type} in project.yaml.`,
-        ),
-        undefined,
-        {},
-        'marker-type',
+      violations.push(
+        createViolation({
+          kind: 'missing_reference',
+          message: `Unknown marker type "${marker.type}".`,
+          refs: [ref],
+          source: marker.source,
+          suggestion: referenceSuggestion(
+            marker.type,
+            Object.keys(parsed.project.markerTypes),
+            `Correct the type or define markerTypes.${marker.type} in project.yaml.`,
+          ),
+          rule: 'marker-type',
+        }),
       );
     else if (definition.shape !== shape.kind)
       fileErrors.push({
@@ -784,13 +782,15 @@ export function compileMap(
       bounds.max[0] > map.size.x + EPSILON ||
       bounds.max[2] > map.size.z + EPSILON
     )
-      emit(
-        'out_of_bounds',
-        `Marker "${marker.id}" extends outside the map.`,
-        [ref],
-        marker.source,
-        boundsSuggestion(ref, bounds, map.size),
-        position,
+      violations.push(
+        createViolation({
+          kind: 'out_of_bounds',
+          message: `Marker "${marker.id}" extends outside the map.`,
+          refs: [ref],
+          source: marker.source,
+          suggestion: boundsSuggestion(ref, bounds, map.size),
+          location: position,
+        }),
       );
     scene.markers.push({ ref, type: marker.type, shape, properties: marker.properties });
   }

@@ -1,5 +1,5 @@
 import { Document, WebIO, type mat4, type Mesh } from '@gltf-transform/core';
-import { parseObjectRef, type Mat4, type Vec3 } from '@mapedit/protocol';
+import { markerPosition, parseObjectRef, type Mat4 } from '@mapedit/protocol';
 import type { Compilation } from './domain.js';
 import type { ModelGeometry } from './model.js';
 import { appendGeometry } from './glb.js';
@@ -165,8 +165,7 @@ export async function exportMapGlb(input: ExportInput): Promise<Uint8Array> {
     const markerReference = parseObjectRef(marker.ref);
     if (markerReference?.kind !== 'marker')
       throw new Error(`Export refused: invalid Marker reference '${marker.ref}'.`);
-    const position: Vec3 =
-      marker.shape.kind === 'point' ? marker.shape.position : marker.shape.center;
+    const position = markerPosition(marker.shape);
     const extras = {
       kind: 'marker',
       ref: marker.ref,

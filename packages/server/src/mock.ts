@@ -1,6 +1,6 @@
-import type { SceneSnapshot, StructureView, Vec3, ViolationView } from '@mapedit/protocol';
+import type { SceneSnapshot, StructureView, Vec3 } from '@mapedit/protocol';
 import { structureRef, moduleRef, markerRef } from '@mapedit/protocol';
-import { transformMatrix } from '@mapedit/core';
+import { transformMatrix, createViolation, type CreateViolationInput } from '@mapedit/core';
 
 export function mockScene(): SceneSnapshot {
   const structure = (
@@ -17,21 +17,16 @@ export function mockScene(): SceneSnapshot {
       { ref: moduleRef(id, 'base'), moduleType, transform: transformMatrix(position, rotation) },
     ],
   });
-  const violation = (
-    kind: ViolationView['kind'],
-    ids: string[],
-    message: string,
-    suggestion: string,
-    location: Vec3,
-  ): ViolationView => ({
-    id: `mock:${kind}:${ids.slice().sort().join(',')}`,
-    kind,
-    message,
-    suggestion,
-    refs: ids.map((id) => moduleRef(id, 'base')),
-    location,
-    params: { file: `maps/village/structures/${ids[0]}.yaml`, line: 3 },
-  });
+  const violation = ({
+    ids,
+    ...input
+  }: Omit<CreateViolationInput, 'refs' | 'source' | 'rule'> & { ids: string[] }) =>
+    createViolation({
+      ...input,
+      refs: ids.map((id) => moduleRef(id, 'base')),
+      source: { file: `maps/village/structures/${ids[0]}.yaml`, line: 3 },
+      rule: 'mock-scene',
+    });
   return {
     protocolVersion: 1,
     revision: 0,
@@ -106,55 +101,56 @@ export function mockScene(): SceneSnapshot {
       },
     ],
     violations: [
-      violation(
-        'overlap',
-        ['overlap_a', 'overlap_b'],
-        'Two blocks overlap by 0.5 m.',
-        `Move ${structureRef('overlap_a')} west by 0.5 m to clear the overlap with ${structureRef('overlap_b')}.`,
-        [41.75, 1, 11],
-      ),
-      violation(
-        'unsupported',
-        ['unsupported'],
-        'The block is 2 m above the terrain.',
-        `Move ${structureRef('unsupported')} down by 2 m to reach the terrain.`,
-        [51, 2, 11],
-      ),
-      violation(
-        'off_grid',
-        ['off_grid'],
-        'The X coordinate 60.25 is not on the 0.5 m grid.',
-        'Set position.x to the nearest grid coordinate, 60.5 m.',
-        [60.25, 0, 10],
-      ),
-      violation(
-        'bad_rotation',
-        ['bad_rotation'],
-        'Rotation 7 degrees is not a multiple of 15.',
-        'Set rotation to the nearest valid angle, 0 degrees.',
-        [70, 0, 10],
-      ),
-      violation(
-        'out_of_bounds',
-        ['out_of_bounds'],
-        'The block extends 1 m beyond the east edge.',
-        `Move ${structureRef('out_of_bounds')} west by 1 m to fit inside the map.`,
-        [100, 1, 11],
-      ),
-      violation(
-        'missing_reference',
-        ['missing_reference'],
-        'Module missing_block does not exist.',
-        'Replace missing_block with the available module block.',
-        [30, 0, 30],
-      ),
-      violation(
-        'incompatible_socket',
-        ['socket_a', 'socket_b'],
-        'The wall socket cannot connect to a foundation socket.',
-        'Connect the wall socket to another wall socket instead of a foundation socket.',
-        [42, 1, 31],
-      ),
+      violation({
+        kind: 'overlap',
+        ids: ['overlap_a', 'overlap_b'],
+        message: 'Two blocks overlap by 0.5 m.',
+        suggestion: `Move ${structureRef('overlap_a')} west by 0.5 m to clear the overlap with ${structureRef('overlap_b')}.`,
+        location: [41.75, 1, 11],
+      }),
+      violation({
+        kind: 'unsupported',
+        ids: ['unsupported'],
+        message: 'The block is 2 m above the terrain.',
+        suggestion: `Move ${structureRef('unsupported')} down by 2 m to reach the terrain.`,
+        location: [51, 2, 11],
+      }),
+      violation({
+        kind: 'off_grid',
+        ids: ['off_grid'],
+        message: 'The X coordinate 60.25 is not on the 0.5 m grid.',
+        suggestion: 'Set position.x to the nearest grid coordinate, 60.5 m.',
+        location: [60.25, 0, 10],
+      }),
+      violation({
+        kind: 'bad_rotation',
+        ids: ['bad_rotation'],
+        message: 'Rotation 7 degrees is not a multiple of 15.',
+        suggestion: 'Set rotation to the nearest valid angle, 0 degrees.',
+        location: [70, 0, 10],
+      }),
+      violation({
+        kind: 'out_of_bounds',
+        ids: ['out_of_bounds'],
+        message: 'The block extends 1 m beyond the east edge.',
+        suggestion: `Move ${structureRef('out_of_bounds')} west by 1 m to fit inside the map.`,
+        location: [100, 1, 11],
+      }),
+      violation({
+        kind: 'missing_reference',
+        ids: ['missing_reference'],
+        message: 'Module missing_block does not exist.',
+        suggestion: 'Replace missing_block with the available module block.',
+        location: [30, 0, 30],
+      }),
+      violation({
+        kind: 'incompatible_socket',
+        ids: ['socket_a', 'socket_b'],
+        message: 'The wall socket cannot connect to a foundation socket.',
+        suggestion:
+          'Connect the wall socket to another wall socket instead of a foundation socket.',
+        location: [42, 1, 31],
+      }),
     ],
     fileErrors: [
       {

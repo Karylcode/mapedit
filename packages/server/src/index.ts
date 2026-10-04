@@ -10,14 +10,12 @@ import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMessage, Edit, ServerMessage } from '@mapedit/protocol';
 import { parseObjectRef } from '@mapedit/protocol';
-import { mockAsset } from './mock.js';
 import { MemoryState, type StateStore } from './state.js';
 import { DiskState } from './disk-state.js';
 import { buildProject, buildFromParsed } from './build-project.js';
 import { ScreenshotService } from './screenshot.js';
 import { createMcpHttpHandler, type AgentServices } from './mcp.js';
-import { createAgentServices } from './services.js';
-import { createMockServices, parseMockNotice, triggerMockNotice } from './mock-services.js';
+import { parseMockNotice } from './mock-services.js';
 import { projectIdentity } from './project-identity.js';
 import { containsPath } from './paths.js';
 export { projectIdentity } from './project-identity.js';
@@ -134,11 +132,6 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       (value) => (value.isDirectory() ? defaultWebRoot : undefined),
       () => undefined,
     ));
-  const sceneFor = async (id?: string) => {
-    if (state.getScene) return state.getScene(id);
-    if (id) await state.openMap(id);
-    return state.scene;
-  };
   let port = 0;
   const validRequest = (request: IncomingMessage): boolean => {
     const host = request.headers.host;
@@ -154,12 +147,12 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       response.setHeader('X-Mapedit-Pid', String(process.pid));
       const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
       if (url.pathname === '/api/mock/trigger') {
-        if (!options.mock || !(state instanceof MemoryState))
-          return json(response, 404, { error: 'Not found.' });
+        const trigger = state.triggerMockNotice?.bind(state);
+        if (!options.mock || !trigger) return json(response, 404, { error: 'Not found.' });
         if (request.method !== 'POST') return json(response, 405, { error: 'Method not allowed.' });
         try {
           const code = parseMockNotice(await readMockTrigger(request));
-          const triggered = queue.then(() => triggerMockNotice(state, code));
+          const triggered = queue.then(() => trigger(code));
           queue = triggered.catch(() => {});
           await triggered;
           return json(response, 200, { ok: true });
@@ -183,17 +176,10 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       if (url.pathname === '/api/project') return json(response, 200, state.project);
       if (url.pathname === '/api/scene') {
         const id = url.searchParams.get('map');
-        return json(response, 200, await sceneFor(id ?? undefined));
-      }
-      if (url.pathname.startsWith('/assets/mock/')) {
-        const data = options.mock ? mockAsset(url.pathname) : undefined;
-        if (!data) return json(response, 404, { error: 'Asset not found.' });
-        response.writeHead(200, { 'Content-Type': 'model/gltf-binary' });
-        response.end(data);
-        return;
+        return json(response, 200, await state.getScene(id ?? undefined));
       }
       if (url.pathname.startsWith('/assets/')) {
-        const data = state.asset?.(url.pathname);
+        const data = state.asset(url.pathname);
         if (data) {
           response.writeHead(200, {
             'Content-Type': 'model/gltf-binary',
@@ -282,7 +268,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
           // background; commits and other requests still establish a disk-read barrier.
           if (message.type !== 'previewEdit') await state.flush();
           if (message.type === 'openMap') {
-            const scene = await sceneFor(message.mapId);
+            const scene = await state.getScene(message.mapId);
             opened.set(client, message.mapId);
             send(client, { type: 'scene', scene });
             send(client, { type: 'history', entries: state.entries, cursor: state.cursor });
@@ -308,7 +294,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
           });
           if (!reason) {
             for (const mapId of new Set(opened.values()))
-              broadcast({ type: 'scene', scene: await sceneFor(mapId) });
+              broadcast({ type: 'scene', scene: await state.getScene(mapId) });
             broadcast({ type: 'history', entries: state.entries, cursor: state.cursor });
           }
         })
@@ -337,10 +323,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
   port = address.port;
   const screenshots = new ScreenshotService(`http://127.0.0.1:${port}`, options.browserPath);
   const mcp = createMcpHttpHandler(
-    options.services ??
-      (state instanceof DiskState
-        ? createAgentServices(state, screenshots)
-        : createMockServices(state, screenshots)),
+    options.services ?? state.createAgentServices(screenshots),
     screenshots,
   );
   return {

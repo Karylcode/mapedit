@@ -51,7 +51,7 @@ const page = <T>(values: T[], offset: number, limit: number) => ({
 const units = 'Coordinates are metres, +Y up, +X east, -Z north. ';
 
 function floorPlan(instances: InstanceView[], scene: SceneSnapshot) {
-  const cells = instances.map((instance) => {
+  const footprint = instances.map((instance) => {
     const size = scene.moduleTypes.find((module) => module.id === instance.moduleType)?.size ?? [
       0.5, 0.5, 0.5,
     ];
@@ -70,16 +70,16 @@ function floorPlan(instances: InstanceView[], scene: SceneSnapshot) {
       maxZ: Math.max(...points.map((p) => p[1]!)),
     };
   });
-  const x = Math.min(...cells.map((cell) => cell.minX)),
-    z = Math.min(...cells.map((cell) => cell.minZ));
-  const width = Math.max(...cells.map((cell) => cell.maxX)) - x,
-    depth = Math.max(...cells.map((cell) => cell.maxZ)) - z;
+  const x = Math.min(...footprint.map((cell) => cell.minX)),
+    z = Math.min(...footprint.map((cell) => cell.minZ));
+  const width = Math.max(...footprint.map((cell) => cell.maxX)) - x,
+    depth = Math.max(...footprint.map((cell) => cell.maxZ)) - z;
   const cellSize = Math.max(0.5, Math.ceil((Math.max(width, depth) / 32) * 2) / 2);
   const columns = Math.max(1, Math.ceil(width / cellSize)),
     rows = Math.max(1, Math.ceil(depth / cellSize));
-  const grid = Array.from({ length: rows }, () => Array.from({ length: columns }, () => '.'));
+  const raster = Array.from({ length: rows }, () => Array.from({ length: columns }, () => '.'));
   const symbols = '123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-  cells.forEach((cell, index) => {
+  footprint.forEach((cell, index) => {
     for (
       let row = Math.max(0, Math.floor((cell.minZ - z) / cellSize));
       row < Math.min(rows, Math.ceil((cell.maxZ - z) / cellSize));
@@ -90,19 +90,19 @@ function floorPlan(instances: InstanceView[], scene: SceneSnapshot) {
         col < Math.min(columns, Math.ceil((cell.maxX - x) / cellSize));
         col++
       )
-        grid[row]![col] = symbols[index % symbols.length]!;
+        raster[row]![col] = symbols[index % symbols.length]!;
   });
   return {
     origin: [x, z],
     cellSize,
     note: 'North is up (-Z). Cells show projected module bounds; openings and overlaps require a screenshot.',
-    plan: grid.map((row) => row.join('')).join('\n'),
-    legend: cells.slice(0, 60).map((cell, index) => ({
+    plan: raster.map((row) => row.join('')).join('\n'),
+    legend: footprint.slice(0, 60).map((cell, index) => ({
       symbol: symbols[index % symbols.length],
       ref: cell.instance.ref,
       module: cell.instance.moduleType,
     })),
-    totalModules: cells.length,
+    totalModules: footprint.length,
   };
 }
 

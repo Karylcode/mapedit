@@ -1,33 +1,31 @@
 # Backend implementation status
 
-**Review entry point for Claude:** M0–M7 backend implementation is complete; the
-F1–F16 review corrections in `docs/handoff/backend-fixes.md` are now in progress
-on the same `backend` branch and PR. See the review correction log below.
+**Review entry point for Claude:** M0–M7 backend implementation and all F1–F16
+review corrections in `docs/handoff/backend-fixes.md` are complete locally on
+the same `backend` branch and PR. See the numbered review correction log below.
 Start with `docs/protocol.md`, `docs/map-format.md`,
 `docs/model-api.md` and `docs/export-format.md`; the executable boundaries are
 `packages/core/src/index.ts`, `packages/server/src/index.ts` and the CLI.
-Protocol stays at version 1; the only additive HTTP contract detail is CLI identity
-headers and a cheap HEAD discovery request. `packages/web` has not been created or
-modified. The mock remains available through `mapedit dev --mock`.
-On this Windows machine: 94 tests, strict typecheck and ESLint passed; the no-AI
-village script reached zero violations and exported a GLB; real Unity 6 batchmode
-verified 40 MeshColliders, the spawn prefab and trigger. Frontend rendering and the
+Protocol stays at version 1, with stable diagnostic IDs, source metadata and the
+documented mock trigger endpoint. `packages/web` has not been created or modified.
+The mock remains available through `mapedit dev --mock`.
+On this Windows machine: all 259 tests across 42 files, strict build/typecheck and
+ESLint pass. The fresh no-AI village has zero violations/file errors and exports a
+5,062,524-byte GLB; real Unity 6 batchmode under PowerShell 5.1 verifies 40
+MeshColliders, two markers, the spawn prefab and trigger. Frontend rendering and the
 two-agent/Unity Play experience remain the planned joint acceptance after the
 frontend exists. GitHub publication and CI status are recorded below.
 
 ## 目前進度
 
-Implementing F1–F16 in order, with regression tests before bug fixes and numbered
-commits. The earlier M0–M7 validation below remains the baseline, not the final
-acceptance for this correction pass.
-
-M0–M7 complete and pushed on `backend`, each with its own milestone commit.
+M0–M7 and F1–F16 are complete, with regression tests before bug fixes and numbered
+commits. Full Windows validation passes, including real browser execution,
+HTTP/stdio MCP paging, isolated packed CLI installation, PowerShell 5.1, the
+unchanged 30 ms preview target and the 2-second/2,000-module geometry target.
 [PR #1](https://github.com/Karylcode/mapedit/pull/1) is open against `main`.
-[GitHub CI](https://github.com/Karylcode/mapedit/actions/runs/37223538534) passes
-all four combinations of Windows/Ubuntu and Node 22/24 at implementation commit
-`b5a6dd8`. All 94 tests pass, including the unchanged 30 ms preview target and a
-regression for fresh Agent edits during a drag. The backend is ready for Claude's
-review, followed by frontend implementation and the planned joint acceptance.
+The correction commits are ready to push; final GitHub CI acceptance will be
+recorded here after all Windows/Ubuntu and Node 22/24 jobs finish.
+The earlier M0–M7 counts below are historical milestone results.
 
 ## 每個里程碑完成了什麼、怎麼驗證
 
@@ -162,9 +160,8 @@ system Edge and licensed Unity 6 were available for local/GitHub acceptance.
 
 ## 審查修正
 
-F1–F16 are tracked in order here. Each completed entry records the implementation,
-test location and any deviation. Final Windows and GitHub CI acceptance will be
-recorded after all corrections are complete.
+F1–F16 are complete. Each entry records the implementation, test location and any
+deviation. Final Windows acceptance is recorded after F16; GitHub CI is tracked above.
 
 - **F1 complete:** violation IDs use sorted object refs and stable rule/field
   discriminators, excluding revision, source line and measured values. Drag
@@ -307,3 +304,27 @@ recorded after all corrections are complete.
   pass. Path/link isolation and unchanged input Buffer reuse are verified.
   Deviation: none; paint uses Surface IDs, not Material IDs, as required by the
   terrain domain model.
+- **F16 complete:** all compiler, geometry and synthetic mock/preview diagnostics
+  use the object-parameter `createViolation` factory, retaining stable rules and
+  metadata precedence. `markerPosition` supplies point/box coordinates everywhere.
+  Both StateStore implementations provide required scene/asset methods and their
+  own Agent service factory; explicit mock capability replaces class checks.
+  The compiler check functions and MCP footprint/raster names are descriptive;
+  the `ProjectBuild` alias and unused `writeAgentFiles` method are removed.
+  Tests: `core/test/violation-factory.test.ts`,
+  `protocol/test/marker-position.test.ts`, `server/test/state-contract.test.ts`,
+  plus existing compiler, geometry, marker, protocol, MCP and disk regressions.
+  Opaque state factory/capability failures were reproduced before fixing them.
+  All final Windows checks pass: 259 tests across 42 files, build, workspace lint,
+  generated guide checks and scoped formatting. Deviation: none.
+
+Final correction acceptance: `pnpm build`, `pnpm lint` and `pnpm test` pass with
+no skipped Windows tests. The suite includes real Edge/browser core execution,
+model isolation, all-map checking/export, MCP pagination, package installation
+outside the repository, and actual Windows PowerShell 5.1 JSON behavior.
+`scripts/e2e.mjs .cache/acceptance/review-village-final` generated three structures
+and 24 modules with zero violations/file errors. The exported GLB passed real
+Unity 6000.0.75f1 import through `scripts/test-unity.ps1`: 40 MeshColliders, two
+markers, spawn prefab and trigger. Independent F1–F16 checklist review found no
+remaining actionable requirement gap. npm publication remains the explicit human
+follow-up above; frontend/joint acceptance remains separately owned.

@@ -3,9 +3,8 @@ import { resolve } from 'node:path';
 import { parseProject, compatibleSocketTypes, transformMatrix } from '@mapedit/core';
 import { structureRef, type NoticeCode } from '@mapedit/protocol';
 import type { AgentServices } from './mcp.js';
-import type { StateStore } from './state.js';
-import { MemoryState } from './state.js';
-import { ScreenshotService } from './screenshot.js';
+import type { MemoryState } from './state.js';
+import type { ScreenshotService } from './screenshot.js';
 import { boxGlb, mockScene } from './mock.js';
 
 export function parseMockNotice(value: unknown): NoticeCode {
@@ -83,7 +82,7 @@ export async function triggerMockNotice(state: MemoryState, code: NoticeCode): P
 
 /** Predictable responses for front-end and transport development without a project. */
 export function createMockServices(
-  state: StateStore,
+  state: MemoryState,
   screenshots: ScreenshotService,
 ): AgentServices {
   const parsed = parseProject({
@@ -92,15 +91,10 @@ export function createMockServices(
     'modules/foundation/module.yaml':
       'id: foundation\nname: Foundation\nsize: [2, 2, 2]\nisFoundation: true\n',
   });
-  const getScene = async (id?: string) => {
-    if (state.getScene) return state.getScene(id);
-    if (id) await state.openMap(id);
-    return state.scene;
-  };
   return {
     flush: () => state.flush(),
-    getScene,
-    getScenes: async (id) => [await getScene(id)],
+    getScene: (id) => state.getScene(id),
+    getScenes: async (id) => [await state.getScene(id)],
     async getCompilation() {
       return undefined;
     },
@@ -136,11 +130,9 @@ export function createMockServices(
       };
     },
     async terrain(_map, command) {
-      if (state instanceof MemoryState) {
-        const scene = structuredClone(state.scene);
-        scene.terrain.revision++;
-        state.replaceFromAgent(scene, [], ['maps/village/terrain/height.png']);
-      }
+      const scene = structuredClone(state.scene);
+      scene.terrain.revision++;
+      state.replaceFromAgent(scene, [], ['maps/village/terrain/height.png']);
       return { mock: true, command, revision: state.scene.revision };
     },
     async export(_map, out) {

@@ -7,6 +7,7 @@ import {
   applySourceEdit,
   normalizeEdit,
   transformMatrix,
+  createViolation,
   type ParsedProject,
 } from '@mapedit/core';
 import type {
@@ -16,22 +17,25 @@ import type {
   SceneSnapshot,
   ServerMessage,
 } from '@mapedit/protocol';
+import { markerPosition } from '@mapedit/protocol';
 import type { Preview, StateStore } from './state.js';
 import type { BuiltProject } from './build-project.js';
 import { readProjectInputs } from './project-files.js';
 import { containsPath } from './paths.js';
 import { ProjectHistory } from './history.js';
 import { noticeMessage } from './notice.js';
+import { createAgentServices } from './services.js';
+import type { AgentServices } from './mcp.js';
+import type { ScreenshotService } from './screenshot.js';
 
-export type ProjectBuild = BuiltProject;
 export interface DiskStateBuilder {
-  build(mapId: string | undefined, revision: number): Promise<ProjectBuild>;
+  build(mapId: string | undefined, revision: number): Promise<BuiltProject>;
   preview(
     parsed: ParsedProject,
     mapId: string,
     revision: number,
-    cached: ProjectBuild,
-  ): Promise<ProjectBuild>;
+    cached: BuiltProject,
+  ): Promise<BuiltProject>;
 }
 interface Checkpoint {
   files: Map<string, Buffer>;
@@ -48,7 +52,7 @@ export class DiskState extends EventEmitter implements StateStore {
   get cursor(): number {
     return this.history.cursor;
   }
-  readonly builds = new Map<string, ProjectBuild>();
+  readonly builds = new Map<string, BuiltProject>();
   readonly previewScenes = new Map<string, SceneSnapshot>();
   private baseline = new Map<string, Buffer>();
   private watcher?: FSWatcher;
@@ -87,7 +91,7 @@ export class DiskState extends EventEmitter implements StateStore {
     state.watcher.on('error', (error) => state.notice('file_error', String(error)));
     return state;
   }
-  private install(build: ProjectBuild): void {
+  private install(build: BuiltProject): void {
     this.project = build.parsed.info;
     this.scene = build.scene;
     this.builds.set(build.scene.map.id, build);
@@ -226,12 +230,15 @@ export class DiskState extends EventEmitter implements StateStore {
     }
     return build.scene;
   }
-  async getBuild(id?: string): Promise<ProjectBuild> {
+  async getBuild(id?: string): Promise<BuiltProject> {
     await this.getScene(id);
     return this.builds.get(id ?? this.scene.map.id)!;
   }
   async openMap(id: string): Promise<void> {
     this.scene = await this.getScene(id);
+  }
+  createAgentServices(screenshots: ScreenshotService): AgentServices {
+    return createAgentServices(this, screenshots);
   }
   asset(path: string): Uint8Array | undefined {
     for (const build of this.builds.values()) {
@@ -266,12 +273,7 @@ export class DiskState extends EventEmitter implements StateStore {
         throw new Error(candidate.scene.fileErrors[0]!.message);
       const transform =
         target?.transform ??
-        (marker
-          ? transformMatrix(
-              marker.shape.kind === 'point' ? marker.shape.position : marker.shape.center,
-              marker.shape.rotation,
-            )
-          : undefined);
+        (marker ? transformMatrix(markerPosition(marker.shape), marker.shape.rotation) : undefined);
       return {
         type: 'previewResult',
         requestId,
@@ -285,14 +287,14 @@ export class DiskState extends EventEmitter implements StateStore {
         requestId,
         ok: false,
         violations: [
-          {
-            id: 'edit:missing',
+          createViolation({
             kind: 'missing_reference',
             message: error instanceof Error ? error.message : String(error),
             params: {},
             refs: [edit.ref],
             suggestion: 'Reload the map and select an existing object.',
-          },
+            rule: 'edit-reference',
+          }),
         ],
       };
     }
@@ -382,9 +384,6 @@ export class DiskState extends EventEmitter implements StateStore {
       await this.rebuild();
       return undefined;
     });
-  }
-  async writeAgentFiles(files: Record<string, Uint8Array | string>): Promise<void> {
-    await this.updateAgentFiles(async () => files);
   }
   /** Calculate from the latest build and commit both PNGs inside one project transaction. */
   async updateAgentFiles(

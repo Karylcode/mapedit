@@ -3,7 +3,7 @@ import type { Vec3, ViolationView } from '@mapedit/protocol';
 import type { Bounds, Compilation } from './domain.js';
 import { transformPoint } from './math.js';
 import { geometryMesh, getManifold, meshGeometry, type ModelGeometry } from './model.js';
-import { violationId } from './violation.js';
+import { createViolation } from './violation.js';
 import {
   createGeometryAdvice,
   type AdviceSolid,
@@ -192,32 +192,12 @@ export async function checkGeometry(
     return value;
   };
   const result: GeometryCheck = { violations: [], generated: [] };
-  const instancesByRef = new Map(compilation.instances.map((instance) => [instance.ref, instance]));
   const supported = new Set<string>();
   const supportLinks = new Map<string, Set<string>>();
   const link = (from: string, to: string): void => {
     const links = supportLinks.get(from) ?? new Set<string>();
     links.add(to);
     supportLinks.set(from, links);
-  };
-  const violation = (
-    kind: 'overlap' | 'unsupported',
-    refs: string[],
-    message: string,
-    suggestion: string,
-    params: Record<string, unknown> = {},
-    location?: Vec3,
-  ): void => {
-    const source = instancesByRef.get(refs[0]!)?.source;
-    result.violations.push({
-      id: violationId({ kind, refs, rule: params.terrain === true ? 'terrain' : '' }),
-      kind,
-      refs,
-      message,
-      suggestion,
-      params: { ...(source ? { file: source.file, line: source.line } : {}), ...params },
-      ...(location ? { location } : {}),
-    });
   };
   try {
     const bases = new Map<string, Manifold>();
@@ -257,13 +237,17 @@ export async function checkGeometry(
       const contact = measureTerrainContact(library, entry, triangles);
       if (contact.supported) supported.add(instance.ref);
       if (contact.overlap)
-        violation(
-          'overlap',
-          [instance.ref],
-          `${instance.ref} overlaps the terrain.`,
-          'Raise the Structure or use a Foundation or terrain-following Module.',
-          { terrain: true },
-          contact.location,
+        result.violations.push(
+          createViolation({
+            kind: 'overlap',
+            refs: [instance.ref],
+            source: instance.source,
+            message: `${instance.ref} overlaps the terrain.`,
+            suggestion: 'Raise the Structure or use a Foundation or terrain-following Module.',
+            params: { terrain: true },
+            location: contact.location,
+            rule: 'terrain',
+          }),
         );
     }
     const buckets = new Map<string, number[]>(),
@@ -299,13 +283,15 @@ export async function checkGeometry(
         intersectsBounds(a.bounds, b.bounds, -GEOMETRY_TOLERANCE) &&
         intersectVolume(a.solid, b.solid) > MIN_VOLUME
       ) {
-        violation(
-          'overlap',
-          [a.instance.ref, b.instance.ref],
-          `${a.instance.ref} overlaps ${b.instance.ref}.`,
-          'Move one Structure by 0.5 metres or change its Module shape.',
-          {},
-          intersectionLocation(a.solid, b.solid),
+        result.violations.push(
+          createViolation({
+            kind: 'overlap',
+            refs: [a.instance.ref, b.instance.ref],
+            source: a.instance.source,
+            message: `${a.instance.ref} overlaps ${b.instance.ref}.`,
+            suggestion: 'Move one Structure by 0.5 metres or change its Module shape.',
+            location: intersectionLocation(a.solid, b.solid),
+          }),
         );
       }
       // A tiny downward probe detects physical bottom contact, including sloped surfaces.
@@ -347,17 +333,19 @@ export async function checkGeometry(
       }
     for (const entry of entries)
       if (!supported.has(entry.instance.ref))
-        violation(
-          'unsupported',
-          [entry.instance.ref],
-          `${entry.instance.ref} has no Support connected to terrain.`,
-          'Lower the Structure, add a Foundation, or connect to a supported Module.',
-          {},
-          [
-            (entry.bounds.min[0] + entry.bounds.max[0]) / 2,
-            entry.bounds.min[1],
-            (entry.bounds.min[2] + entry.bounds.max[2]) / 2,
-          ],
+        result.violations.push(
+          createViolation({
+            kind: 'unsupported',
+            refs: [entry.instance.ref],
+            source: entry.instance.source,
+            message: `${entry.instance.ref} has no Support connected to terrain.`,
+            suggestion: 'Lower the Structure, add a Foundation, or connect to a supported Module.',
+            location: [
+              (entry.bounds.min[0] + entry.bounds.max[0]) / 2,
+              entry.bounds.min[1],
+              (entry.bounds.min[2] + entry.bounds.max[2]) / 2,
+            ],
+          }),
         );
     if (result.violations.length) {
       const entriesByRef = new Map(entries.map((entry) => [entry.instance.ref, entry]));

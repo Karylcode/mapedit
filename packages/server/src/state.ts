@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
-import { transformMatrix } from '@mapedit/core';
-import { parseObjectRef } from '@mapedit/protocol';
+import { transformMatrix, createViolation } from '@mapedit/core';
+import { parseObjectRef, markerPosition } from '@mapedit/protocol';
 import type {
   Edit,
   HistoryEntry,
@@ -8,10 +8,14 @@ import type {
   SceneSnapshot,
   ServerMessage,
   ViolationView,
+  NoticeCode,
 } from '@mapedit/protocol';
-import { mockScene } from './mock.js';
+import { mockScene, mockAsset } from './mock.js';
 import { ProjectHistory } from './history.js';
 import { noticeMessage } from './notice.js';
+import { createMockServices, triggerMockNotice } from './mock-services.js';
+import type { AgentServices } from './mcp.js';
+import type { ScreenshotService } from './screenshot.js';
 
 export type Preview = Extract<ServerMessage, { type: 'previewResult' }>;
 export interface StateStore {
@@ -21,8 +25,10 @@ export interface StateStore {
   cursor: number;
   flush(): Promise<void>;
   openMap(id: string): Promise<void>;
-  getScene?(id?: string): Promise<SceneSnapshot>;
-  asset?(path: string): Uint8Array | undefined;
+  getScene(id?: string): Promise<SceneSnapshot>;
+  asset(path: string): Uint8Array | undefined;
+  createAgentServices(screenshots: ScreenshotService): AgentServices;
+  triggerMockNotice?(code: NoticeCode): Promise<void>;
   preview(edit: Edit, requestId: number, mapId?: string): Promise<Preview>;
   apply(edit: Edit, baseRevision: number, mapId?: string): Promise<string | undefined>;
   travel(direction: -1 | 1): Promise<string | undefined>;
@@ -45,7 +51,20 @@ export class MemoryState extends EventEmitter implements StateStore {
   async flush(): Promise<void> {}
   async close(): Promise<void> {}
   async openMap(id: string): Promise<void> {
+    await this.getScene(id);
+  }
+  async getScene(id = this.scene.map.id): Promise<SceneSnapshot> {
     if (id !== this.scene.map.id) throw new Error(`Map '${id}' does not exist.`);
+    return this.scene;
+  }
+  asset(path: string): Uint8Array | undefined {
+    return mockAsset(path);
+  }
+  createAgentServices(screenshots: ScreenshotService): AgentServices {
+    return createMockServices(this, screenshots);
+  }
+  triggerMockNotice(code: NoticeCode): Promise<void> {
+    return triggerMockNotice(this, code);
   }
   broadcast(): void {
     this.emit('message', { type: 'scene', scene: this.scene } satisfies ServerMessage);
@@ -70,14 +89,16 @@ export class MemoryState extends EventEmitter implements StateStore {
         (s) => s.ref === edit.ref || s.instances.some((i) => i.ref === edit.ref),
       ) || this.scene.markers.some((m) => m.ref === edit.ref);
     if (!exists || (edit.kind === 'move' && object?.kind === 'module'))
-      violations.push({
-        id: 'missing',
-        kind: 'missing_reference',
-        message: 'Select an existing structure or marker to move.',
-        params: {},
-        refs: [edit.ref],
-        suggestion: 'Reload the map and select an existing object.',
-      });
+      violations.push(
+        createViolation({
+          kind: 'missing_reference',
+          message: 'Select an existing structure or marker to move.',
+          params: {},
+          refs: [edit.ref],
+          suggestion: 'Reload the map and select an existing object.',
+          rule: 'mock-preview-reference',
+        }),
+      );
     if (edit.kind === 'delete')
       return { type: 'previewResult', requestId, ok: violations.length === 0, violations };
     const position = edit.position.map((v) => Math.round(v * 2) / 2) as [number, number, number];
@@ -90,15 +111,17 @@ export class MemoryState extends EventEmitter implements StateStore {
       position[0] + extent > this.scene.map.size.x ||
       position[2] + extent > this.scene.map.size.z
     )
-      violations.push({
-        id: 'bounds',
-        kind: 'out_of_bounds',
-        message: 'The object would be outside the map.',
-        params: { position },
-        refs: [edit.ref],
-        location: position,
-        suggestion: 'Move the object inside the map.',
-      });
+      violations.push(
+        createViolation({
+          kind: 'out_of_bounds',
+          message: 'The object would be outside the map.',
+          params: { position },
+          refs: [edit.ref],
+          location: position,
+          suggestion: 'Move the object inside the map.',
+          rule: 'mock-preview-bounds',
+        }),
+      );
     return {
       type: 'previewResult',
       requestId,
@@ -149,8 +172,8 @@ export class MemoryState extends EventEmitter implements StateStore {
         preview.transform[13]!,
         preview.transform[14]!,
       ];
-      if (marker.shape.kind === 'point') marker.shape.position = position;
-      else marker.shape.center = position;
+      const coordinates = markerPosition(marker.shape);
+      coordinates.splice(0, 3, ...position);
       marker.shape.rotation = Math.round(edit.rotation / 15) * 15;
     }
     this.scene.revision++;
