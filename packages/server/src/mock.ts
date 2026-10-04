@@ -1,4 +1,4 @@
-import type { SceneSnapshot, Vec3 } from '@mapedit/protocol';
+import type { SceneSnapshot, StructureView, Vec3, ViolationView } from '@mapedit/protocol';
 
 export function matrix(position: Vec3, rotation = 0): number[] {
   const angle = (rotation * Math.PI) / 180;
@@ -8,6 +8,33 @@ export function matrix(position: Vec3, rotation = 0): number[] {
 }
 
 export function mockScene(): SceneSnapshot {
+  const structure = (
+    id: string,
+    position: Vec3,
+    moduleType = 'block',
+    rotation = 0,
+  ): StructureView => ({
+    ref: `structure:${id}`,
+    name: id,
+    file: `maps/village/structures/${id}.yaml`,
+    transform: matrix(position, rotation),
+    instances: [{ ref: `module:${id}/base`, moduleType, transform: matrix(position, rotation) }],
+  });
+  const violation = (
+    kind: ViolationView['kind'],
+    ids: string[],
+    message: string,
+    suggestion: string,
+    location: Vec3,
+  ): ViolationView => ({
+    id: `mock:${kind}:${ids.slice().sort().join(',')}`,
+    kind,
+    message,
+    suggestion,
+    refs: ids.map((id) => `module:${id}/base`),
+    location,
+    params: { file: `maps/village/structures/${ids[0]}.yaml`, line: 3 },
+  });
   return {
     protocolVersion: 1,
     revision: 0,
@@ -27,6 +54,14 @@ export function mockScene(): SceneSnapshot {
         isFoundation: false,
         canFloat: false,
       },
+      {
+        id: 'foundation',
+        name: 'Foundation',
+        url: '/assets/mock/foundation.glb',
+        size: [2, 2, 2],
+        isFoundation: true,
+        canFloat: false,
+      },
     ],
     structures: [
       {
@@ -38,8 +73,20 @@ export function mockScene(): SceneSnapshot {
           { ref: 'module:house/base', moduleType: 'block', transform: matrix([10, 0, 10]) },
         ],
       },
+      structure('raised_foundation', [20, 2, 20], 'foundation'),
+      structure('overlap_a', [40, 0, 10]),
+      structure('overlap_b', [41.5, 0, 10]),
+      structure('unsupported', [50, 2, 10]),
+      structure('off_grid', [60.25, 0, 10]),
+      structure('bad_rotation', [70, 0, 10], 'block', 7),
+      structure('out_of_bounds', [99, 0, 10]),
+      structure('missing_reference', [30, 0, 30], 'missing_block'),
+      structure('socket_a', [40, 0, 30]),
+      structure('socket_b', [42, 0, 30]),
     ],
-    generated: [],
+    generated: [
+      { owner: 'module:raised_foundation/base', url: '/assets/mock/foundation-extension.glb' },
+    ],
     markers: [
       {
         ref: 'marker:spawn',
@@ -47,10 +94,86 @@ export function mockScene(): SceneSnapshot {
         shape: { kind: 'point', position: [5, 0, 5], rotation: 0 },
         properties: {},
       },
+      {
+        ref: 'marker:zone',
+        type: 'trigger',
+        shape: { kind: 'box', center: [10, 1, 5], size: [4, 2, 4], rotation: 0 },
+        properties: { event: 'enter_village' },
+      },
     ],
-    violations: [],
-    fileErrors: [],
+    violations: [
+      violation(
+        'overlap',
+        ['overlap_a', 'overlap_b'],
+        'Two blocks overlap by 0.5 m.',
+        'Move structure:overlap_a west by 0.5 m to clear the overlap with structure:overlap_b.',
+        [41.75, 1, 11],
+      ),
+      violation(
+        'unsupported',
+        ['unsupported'],
+        'The block is 2 m above the terrain.',
+        'Move structure:unsupported down by 2 m to reach the terrain.',
+        [51, 2, 11],
+      ),
+      violation(
+        'off_grid',
+        ['off_grid'],
+        'The X coordinate 60.25 is not on the 0.5 m grid.',
+        'Set position.x to the nearest grid coordinate, 60.5 m.',
+        [60.25, 0, 10],
+      ),
+      violation(
+        'bad_rotation',
+        ['bad_rotation'],
+        'Rotation 7 degrees is not a multiple of 15.',
+        'Set rotation to the nearest valid angle, 0 degrees.',
+        [70, 0, 10],
+      ),
+      violation(
+        'out_of_bounds',
+        ['out_of_bounds'],
+        'The block extends 1 m beyond the east edge.',
+        'Move structure:out_of_bounds west by 1 m to fit inside the map.',
+        [100, 1, 11],
+      ),
+      violation(
+        'missing_reference',
+        ['missing_reference'],
+        'Module missing_block does not exist.',
+        'Replace missing_block with the available module block.',
+        [30, 0, 30],
+      ),
+      violation(
+        'incompatible_socket',
+        ['socket_a', 'socket_b'],
+        'The wall socket cannot connect to a foundation socket.',
+        'Connect the wall socket to another wall socket instead of a foundation socket.',
+        [42, 1, 31],
+      ),
+    ],
+    fileErrors: [
+      {
+        file: 'maps/village/structures/broken.yaml',
+        line: 2,
+        message: 'Invalid YAML: close the opening bracket on line 2.',
+      },
+    ],
   };
+}
+
+export function mockAsset(path: string): Buffer | undefined {
+  switch (path) {
+    case '/assets/mock/block.glb':
+    case '/assets/mock/foundation.glb':
+      return boxGlb();
+    case '/assets/mock/terrain.glb':
+      return boxGlb([100, 0.5, 100], [0, -0.5, 0]);
+    case '/assets/mock/foundation-extension.glb':
+      return boxGlb([2, 2, 2], [20, 0, 20]);
+    default:
+      return undefined;
+  }
 }
 
 /** Tiny self-contained glTF 2.0 box, used only by the mock server. */

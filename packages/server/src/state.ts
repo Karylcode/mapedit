@@ -188,6 +188,7 @@ export class MemoryState extends EventEmitter implements StateStore {
     refs: string[],
     files = ['maps/village/structures/house.yaml'],
   ): void {
+    const previousErrors = new Set(this.scene.fileErrors.map((error) => JSON.stringify(error)));
     const revision = this.scene.revision + 1;
     this.scene = structuredClone(scene);
     this.scene.revision = revision;
@@ -202,7 +203,8 @@ export class MemoryState extends EventEmitter implements StateStore {
         overwritten,
       );
     for (const ref of refs) this.lastHuman.delete(ref);
-    if (scene.fileErrors.length) this.notice('file_error', scene.fileErrors[0]!.message);
+    for (const error of scene.fileErrors)
+      if (!previousErrors.has(JSON.stringify(error))) this.notice('file_error', error.message);
     this.broadcast();
   }
 }

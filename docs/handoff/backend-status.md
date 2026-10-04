@@ -220,3 +220,11 @@ recorded after all corrections are complete.
   `cli/test/agent-docs.test.ts` first reproduced the incomplete guide, then checks
   all sections, canonical equality and initialized copies. Eight documentation,
   init and end-to-end tests, build, lint and formatting pass. Deviation: none.
+- **F8 complete:** the fixed mock snapshot contains all seven violation kinds,
+  actionable source/spatial diagnostics, foundation geometry, point and box
+  markers, and file errors. Its public POST trigger exercises all five notices
+  through real state/history changes, with a 16 KiB body limit; real servers do
+  not expose it. `server/test/mock-coverage.test.ts` first reproduced the missing
+  coverage, then verifies assets, notices, snapshots, invalid requests and route
+  isolation. Mock, protocol, MCP and real-server suites (24 tests), typecheck and
+  scoped lint pass. Deviation: none.

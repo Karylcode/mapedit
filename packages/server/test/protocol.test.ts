@@ -119,6 +119,7 @@ describe('protocol version 1 mock contract', () => {
   });
   it('sends every concurrency and file error notice, and includes Agent history in undo', async () => {
     const { state, send, wait } = await setup();
+    const initialErrors = structuredClone(state.scene.fileErrors);
     const edit = {
       kind: 'move' as const,
       ref: 'structure:house',
@@ -148,7 +149,7 @@ describe('protocol version 1 mock contract', () => {
     await wait('history');
     send({ type: 'undo', requestId: 4 });
     await wait('editResult');
-    expect((await wait('scene')).scene.fileErrors).toEqual([]);
+    expect((await wait('scene')).scene.fileErrors).toEqual(initialErrors);
   });
   it('rejects foreign Host and Origin over HTTP and WebSocket', async () => {
     const { server } = await setup();

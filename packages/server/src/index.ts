@@ -9,14 +9,14 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMessage, Edit, ServerMessage } from '@mapedit/protocol';
-import { boxGlb } from './mock.js';
+import { mockAsset } from './mock.js';
 import { MemoryState, type StateStore } from './state.js';
 import { DiskState } from './disk-state.js';
 import { buildProject, buildFromParsed } from './build-project.js';
 import { ScreenshotService } from './screenshot.js';
 import { createMcpHttpHandler, type AgentServices } from './mcp.js';
 import { createAgentServices } from './services.js';
-import { createMockServices } from './mock-services.js';
+import { createMockServices, parseMockNotice, triggerMockNotice } from './mock-services.js';
 export { MemoryState } from './state.js';
 export { mockScene } from './mock.js';
 export type { StateStore } from './state.js';
@@ -84,6 +84,31 @@ function json(response: ServerResponse, status: number, value: unknown): void {
   response.end(JSON.stringify(value));
 }
 
+function readMockTrigger(request: IncomingMessage): Promise<unknown> {
+  return new Promise((resolveBody, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let exceeded = false;
+    request.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > 16_384) {
+        if (!exceeded) reject(new RangeError('Mock trigger body exceeds 16384 bytes.'));
+        exceeded = true;
+        chunks.length = 0;
+      } else chunks.push(chunk);
+    });
+    request.once('error', reject);
+    request.once('end', () => {
+      if (exceeded) return;
+      try {
+        resolveBody(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      } catch {
+        reject(new Error('Mock trigger body must be valid JSON.'));
+      }
+    });
+  });
+}
+
 export async function createServer(options: ServerOptions = {}): Promise<MapeditServer> {
   const root = resolve(options.root ?? process.cwd());
   const canonicalRoot = await realpath(root);
@@ -125,6 +150,22 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       response.setHeader('X-Mapedit-Project', projectIdentity);
       response.setHeader('X-Mapedit-Pid', String(process.pid));
       const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
+      if (url.pathname === '/api/mock/trigger') {
+        if (!options.mock || !(state instanceof MemoryState))
+          return json(response, 404, { error: 'Not found.' });
+        if (request.method !== 'POST') return json(response, 405, { error: 'Method not allowed.' });
+        try {
+          const code = parseMockNotice(await readMockTrigger(request));
+          const triggered = queue.then(() => triggerMockNotice(state, code));
+          queue = triggered.catch(() => {});
+          await triggered;
+          return json(response, 200, { ok: true });
+        } catch (error) {
+          return json(response, error instanceof RangeError ? 413 : 400, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       if (request.method === 'HEAD' && url.pathname === '/api/project') {
         response.writeHead(200, { 'Cache-Control': 'no-store' });
         response.end();
@@ -142,15 +183,10 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
         return json(response, 200, await sceneFor(id ?? undefined));
       }
       if (url.pathname.startsWith('/assets/mock/')) {
-        if (
-          url.pathname !== '/assets/mock/block.glb' &&
-          url.pathname !== '/assets/mock/terrain.glb'
-        )
-          return json(response, 404, { error: 'Asset not found.' });
+        const data = options.mock ? mockAsset(url.pathname) : undefined;
+        if (!data) return json(response, 404, { error: 'Asset not found.' });
         response.writeHead(200, { 'Content-Type': 'model/gltf-binary' });
-        response.end(
-          url.pathname.endsWith('terrain.glb') ? boxGlb([100, 0.5, 100], [0, -0.5, 0]) : boxGlb(),
-        );
+        response.end(data);
         return;
       }
       if (url.pathname.startsWith('/assets/')) {
