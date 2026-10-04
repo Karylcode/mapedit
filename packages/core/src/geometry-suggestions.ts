@@ -34,6 +34,8 @@ interface SocketOption {
   distance: number;
   clear: boolean;
   text: string;
+  /** Added when the target Module needs Support of its own first. */
+  note: string;
 }
 const directions: { name: string; step: Vec3 }[] = [
   { name: 'east', step: [1, 0, 0] },
@@ -184,7 +186,10 @@ export function createGeometryAdvice(context: AdviceContext): {
     }
     return `${first} (${a.instance.ref}) overlaps ${second}${b ? ` (${b.instance.ref})` : ''} at ${locationText(location)}. No cardinal move in 0.5 m steps within 5 m clears the current geometry; change its shape or height and run check again.`;
   };
-  /** Compatible free Sockets of supported Modules, nearest first, including the own Structure. */
+  /**
+   * Compatible free Sockets, nearest first: every one in the own Structure, supported or not,
+   * and supported ones of other Structures within the search distance.
+   */
   const socketOptions = (entry: PlacedSolid): SocketOption[] => {
     const { instance } = entry;
     const owner = parseObjectRef(instance.ref);
@@ -195,10 +200,7 @@ export function createGeometryAdvice(context: AdviceContext): {
       (socket) => !socket.occupied && socket.instanceRef === instance.ref,
     );
     const targetSockets = context.compilation.sockets.filter(
-      (socket) =>
-        !socket.occupied &&
-        supportedNow.has(socket.instanceRef) &&
-        !chainRefs.has(socket.instanceRef),
+      (socket) => !socket.occupied && !chainRefs.has(socket.instanceRef),
     );
     const options: SocketOption[] = [];
     for (const own of ownSockets)
@@ -221,15 +223,13 @@ export function createGeometryAdvice(context: AdviceContext): {
         const targetSocket = targetInstance?.definition.sockets.find(
           (socket) => socket.id === target.id,
         );
-        if (
-          distance > SOCKET_SEARCH_DISTANCE ||
-          !targetInstance ||
-          targetOwner?.kind !== 'module' ||
-          !ownSocket ||
-          !targetSocket
-        )
+        if (!targetInstance || targetOwner?.kind !== 'module' || !ownSocket || !targetSocket)
           continue;
         const sameStructure = targetOwner.structureId === owner.structureId;
+        const targetSupported = supportedNow.has(target.instanceRef);
+        // Attaching across Structures moves and merges a whole Structure, so only nearby
+        // supported Sockets qualify there; inside the Structure every compatible one does.
+        if (!sameStructure && (!targetSupported || distance > SOCKET_SEARCH_DISTANCE)) continue;
         // Another Structure is joined with a Structure attachment, which moves the whole
         // Structure. Only an unattached root can be attached that way without a cycle.
         if (
@@ -254,7 +254,10 @@ export function createGeometryAdvice(context: AdviceContext): {
         const text = sameStructure
           ? `Attach ${owner.instanceId} to ${targetOwner.instanceId}.${target.id} (${relation}): in ${instance.source.file} ${instance.attachTo ? `change the attach of ${owner.instanceId} to` : `replace the at and rotation of ${owner.instanceId} with`} attach: {socket: ${own.id}, to: ${targetOwner.instanceId}.${target.id}}`
           : `Attach ${structureRef(owner.structureId)} to ${targetOwner.structureId}/${targetOwner.instanceId}.${target.id} (${relation}): in ${instance.source.file} replace the position, height and rotation of Structure ${owner.structureId} with attach: {socket: ${owner.instanceId}.${own.id}, to: ${targetOwner.structureId}/${targetOwner.instanceId}.${target.id}}`;
-        options.push({ own, target, distance, clear, text });
+        const note = targetSupported
+          ? ''
+          : ` ${targetOwner.instanceId} has no Support yet; give it Support first, as its own unsupported violation suggests.`;
+        options.push({ own, target, distance, clear, text, note });
       }
     return options.sort(
       (a, b) =>
@@ -301,13 +304,13 @@ export function createGeometryAdvice(context: AdviceContext): {
     }
     const options = socketOptions(entry);
     const clear = options.find((option) => option.clear);
-    if (clear) return `${clear.text}, then run check.`;
+    if (clear) return `${clear.text}, then run check.${clear.note}`;
     const lowered = lowerModule(entry);
     if (lowered) return lowered;
     // A compatible Socket is the intended fix even when something is in the way.
     if (options[0])
-      return `${options[0].text}. The attached position overlaps another Module or the terrain, so move that obstruction too, then run check.`;
-    return `No clear downward move of ${structureRef(instance.structureId)} or ${instance.ref} within 3 m and no compatible supported free Socket within ${SOCKET_SEARCH_DISTANCE} m was found for ${instance.ref}. If it is intentionally floating, set canFloat: true in ${instance.definition.source.file}.`;
+      return `${options[0].text}. The attached position overlaps another Module or the terrain, so move that obstruction too, then run check.${options[0].note}`;
+    return `No clear downward move of ${structureRef(instance.structureId)} or ${instance.ref} within 3 m, no compatible free Socket in its Structure and no compatible supported free Socket within ${SOCKET_SEARCH_DISTANCE} m in another Structure was found for ${instance.ref}. If it is intentionally floating, set canFloat: true in ${instance.definition.source.file}.`;
   };
   return { overlap, unsupported };
 }

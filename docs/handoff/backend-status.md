@@ -644,3 +644,19 @@ by Claude. Each entry records the change, the tests and any deviation.
   `server/test/screenshot.test.ts` (the flag, the relayed page error, and a real
   WebGL2 context in the headless render page, which also runs on CI); the first
   two failed before the change.
+
+## 第三輪修正
+
+F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` branch.
+
+- **F27 complete:** `unsupported` advice now offers every compatible free Socket
+  in the Module's own Structure, at any distance and whether or not that Socket's
+  Module has Support yet; when it does not, the advice adds that the target needs
+  Support first. Sockets in other Structures still have to be supported and
+  within 5 m, because that attachment moves and merges a whole Structure.
+  `canFloat` is suggested only when neither kind exists. Tests:
+  `core/test/suggestions.test.ts` "F27": (a) a house with `height: 2` whose roof
+  floats 1 m above `wall_n.top` (the wall is told to lower the house, the roof to
+  attach to `wall_n.top` and that `wall_n` needs Support), and (b) a roof 6 m
+  above a compatible Socket of its Structure; both returned the `canFloat` advice
+  before the change. Deviation: none.
