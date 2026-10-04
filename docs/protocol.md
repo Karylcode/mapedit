@@ -217,8 +217,9 @@ type ClientMessage =
   | { type: 'redo'; requestId: number };
 
 type Edit =
-  // 移動整個結構或標記。position 是滑鼠在地圖上指到的點（還沒對齊），
-  // 對齊格子和決定高度都由後端負責。rotation 是想要的角度（度）。
+  // 移動整個結構或標記。position 是物件原點想放的位置（還沒對齊），
+  // 也就是結構的 position、點標記的 position 或方形標記的 center；
+  // 不是滑鼠指到的點。對齊格子和決定高度都由後端負責。rotation 是想要的角度（度）。
   | { kind: 'move'; ref: ObjectRef; position: Vec3; rotation: number }
   // 刪除結構、結構裡的單一模組，或標記。
   | { kind: 'delete'; ref: ObjectRef };

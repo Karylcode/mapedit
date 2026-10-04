@@ -252,6 +252,11 @@ is not modified here.
 
   ![700 × 600](images/editor-narrow-700.png)
 
+- **FE17**：等後端 F35（F28、F34 已經合併進來），先做後面的項目。
+- **FE18 完成**：protocol.md 第 4 節 `Edit` 的說明改成實際的意思：`position` 是物件原點想放的位置（還沒對齊），
+  也就是結構的 `position`、點標記的 `position` 或方形標記的 `center`，不是滑鼠指到的點。前端送的和後端 `snapMove`
+  的解讀本來就一致，只改文件，沒有程式測試。已通知後端。
+
 ## 自行決定的事
 
 - 打包後的 JS/CSS 放在 `dist/static/`，因為 `/assets/` 是後端產生 glb 的網址；
