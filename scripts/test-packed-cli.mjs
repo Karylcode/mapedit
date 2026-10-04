@@ -57,6 +57,24 @@ try {
   assert(!isWithin(repository, temporary), 'Package acceptance must run outside the repository.');
   await mkdir(artifacts);
   await mkdir(consumer);
+  // pnpm's default store depends on the current drive. Use the store that actually
+  // populated this checkout, even when the isolated consumer is on another drive.
+  const repositoryModules = parse(
+    await readFile(path.join(repository, 'node_modules/.modules.yaml'), 'utf8'),
+  );
+  assert(
+    typeof repositoryModules.storeDir === 'string' && path.isAbsolute(repositoryModules.storeDir),
+    'Repository installation must record an absolute pnpm storeDir.',
+  );
+  const repositoryStore = await realpath(repositoryModules.storeDir);
+  // .modules.yaml records the versioned directory; --store-dir appends that version.
+  const storeBase = path.dirname(repositoryModules.storeDir);
+  const selectedStore = await pnpm(['store', 'path', '--store-dir', storeBase], consumer);
+  assert.equal(
+    await realpath(selectedStore.stdout.trim()),
+    repositoryStore,
+    'Consumer pnpm must select the repository installation store.',
+  );
   const dependencies = {};
   const names = [];
   const packedPackages = [];
@@ -110,6 +128,8 @@ try {
       '--offline',
       '--frozen-lockfile',
       '--ignore-scripts',
+      '--store-dir',
+      storeBase,
       '--cache-dir',
       path.join(temporary, 'registry-cache'),
     ],
@@ -119,6 +139,14 @@ try {
     await readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8'),
     lockText,
     'The isolated installation must not resolve or rewrite the frozen dependency graph.',
+  );
+  const consumerModules = parse(
+    await readFile(path.join(consumer, 'node_modules/.modules.yaml'), 'utf8'),
+  );
+  assert.equal(
+    await realpath(consumerModules.storeDir),
+    repositoryStore,
+    'Installed artifacts must use the already populated repository store.',
   );
   const installed = {};
   for (const name of names) {

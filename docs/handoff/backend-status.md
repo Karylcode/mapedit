@@ -277,6 +277,11 @@ deviation. Final Windows acceptance is recorded after F16; GitHub CI is tracked 
   then passed without resolving any ranges. `cli/test/packed-lockfile.test.ts`
   covers graph preservation and omitted/added/changed declarations or stale edges.
   All 15 related tests pass, followed by all 265 Windows tests across 43 files.
+  The harness also pins the store recorded by the repository installation, because
+  GitHub's Windows checkout and temporary consumer use different drives and pnpm
+  otherwise chooses different stores. The actual packed test overrides the default
+  with an empty store to reproduce that failure and verifies the selected store
+  before and after installation; registry metadata remains empty and offline.
 - **F13 complete:** the disposable model worker is an ordinary TypeScript entry
   point covered by strict compilation and ESLint, with shared typed stdin/stdout
   messages. The runner resolves the installed server package's compiled worker,
@@ -296,6 +301,10 @@ deviation. Final Windows acceptance is recorded after F16; GitHub CI is tracked 
   imported an existing GLB under 5.1 and verified 24 MeshColliders, two markers,
   the spawn prefab and trigger. Scoped lint passes. Final fresh-village acceptance
   follows after F16. Deviation: none.
+  CI follow-up: one hosted PowerShell process hit the original 15-second deadline
+  while the equivalent job passed. The external shell test now has a bounded
+  60-second process deadline and reports phase markers, elapsed time and exit
+  details on failure. Map preview/compiler performance thresholds are unchanged.
 - **F15 complete:** protocol helpers now construct/parse ObjectRefs and validate
   identifiers; compiler, editing, exporting, mock and MCP consumers use them.
   Unused Module definitions report empty object refs plus `params.moduleType`
