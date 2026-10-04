@@ -17,6 +17,8 @@ import { violationMessage, violationTitle } from './violations.js';
 
 /** Degrees per press of R, matching the structure rotation step. */
 export const ROTATION_STEP = 15;
+/** How long an applied drop's preview waits for the snapshot that shows it. */
+export const SNAPSHOT_WAIT_MS = 2000;
 
 interface Point {
   x: number;
@@ -35,6 +37,8 @@ interface Drag {
   /** Set once dropped: the applyEdit request, then whether it succeeded. */
   applyId?: number;
   applied?: boolean;
+  /** Removes the preview if the snapshot showing the drop does not come. */
+  timeout?: ReturnType<typeof setTimeout>;
 }
 
 type Pending =
@@ -67,6 +71,8 @@ export class EditController {
    * repeated presses build on what was already sent instead of the old snapshot.
    */
   private readonly inFlight = new Map<ObjectRef, InFlight>();
+  /** Undo and redo pressed after a drop, sent once the drop is answered. */
+  private readonly afterDrop: ('undo' | 'redo')[] = [];
 
   constructor(
     private readonly connection: Connection,
@@ -174,6 +180,7 @@ export class EditController {
     const drag = this.drag;
     if (!drag) return;
     this.drag = undefined;
+    clearTimeout(drag.timeout);
     this.viewport.scene.remove(drag.ghost);
     drag.ghost.dispose();
     this.note.hide();
@@ -235,11 +242,21 @@ export class EditController {
   }
 
   undo(): void {
-    if (!this.drag) this.send({ type: 'undo' }, { kind: 'undo' });
+    this.travel('undo');
   }
 
   redo(): void {
-    if (!this.drag) this.send({ type: 'redo' }, { kind: 'redo' });
+    this.travel('redo');
+  }
+
+  /**
+   * Undo and redo wait for a drop the backend has not answered, so they act
+   * on history that includes it; during an active drag they do nothing.
+   */
+  private travel(kind: 'undo' | 'redo'): void {
+    if (this.dragging) return;
+    if (this.drag && !this.drag.applied) this.afterDrop.push(kind);
+    else this.send({ type: kind }, { kind });
   }
 
   private send(request: Request, pending: Pending): number | undefined {
@@ -313,13 +330,25 @@ export class EditController {
     this.pending.delete(result.requestId);
     for (const [ref, edit] of this.inFlight)
       if (edit.requestId === result.requestId) {
-        if (result.ok) edit.answered = true;
-        else this.inFlight.delete(ref);
+        if (!result.ok) this.inFlight.delete(ref);
+        else {
+          edit.answered = true;
+          // Normally the next snapshot settles it; if none comes, do not block the object forever.
+          setTimeout(() => {
+            if (this.inFlight.get(ref) === edit) this.inFlight.delete(ref);
+          }, SNAPSHOT_WAIT_MS);
+        }
       }
     const drag = this.drag;
     if (drag && drag.applyId === result.requestId) {
-      if (result.ok) drag.applied = true;
-      else this.cancelDrag();
+      if (result.ok) {
+        drag.applied = true;
+        // The snapshot showing the drop normally follows at once; never wait forever.
+        drag.timeout = setTimeout(() => {
+          if (this.drag === drag) this.cancelDrag();
+        }, SNAPSHOT_WAIT_MS);
+      } else this.cancelDrag();
+      for (const kind of this.afterDrop.splice(0)) this.send({ type: kind }, { kind });
     }
     if (result.ok) return;
     const reason = result.reason ?? '';
@@ -353,12 +382,14 @@ export class EditController {
   }
 
   private disconnected(): void {
-    const dropped = this.drag?.applyId !== undefined && !this.drag.applied;
+    // A drop already sent may or may not have been applied before the line went down.
+    const unanswered = this.drag?.applyId !== undefined && !this.drag.applied;
     this.cancelDrag();
     this.pending.clear();
     this.inFlight.clear();
+    this.afterDrop.length = 0;
     this.throttle.reset();
-    if (dropped) this.say('warning', 'edit.offline');
+    if (unanswered) this.say('warning', 'edit.uncertain');
   }
 
   private rotationOf(ref: ObjectRef): number {

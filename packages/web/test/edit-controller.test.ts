@@ -66,9 +66,13 @@ function setup(scene: SceneSnapshot = mockScene()) {
   const emit = (message: ServerMessage) => {
     for (const listener of listeners.message!) listener(message as never);
   };
+  const setStatus = (status: string) => {
+    connection.status = status;
+    for (const listener of listeners.status!) listener(status as never);
+  };
   const applied = () =>
     sent.filter((m): m is Extract<ClientMessage, { type: 'applyEdit' }> => m.type === 'applyEdit');
-  return { edits, store, map, sent, applied, emit, toasts, note };
+  return { edits, store, map, sent, applied, emit, setStatus, toasts, note, viewport };
 }
 
 describe('EditController before the backend answers', () => {
@@ -93,6 +97,46 @@ describe('EditController before the backend answers', () => {
     edits.deleteSelection();
     expect(applied()).toHaveLength(1);
     expect(toasts.show).not.toHaveBeenCalled();
+  });
+
+  it('removes the preview of an applied drop even if no snapshot follows (FE9)', () => {
+    vi.useFakeTimers();
+    try {
+      const { edits, applied, emit, viewport } = setup();
+      expect(edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 })).toBe(
+        'drag',
+      );
+      edits.dragEnd(new Vector2(0.1, 0.05), { x: 700, y: 380 });
+      const drop = applied().at(-1)!;
+      emit({ type: 'editResult', requestId: drop.requestId, ok: true });
+      expect(viewport.scene.getObjectByName('ghost')).toBeDefined();
+      vi.advanceTimersByTime(2_500);
+      expect(viewport.scene.getObjectByName('ghost')).toBeUndefined();
+      // The house can be dragged again.
+      expect(edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 })).toBe(
+        'drag',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sends Ctrl+Z pressed right after a drop once the drop is answered (FE9)', () => {
+    const { edits, sent, applied, emit } = setup();
+    edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });
+    edits.dragEnd(new Vector2(0.1, 0.05), { x: 700, y: 380 });
+    edits.undo();
+    expect(sent.filter((m) => m.type === 'undo')).toHaveLength(0);
+    emit({ type: 'editResult', requestId: applied().at(-1)!.requestId, ok: true });
+    expect(sent.filter((m) => m.type === 'undo')).toHaveLength(1);
+  });
+
+  it('says the outcome is unknown when the connection drops after a drop (FE9)', () => {
+    const { edits, toasts, setStatus } = setup();
+    edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });
+    edits.dragEnd(new Vector2(0.1, 0.05), { x: 700, y: 380 });
+    setStatus('reconnecting');
+    expect(toasts.show).toHaveBeenCalledWith(expect.objectContaining({ key: 'edit.uncertain' }));
   });
 
   it('asks the human to wait instead of panning when dragging a changing object (FE5)', () => {
