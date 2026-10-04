@@ -29,8 +29,9 @@ frontend exists. GitHub publication and CI status are recorded below.
 
 ## 目前進度
 
-Second round: F17–F26 and F23b are complete on `backend`, with a failing test
-written before each fix and one numbered commit per item. On this Windows machine
+Second round: F17–F26 and F23b are complete on `backend`, one numbered commit per
+item. Every behavior change has a test that failed before the change; the
+refactoring items (F24–F26) add tests that guard the new structure. On this Windows machine
 `pnpm build`, `pnpm lint`, `pnpm typecheck` and `pnpm e2e` pass, and `pnpm test`
 passes all 313 tests in 53 files (see 已知問題 for the intermittent Node 24
 worker abort, which also affects the earlier commit). The fresh no-AI village
