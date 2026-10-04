@@ -536,3 +536,22 @@ by Claude. Each entry records the change, the tests and any deviation.
   `core/test/terminology.test.ts` and `server/test/terminology.test.ts` "F24"
   check the identifiers, mock messages and wording; all four failed before the
   renames. Deviation: none.
+- **F25 complete:** each duplicate now has one implementation.
+  `sceneHasProblems` (`core/src/report.ts`) decides whether a map has violations
+  or file errors for export, the CLI exit code, `exportProject` and MCP `ok`.
+  `selectedMapIds` (`server/src/build-project.ts`) chooses the maps for
+  `buildProjects` and the MCP `getScenes`. Path containment lives only in
+  `server/src/paths.ts`: `scripts/test-packed-cli.mjs` imports the built
+  `containsPath` (that script already needs a build), and the check in
+  `scripts/prepare-cli.mjs` was removed because its destination is a fixed
+  folder inside the CLI package and could never fail. The compiler's three Socket
+  address lists use one `socketAddresses` helper. In geometry, `bucketKeys`
+  serves both the pair search and `nearby`, the overlap test is the shared
+  `overlapLocation` (F20), and `supportedFrom` (`core/src/support.ts`) is the
+  single Support search used by the check and the advice. `NOTICE_CODES` in
+  `packages/protocol` defines `NoticeCode` and drives `parseMockNotice`, and
+  `TERRAIN_HEIGHT_RANGE` in `core/src/terrain.ts` bounds both the PNG encoding
+  and the MCP terrain schema. Tests: `core/test/shared-helpers.test.ts` and
+  `server/test/shared-helpers.test.ts` cover the new helpers; existing compiler,
+  geometry, CLI, MCP, mock and packed-CLI tests cover the call sites (all 304
+  tests pass). Deviation: none.

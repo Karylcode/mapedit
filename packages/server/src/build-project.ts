@@ -17,6 +17,7 @@ import {
   type TerrainData,
   type ModelGeometry,
 } from '@mapedit/core';
+import type { ProjectInfo } from '@mapedit/protocol';
 import { projectPath, readProject } from './project-files.js';
 import { runModel, loadBuiltinTextures } from './model-runner.js';
 
@@ -126,6 +127,16 @@ export async function buildProject(
   return buildParsedProject(root, await readProject(root), mapId, revision);
 }
 
+/**
+ * Maps a check or export covers: the requested map, otherwise every map sorted by id.
+ * `undefined` stands for the default map when the project has none, keeping its diagnostics.
+ */
+export function selectedMapIds(info: ProjectInfo, mapId?: string): (string | undefined)[] {
+  if (mapId !== undefined) return [mapId];
+  const ids = info.maps.map((map) => map.id).sort(compareText);
+  return ids.length ? ids : [undefined];
+}
+
 /** Check all maps from the same authoring snapshot; retain diagnostics for an empty project. */
 export async function buildProjects(
   root: string,
@@ -133,11 +144,9 @@ export async function buildProjects(
   revision = 1,
 ): Promise<BuiltProject[]> {
   const parsed = await readProject(root);
-  const ids =
-    mapId === undefined ? parsed.info.maps.map((map) => map.id).sort(compareText) : [mapId];
-  if (ids.length === 0) return [await buildParsedProject(root, parsed, undefined, revision)];
   const built: BuiltProject[] = [];
-  for (const id of ids) built.push(await buildParsedProject(root, parsed, id, revision));
+  for (const id of selectedMapIds(parsed.info, mapId))
+    built.push(await buildParsedProject(root, parsed, id, revision));
   return built;
 }
 

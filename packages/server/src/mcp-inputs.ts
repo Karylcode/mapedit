@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SURFACES, type TerrainCommand } from '@mapedit/core';
+import { SURFACES, TERRAIN_HEIGHT_RANGE, type TerrainCommand } from '@mapedit/core';
 import { parseObjectRef, structureRef, type ObjectRef } from '@mapedit/protocol';
 
 /** Structure arguments accept either a bare id or a complete Structure ObjectRef. */
@@ -27,11 +27,19 @@ const terrainRegion = z.discriminatedUnion('kind', [
     width: z.number().positive().max(2000),
   }),
 ]);
-const height = z.number().min(-16384).max(16383.5).multipleOf(0.5);
+const height = z
+  .number()
+  .min(TERRAIN_HEIGHT_RANGE.min)
+  .max(TERRAIN_HEIGHT_RANGE.max)
+  .multipleOf(0.5);
 export const terrainCommandSchema: z.ZodType<TerrainCommand> = z.discriminatedUnion('operation', [
   z.object({
     operation: z.enum(['raise', 'lower']),
-    amount: z.number().positive().max(32767.5).multipleOf(0.5),
+    amount: z
+      .number()
+      .positive()
+      .max(TERRAIN_HEIGHT_RANGE.max - TERRAIN_HEIGHT_RANGE.min)
+      .multipleOf(0.5),
     region: terrainRegion,
   }),
   z.object({ operation: z.literal('flatten'), height: height.optional(), region: terrainRegion }),

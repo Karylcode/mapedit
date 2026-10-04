@@ -308,6 +308,13 @@ export function compileMap(
           `Socket ${instanceRef}.${socket.id} (${socket.type}) accepts: ${compatibleSocketTypes(parsed.project.socketTypes, socket.type).join(', ') || 'no declared types'}.`,
       )
       .join(' ');
+  /** Socket addresses as written in attach: `instance.socket`, or `structure/instance.socket`. */
+  const socketAddresses = (modules: readonly ModuleInstance[], structureId?: string): string[] =>
+    modules.flatMap((instance) =>
+      (parsed.modules[instance.module]?.sockets ?? []).map(
+        (socket) => `${structureId ? `${structureId}/` : ''}${instance.id}.${socket.id}`,
+      ),
+    );
   const socketPairParams = (own: PlacedSocket, target: PlacedSocket) => ({
     socketA: `${own.instanceRef}.${own.socket.id}`,
     socketB: `${target.instanceRef}.${target.socket.id}`,
@@ -463,13 +470,7 @@ export function compileMap(
                   'Set attach.socket to an own Socket id.',
                 )} ${referenceSuggestion(
                   instance.attach.to,
-                  structure.modules
-                    .filter((other) => other.id !== instance.id)
-                    .flatMap((other) =>
-                      (parsed.modules[other.module]?.sockets ?? []).map(
-                        (socket) => `${other.id}.${socket.id}`,
-                      ),
-                    ),
+                  socketAddresses(structure.modules.filter((other) => other.id !== instance.id)),
                   'Set attach.to to instance_id.socket_id.',
                 )}`,
                 params: { reason: 'unresolved_attachment', reference: instance.attach.to },
@@ -592,23 +593,13 @@ export function compileMap(
               source: structure.source,
               suggestion: `${referenceSuggestion(
                 structure.attach.socket,
-                structure.modules.flatMap((instance) =>
-                  (parsed.modules[instance.module]?.sockets ?? []).map(
-                    (socket) => `${instance.id}.${socket.id}`,
-                  ),
-                ),
+                socketAddresses(structure.modules),
                 'Set attach.socket to own_instance.socket.',
               )} ${referenceSuggestion(
                 structure.attach.to,
                 structures
                   .filter((other) => other.id !== structure.id)
-                  .flatMap((other) =>
-                    other.modules.flatMap((instance) =>
-                      (parsed.modules[instance.module]?.sockets ?? []).map(
-                        (socket) => `${other.id}/${instance.id}.${socket.id}`,
-                      ),
-                    ),
-                  ),
+                  .flatMap((other) => socketAddresses(other.modules, other.id)),
                 'Set attach.to to other_structure/instance.socket.',
               )}`,
               params: { reason: 'unresolved_attachment', reference: structure.attach.to },

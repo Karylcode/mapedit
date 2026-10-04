@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   listFloatingInstances,
+  sceneHasProblems,
   type Compilation,
   type ModuleDefinition,
   type TerrainCommand,
@@ -259,7 +260,7 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
         maps: scenes.map((scene) => ({
           map: scene.map.id,
           revision: scene.revision,
-          ok: scene.violations.length === 0 && scene.fileErrors.length === 0,
+          ok: !sceneHasProblems(scene),
           violations: page(scene.violations, offset, limit),
           fileErrors: page(scene.fileErrors, offset, limit),
           floating: page(listFloatingInstances(scene), offset, limit),

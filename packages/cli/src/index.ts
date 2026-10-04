@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer, buildProjects, exportProject, connectStdio } from '@mapedit/server';
-import { listFloatingInstances } from '@mapedit/core';
+import { listFloatingInstances, sceneHasProblems } from '@mapedit/core';
 import { spawn } from 'node:child_process';
 import { initProject } from './init.js';
 import { discoverServer, registerServer } from './discovery.js';
@@ -104,11 +104,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         );
       }
     }
-    process.exitCode = maps.some(
-      ({ violations, fileErrors }) => violations.length || fileErrors.length,
-    )
-      ? 1
-      : 0;
+    process.exitCode = maps.some(sceneHasProblems) ? 1 : 0;
     return;
   }
   if (command === 'dev') {

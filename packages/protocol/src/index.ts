@@ -131,12 +131,15 @@ export interface HistoryEntry {
   summary: string;
   files: string[];
 }
-export type NoticeCode =
-  | 'agent_changed'
-  | 'overwritten_by_agent'
-  | 'agent_change_overridden'
-  | 'edit_rejected'
-  | 'file_error';
+/** Every notice code, in protocol section 4 order. */
+export const NOTICE_CODES = [
+  'agent_changed',
+  'overwritten_by_agent',
+  'agent_change_overridden',
+  'edit_rejected',
+  'file_error',
+] as const;
+export type NoticeCode = (typeof NOTICE_CODES)[number];
 export interface RenderSpec {
   views: Array<'top' | 'ne' | 'nw' | 'se' | 'sw'>;
   focus?: { center: Vec3; radius: number };

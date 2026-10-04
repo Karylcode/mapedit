@@ -5,6 +5,7 @@ import { transformPoint } from './math.js';
 import { geometryMesh, getManifold, meshGeometry, type ModelGeometry } from './model.js';
 import { createViolation } from './violation.js';
 import { createGeometryAdvice, type TerrainContact } from './geometry-suggestions.js';
+import { supportedFrom } from './support.js';
 import {
   fillsBounds,
   GEOMETRY_TOLERANCE,
@@ -28,6 +29,16 @@ export interface GeometryTerrain {
 export interface GeometryCheck {
   violations: ViolationView[];
   generated: { owner: string; geometry: ModelGeometry }[];
+}
+const BUCKET_SIZE = 8;
+/** Spatial hash cells, in metres along X and Z, that a box touches within the tolerance. */
+function bucketKeys(bounds: Bounds): string[] {
+  const keys: string[] = [];
+  const first = (value: number) => Math.floor((value - GEOMETRY_TOLERANCE) / BUCKET_SIZE),
+    last = (value: number) => Math.floor((value + GEOMETRY_TOLERANCE) / BUCKET_SIZE);
+  for (let z = first(bounds.min[2]); z <= last(bounds.max[2]); z++)
+    for (let x = first(bounds.min[0]); x <= last(bounds.max[0]); x++) keys.push(`${x},${z}`);
+  return keys;
 }
 function* sampledTriangles(terrain: GeometryTerrain, bounds: Bounds): Iterable<[Vec3, Vec3, Vec3]> {
   if (terrain.trianglesInBounds) {
@@ -178,7 +189,8 @@ export async function checkGeometry(
     return value;
   };
   const result: GeometryCheck = { violations: [], generated: [] };
-  const supported = new Set<string>();
+  /** Modules on terrain or marked canFloat; Support spreads from them through links. */
+  const supportSeeds = new Set<string>();
   const supportLinks = new Map<string, Set<string>>();
   const link = (from: string, to: string): void => {
     const links = supportLinks.get(from) ?? new Set<string>();
@@ -203,7 +215,7 @@ export async function checkGeometry(
     }
     for (const entry of entries) {
       const { instance, bounds, solid } = entry;
-      if (instance.definition.canFloat) supported.add(instance.ref);
+      if (instance.definition.canFloat) supportSeeds.add(instance.ref);
       const triangles = [...sampledTriangles(terrain, bounds)];
       if (instance.definition.isFoundation) {
         const extension = foundationExtension(library, entry, triangles);
@@ -224,7 +236,7 @@ export async function checkGeometry(
         }
       }
       const contact = measureTerrainContact(library, entry, triangles);
-      if (contact.supported) supported.add(instance.ref);
+      if (contact.supported) supportSeeds.add(instance.ref);
       if (contact.overlap)
         result.violations.push(
           createViolation({
@@ -241,26 +253,12 @@ export async function checkGeometry(
     }
     const buckets = new Map<string, number[]>(),
       pairs = new Set<string>();
-    const cell = 8;
     for (let index = 0; index < entries.length; index++) {
-      const entry = entries[index]!,
-        bounds = entry.bounds;
-      for (
-        let z = Math.floor((bounds.min[2] - GEOMETRY_TOLERANCE) / cell);
-        z <= Math.floor((bounds.max[2] + GEOMETRY_TOLERANCE) / cell);
-        z++
-      ) {
-        for (
-          let x = Math.floor((bounds.min[0] - GEOMETRY_TOLERANCE) / cell);
-          x <= Math.floor((bounds.max[0] + GEOMETRY_TOLERANCE) / cell);
-          x++
-        ) {
-          const key = `${x},${z}`,
-            occupants = buckets.get(key) ?? [];
-          for (const other of occupants) pairs.add(`${other},${index}`);
-          occupants.push(index);
-          buckets.set(key, occupants);
-        }
+      for (const key of bucketKeys(entries[index]!.bounds)) {
+        const occupants = buckets.get(key) ?? [];
+        for (const other of occupants) pairs.add(`${other},${index}`);
+        occupants.push(index);
+        buckets.set(key, occupants);
       }
     }
     for (const pair of pairs) {
@@ -303,17 +301,9 @@ export async function checkGeometry(
         link(entry.instance.ref, entry.instance.attachTo);
       }
     }
-    const supportSeeds = new Set(supported);
-    const queue = [...supported];
-    for (let i = 0; i < queue.length; i++)
-      for (const next of supportLinks.get(queue[i]!) ?? []) {
-        if (!supported.has(next)) {
-          supported.add(next);
-          queue.push(next);
-        }
-      }
+    const supportedModules = supportedFrom(supportSeeds, supportLinks);
     for (const entry of entries)
-      if (!supported.has(entry.instance.ref))
+      if (!supportedModules.has(entry.instance.ref))
         result.violations.push(
           createViolation({
             kind: 'unsupported',
@@ -339,19 +329,8 @@ export async function checkGeometry(
         tolerance: GEOMETRY_TOLERANCE,
         nearby(bounds) {
           const indices = new Set<number>();
-          for (
-            let z = Math.floor((bounds.min[2] - GEOMETRY_TOLERANCE) / cell);
-            z <= Math.floor((bounds.max[2] + GEOMETRY_TOLERANCE) / cell);
-            z++
-          ) {
-            for (
-              let x = Math.floor((bounds.min[0] - GEOMETRY_TOLERANCE) / cell);
-              x <= Math.floor((bounds.max[0] + GEOMETRY_TOLERANCE) / cell);
-              x++
-            ) {
-              for (const index of buckets.get(`${x},${z}`) ?? []) indices.add(index);
-            }
-          }
+          for (const key of bucketKeys(bounds))
+            for (const index of buckets.get(key) ?? []) indices.add(index);
           return [...indices].map((index) => entries[index]!);
         },
         overlaps: (a, b) => overlapLocation(a, b) !== undefined,

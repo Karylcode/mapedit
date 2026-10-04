@@ -1,6 +1,6 @@
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
-import { exportMapGlb } from '@mapedit/core';
+import { exportMapGlb, sceneHasProblems } from '@mapedit/core';
 import { buildProjects, type BuiltProject } from './build-project.js';
 import { loadBuiltinTextures } from './model-runner.js';
 
@@ -34,7 +34,7 @@ export async function exportProject(
   out: string,
 ): Promise<string[]> {
   const built = await buildProjects(root, mapId);
-  const invalid = built.filter(({ scene }) => scene.violations.length || scene.fileErrors.length);
+  const invalid = built.filter(({ scene }) => sceneHasProblems(scene));
   if (invalid.length)
     throw new Error(
       `Export refused for maps: ${invalid.map(({ scene }) => scene.map.id).join(', ')}. ${[
