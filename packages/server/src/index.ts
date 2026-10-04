@@ -26,6 +26,7 @@ export { buildProject, buildProjects, buildFromParsed } from './build-project.js
 export { exportProject } from './export-project.js';
 export { connectStdio } from './mcp.js';
 export { DiskState } from './disk-state.js';
+export { findBrowser, SCREENSHOT_BROWSER_ARGS } from './screenshot.js';
 
 export interface ServerOptions {
   port?: number;

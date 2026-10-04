@@ -660,3 +660,10 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   attach to `wall_n.top` and that `wall_n` needs Support), and (b) a roof 6 m
   above a compatible Socket of its Structure; both returned the `canFloat` advice
   before the change. Deviation: none.
+- **Extra (frontend requests FE13, FE22) – shared catalogs:** `packages/protocol`
+  exports `VIOLATION_KINDS` and derives `ViolationKind` from it, like
+  `NOTICE_CODES`; the server package re-exports `findBrowser` and
+  `SCREENSHOT_BROWSER_ARGS` so the frontend browser tests launch the same system
+  browser with the same flags as `ScreenshotService`. Exports only, no behavior
+  change. Tests: `protocol/test/catalogs.test.ts` and the export check in
+  `server/test/screenshot.test.ts`.

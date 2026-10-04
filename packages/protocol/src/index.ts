@@ -63,14 +63,17 @@ export function markerPosition(shape: MarkerView['shape']): Vec3 {
   return shape.kind === 'point' ? shape.position : shape.center;
 }
 
-export type ViolationKind =
-  | 'overlap'
-  | 'incompatible_socket'
-  | 'unsupported'
-  | 'off_grid'
-  | 'bad_rotation'
-  | 'out_of_bounds'
-  | 'missing_reference';
+/** Every violation kind, in protocol section 3 order. */
+export const VIOLATION_KINDS = [
+  'overlap',
+  'incompatible_socket',
+  'unsupported',
+  'off_grid',
+  'bad_rotation',
+  'out_of_bounds',
+  'missing_reference',
+] as const;
+export type ViolationKind = (typeof VIOLATION_KINDS)[number];
 export interface ViolationView {
   /** Stable for the same violation across revisions, including reordered diagnostics. */
   id: string;
