@@ -57,6 +57,10 @@ export class DiskState extends EventEmitter implements StateStore {
   private baseline = new Map<string, Buffer>();
   private watcher?: FSWatcher;
   private revision = 0;
+  /** Counts every processed change of the project's authoring files. */
+  get projectRevision(): number {
+    return this.revision;
+  }
   private busy = Promise.resolve();
   private closed = false;
   private lastAgent = new Map<string, number>();

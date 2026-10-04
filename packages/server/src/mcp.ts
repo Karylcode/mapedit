@@ -24,6 +24,8 @@ import { normalizeStructureRef, terrainCommandSchema } from './mcp-inputs.js';
 
 export interface AgentServices {
   flush(): Promise<void>;
+  /** Grows whenever project files, or the mock scene, change; equal values mean no change. */
+  projectRevision(): number;
   getScene(mapId?: string): Promise<SceneSnapshot>;
   getScenes(mapId?: string): Promise<SceneSnapshot[]>;
   getCompilation(mapId?: string): Promise<Compilation | undefined>;
@@ -174,7 +176,15 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
             throw new Error(
               `Send only {"cursor":"..."} to continue a paged result. Remove ${others.map((key) => JSON.stringify(key)).join(', ')}, or run the tool again without cursor.`,
             );
-          return pager.continue(name, cursorSchema.parse((values as { cursor: unknown }).cursor));
+          // Answer only after the latest file changes, like every other tool call.
+          return pager.continue(
+            name,
+            cursorSchema.parse((values as { cursor: unknown }).cursor),
+            async () => {
+              await services.flush();
+              return services.projectRevision();
+            },
+          );
         }
         return handler(input.parse(values));
       },
@@ -189,12 +199,17 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       checkInputSize(request.params.arguments);
       const tool = tools.get(name);
       if (!tool) throw new Error('Unknown tool. Use tools/list to see the fixed tool names.');
-      return pager.bound(name, await tool.run(request.params.arguments));
+      const result = await tool.run(request.params.arguments);
+      return pager.bound(name, result, services.projectRevision());
     } catch (error) {
-      return pager.bound(name, {
-        isError: true,
-        content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }],
-      });
+      return pager.bound(
+        name,
+        {
+          isError: true,
+          content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }],
+        },
+        services.projectRevision(),
+      );
     }
   });
   registerTool(

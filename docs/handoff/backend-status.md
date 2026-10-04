@@ -475,3 +475,17 @@ by Claude. Each entry records the change, the tests and any deviation.
   invalid JSON failed by staying open. The F15 test in
   `server/test/protocol.test.ts` that expected 1008 for malformed refs now expects
   the F21 answer. Deviation: none.
+- **F22 complete:** `AgentServices.projectRevision()` reports a counter that grows
+  whenever project files change (`DiskState.projectRevision`) or the mock scene
+  changes (`scene.revision`). Each captured MCP result stores the revision at the
+  time its first page is produced, after any mutation by the tool itself. A
+  continuation first runs `flush()` to process pending file changes, then compares
+  revisions; on a mismatch the capture is discarded and the call returns
+  `Results changed since the first page. Run the tool again without cursor.`
+  Unchanged projects keep continuing from the immutable capture, so F11's
+  no-replay guarantee is unchanged. Tests: `server/test/mcp-paging.test.ts` "F22"
+  (a real project: first page of `check`, edit a structure file, continuation
+  returns the error, which failed first by returning the old page; an unchanged
+  real project pages to the end; a pending Agent edit that only the
+  continuation's flush processes). The F11 paging tests now also assert that
+  every continuation flushed first. Deviation: none.

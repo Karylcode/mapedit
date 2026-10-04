@@ -10,7 +10,13 @@ interface Capture {
   text: string;
   isError: boolean | undefined;
   expiresAt: number;
+  /** Project revision when the first page was produced. */
+  revision: number;
 }
+const UNAVAILABLE =
+  'This continuation cursor is unavailable or expired. Run the tool again if needed.';
+export const RESULTS_CHANGED =
+  'Results changed since the first page. Run the tool again without cursor.';
 
 /** Capture results, never commands, so reading another page cannot repeat a mutation. */
 export class ToolResultPager {
@@ -28,7 +34,7 @@ export class ToolResultPager {
     for (const [id, capture] of this.captures) if (capture.expiresAt <= Date.now()) this.remove(id);
   }
 
-  bound(tool: string, result: CallToolResult): CallToolResult {
+  bound(tool: string, result: CallToolResult, revision: number): CallToolResult {
     const safe = { ...result };
     delete safe.structuredContent;
     const text = result.content
@@ -43,6 +49,7 @@ export class ToolResultPager {
       text,
       isError: result.isError,
       expiresAt: Date.now() + CAPTURE_TTL,
+      revision,
     };
     this.captures.set(id, capture);
     this.retainedBytes += text.length * 2;
@@ -59,22 +66,31 @@ export class ToolResultPager {
     return page;
   }
 
-  continue(tool: string, cursor: string): CallToolResult {
+  /**
+   * Read the next page of a captured result. `refresh` processes pending file changes and
+   * returns the current project revision; any change since the first page voids the cursor.
+   */
+  async continue(
+    tool: string,
+    cursor: string,
+    refresh: () => Promise<number>,
+  ): Promise<CallToolResult> {
     this.expire();
     const match = /^([\da-f-]{36})\.(\d+)$/.exec(cursor);
-    if (!match)
-      throw new Error(
-        'This continuation cursor is unavailable or expired. Run the tool again if needed.',
-      );
+    if (!match) throw new Error(UNAVAILABLE);
     const id = match[1]!;
     const capture = this.captures.get(id);
     const offset = Number(match[2]);
     if (!capture || !Number.isSafeInteger(offset) || offset < 0 || offset >= capture.text.length)
-      throw new Error(
-        'This continuation cursor is unavailable or expired. Run the tool again if needed.',
-      );
+      throw new Error(UNAVAILABLE);
     if (capture.tool !== tool)
       throw new Error('Use this continuation cursor with its original tool.');
+    const revision = await refresh();
+    if (this.captures.get(id) !== capture) throw new Error(UNAVAILABLE);
+    if (revision !== capture.revision) {
+      this.remove(id);
+      throw new Error(RESULTS_CHANGED);
+    }
     this.captures.delete(id);
     this.captures.set(id, capture);
     return this.page(id, capture, offset);

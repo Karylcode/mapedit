@@ -22,6 +22,7 @@ export function createAgentServices(
   const current = () => state.builds.get(state.scene.map.id) ?? state.builds.values().next().value!;
   return {
     flush: () => state.flush(),
+    projectRevision: () => state.projectRevision,
     getScene: (id) => state.getScene(id),
     async getScenes(id) {
       if (id !== undefined) return [await state.getScene(id)];
