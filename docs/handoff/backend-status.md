@@ -1,6 +1,17 @@
 # Backend implementation status
 
-**Review entry point for Claude:** M0–M7 backend implementation and all F1–F16
+**Second review round (start here):** F17–F26 and F23b from
+`docs/handoff/backend-fixes-2.md` are fixed on the `backend` branch, one numbered
+commit each (F22 also has a guide follow-up), plus three requests from the
+編輯器前端 session (non-metallic terrain, sun and point-marker directions,
+screenshots without a GPU). The 第二輪修正 section at the end lists each change
+and its tests. Protocol changes are additions only: section 3 gained the
+violation params table (F23) and section 4 the stale-ref and disconnect rules
+(F21); `protocolVersion` stays 1. Things only a person can do are under
+需要人處理, notably the real Claude Code check for F17 (the CLI login on this
+machine has expired). Test, CI and push results are recorded in 目前進度.
+
+**Review entry point for Claude (first round):** M0–M7 backend implementation and all F1–F16
 review corrections in `docs/handoff/backend-fixes.md` are complete and published on
 the same `backend` branch and PR. See the numbered review correction log below.
 Start with `docs/protocol.md`, `docs/map-format.md`,
@@ -18,7 +29,14 @@ frontend exists. GitHub publication and CI status are recorded below.
 
 ## 目前進度
 
-M0–M7 and F1–F16 are complete, with regression tests before bug fixes and numbered
+Second round: F17–F26 and F23b are complete on `backend`, with a failing test
+written before each fix and one numbered commit per item. On this Windows machine
+`pnpm build`, `pnpm lint`, `pnpm typecheck` and `pnpm e2e` pass, and `pnpm test`
+passes all 313 tests in 53 files (see 已知問題 for the intermittent Node 24
+worker abort, which also affects the earlier commit). The fresh no-AI village
+still has zero violations and file errors and exports a 5,062,564-byte GLB.
+
+First round: M0–M7 and F1–F16 are complete, with regression tests before bug fixes and numbered
 commits. Full Windows validation passes, including real browser execution,
 HTTP/stdio MCP paging, isolated packed CLI installation, PowerShell 5.1, the
 unchanged 30 ms preview target and the 2-second/2,000-module geometry target.
@@ -131,6 +149,14 @@ The earlier M0–M7 counts below are historical milestone results.
   changes. Git remains the durable authoring history across server restarts.
 - Generated MCP stdio configs use the actual installed Node and CLI paths to avoid
   Windows `npx` launch differences; regenerate/update paths if the installation moves.
+- Second round (details in 第二輪修正): MCP tool schemas have no top-level
+  `required`, so required arguments are named in each description and checked at
+  run time (F17); `unsupported` advice prefers Socket attachments over lowering a
+  single Module (F18); searched advice covers the first 50 geometry violations,
+  and solids that fill their bounds use exact box arithmetic (F20); violation
+  params add `immovable_object`, and overlap uses `target` instead of the old
+  `terrain: true` (F23); `mapedit init` appends `.mapedit/` to an existing
+  `.gitignore` (F23b).
 
 ## 偏離設計
 
@@ -165,6 +191,13 @@ Both calls should complete without an API 400.
   adjacent to the bundle; this is exercised by the real Edge browser test.
 - Complete the planned real Claude Code/Codex prompt-to-village and Unity Play
   acceptance after the frontend exists. Backend tests deliberately use no AI.
+- Second round (the 編輯器前端 session was notified of each item): stale or
+  malformed refs in `previewEdit`/`applyEdit` are answered instead of closing
+  the socket, and invalid JSON now closes with 1008 (F21, protocol section 4);
+  translate violations with the section 3 params table, `TypedViolationView` and
+  `violationParamsProblems` (F23); violation ids now use fixed rule ids (F26);
+  `mapeditRender` should throw a readable error when it cannot draw, which the
+  backend relays as `Render page error: …`.
 
 ## 已知問題
 
@@ -173,6 +206,23 @@ Both calls should complete without an API 400.
   screenshot transport/render contract has passed using the test renderer.
 - UnityGLTF emits optional URP/VisualScripting assembly-reference warnings in the
   minimal built-in-renderer test project; compilation and actual import pass.
+- Overlaps between solids that are not their own bounding box (openings, or
+  Structures rotated off 90°) still need one exact Boolean each, about 0.15–0.3
+  ms per overlapping pair on this machine (F20). A map whose 2,000 Modules all
+  overlap that way can exceed 2 seconds, for example 4.3 s for 15,286 overlapping
+  30°-rotated door Modules; ordinary maps have few overlaps.
+- Local `pnpm test` on this machine (Windows, Node 24.15, four Vitest workers)
+  sometimes loses one test file: Vitest reports `Worker exited unexpectedly`, and
+  the worker's exit code is `3221226505` (`0xC0000409`, a native fail-fast abort)
+  with no JavaScript error. It also happens on the commit before this round (2 of
+  8 runs) and in roughly 1 of 7 runs now; rerunning passes. This matches the Node
+  23+/Windows libuv race `!(handle->flags & UV_HANDLE_CLOSING)` in
+  `src\win\async.c` after HTTP/fetch use
+  ([nodejs/node#56645](https://github.com/nodejs/node/issues/56645), fix in
+  [nodejs/node#61999](https://github.com/nodejs/node/pull/61999)), which other
+  projects see on Node 24 but not Node 22. Answering with `Connection: close` did
+  not remove it here, so no workaround was kept. CI runs one worker and has not
+  shown it.
 
 ## 審查修正
 
@@ -588,8 +638,8 @@ by Claude. Each entry records the change, the tests and any deviation.
   without a GPU, such as GitHub's Ubuntu runner; with a GPU nothing changes.
   When `mapeditRender` throws (the frontend reports missing WebGL or an unknown
   map that way instead of hanging), the screenshot error is the page's own
-  message, for example `Render page error: WebGL is not available in this
-  browser: …`, without Playwright's prefix and stack. Tests:
+  message after `Render page error:`, without Playwright's prefix and stack.
+  Tests:
   `server/test/screenshot.test.ts` (the flag, the relayed page error, and a real
   WebGL2 context in the headless render page, which also runs on CI); the first
   two failed before the change.
