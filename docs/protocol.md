@@ -264,7 +264,7 @@ type EditFailure =
 
 1. 連線後，前端送 `hello`，後端回 `welcome`。
 2. 前端送 `openMap`，後端回 `scene` 和 `history`。之後只要地圖有變動（Agent 改檔、人的修改、復原或重做），後端就再送一次 `scene`。
-   - `mapId` 不是專案裡的地圖時（例如 Agent 剛刪掉它），後端不會建置這張地圖，只回 `notice { level: 'error', code: 'unknown_map' }`，`message` 是英文說明；這條連線原本開著的地圖不變。已經開著的地圖之後被 Agent 刪掉時，則是下一份 `scene` 的 `fileErrors` 說明它不存在。
+   - `mapId` 不是專案裡的地圖時（例如 Agent 剛刪掉它），後端不會建置這張地圖，只回 `notice { level: 'error', code: 'unknown_map' }`，`message` 是英文說明；這條連線原本開著的地圖不變。`map.yaml` 有錯誤的地圖仍然算專案裡的地圖，照常回 `scene`，錯誤寫在 `fileErrors`。已經開著的地圖之後被 Agent 刪掉時，則是下一份 `scene` 的 `fileErrors` 說明它不存在。
 3. **拖動中**：
    - 前端每個畫面最多送一個 `previewEdit`。還沒收到回覆前，只保留最新的一個，舊的直接丟掉。
    - 後端回 `previewResult`：`transform` 是對齊後的位置，`violations` 是放在那裡會造成的違規。`ok` 為 false 時，前端把預覽畫成紅色。

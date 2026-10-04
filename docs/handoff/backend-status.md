@@ -715,11 +715,16 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   `map` answer a tool error; the mock state and `POST /api/mock/trigger` support
   the new code. A map that was open when the Agent deleted it keeps its cached
   build, so its editors see the "does not exist" file error in the next scene.
+  A map whose `map.yaml` cannot be read still counts as a project map (a
+  `maps/<id>/map.yaml` that produced no map), so `openMap` and MCP calls show its
+  file errors instead of `unknown_map`.
   Tests: `server/test/request-replies.test.ts` makes `getBuild` and `flush`
   reject on a real server and checks one `internal_error` answer per request
   (previews and applies got no answer before), checks the `unknown_map` notice,
   the kept open map and that `builds` never gains the unknown id over
-  WebSocket, HTTP and MCP (it was cached before), and covers mock mode;
+  WebSocket, HTTP and MCP (it was cached before), opens and checks a map with a
+  broken `map.yaml` while a directory whose valid `map.yaml` sets another id
+  stays unknown, and covers mock mode;
   `server/test/mock-coverage.test.ts` triggers `unknown_map`, and
   `protocol/test/catalogs.test.ts` now compares `VIOLATION_KINDS`,
   `NOTICE_CODES` and `EDIT_FAILURES` with their unions in `docs/protocol.md`.

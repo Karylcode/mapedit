@@ -233,11 +233,23 @@ export class DiskState extends EventEmitter implements StateStore {
     let build = this.builds.get(mapId);
     if (!build) {
       // Only maps of the project are built and cached (protocol section 4, flow 2).
-      if (!this.project.maps.some((map) => map.id === mapId)) throw new UnknownMapError(mapId);
+      if (!this.isProjectMap(mapId)) throw new UnknownMapError(mapId);
       build = await this.builder.build(mapId, this.revision);
       this.builds.set(mapId, build);
     }
     return build.scene;
+  }
+  /** A listed map, or the directory of a map.yaml that cannot be read, whose scene shows why. */
+  private isProjectMap(mapId: string): boolean {
+    if (this.project.maps.some((map) => map.id === mapId)) return true;
+    const parsed = this.builds.get(this.scene.map.id)?.parsed;
+    if (!parsed) return false;
+    const files = [`maps/${mapId}/map.yaml`, `maps/${mapId}/map.yml`].filter((file) =>
+      Object.hasOwn(parsed.files, file),
+    );
+    return (
+      files.length > 0 && !Object.values(parsed.maps).some((map) => files.includes(map.source.file))
+    );
   }
   async getBuild(id?: string): Promise<BuiltProject> {
     await this.getScene(id);
