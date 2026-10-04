@@ -156,6 +156,14 @@ is not modified here.
 
   ![violation in English](images/editor-violation-en.png)
 
+## 第一輪修正
+
+依 [frontend-fixes.md](frontend-fixes.md)（FE1–FE23）逐項修正，每項先寫能重現問題的測試，再修到通過。
+
+- **FE1 完成**：模組類型的模型改成每個網址只註冊一次載入回呼，載完（或失敗）時重畫一次；
+  其他快照到達時不會再替同一個網址加回呼。測試：`test/map-view-loading.test.ts`，20 種模組一個接一個載完，
+  `refresh()` 不超過 20 次（修正前同一個測試是 6,022 次以上，測試在 500 次時就停止繼續呼叫）。
+
 ## 自行決定的事
 
 - 打包後的 JS/CSS 放在 `dist/static/`，因為 `/assets/` 是後端產生 glb 的網址；

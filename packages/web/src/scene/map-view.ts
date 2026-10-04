@@ -85,6 +85,8 @@ export class MapView {
   private readonly markers = new Map<ObjectRef, MarkerObject>();
   private markerSignature = '';
   private readonly failed = new Set<string>();
+  /** Module type URLs with a load in flight; each gets one callback. */
+  private readonly loadingTypes = new Set<string>();
   private readonly pending = new Set<Promise<unknown>>();
   private focusedViolation?: string;
   private generation = 0;
@@ -364,10 +366,34 @@ export class MapView {
         (error: unknown) => {
           this.failed.add(url);
           console.warn(`mapedit: could not load ${url}`, error);
-          if (generation === this.generation) this.refresh();
           this.changed();
         },
       ),
+    );
+  }
+
+  /**
+   * Load a module type's model once per URL, then redraw. A type still loading
+   * when the next snapshot arrives is not asked for again: each arrival costs
+   * one refresh, however many snapshots came in between.
+   */
+  private loadModuleType(url: string): void {
+    if (this.loadingTypes.has(url)) return;
+    this.loadingTypes.add(url);
+    this.track(
+      this.assets
+        .load(url)
+        .then(
+          () => this.failed.delete(url),
+          (error: unknown) => {
+            this.failed.add(url);
+            console.warn(`mapedit: could not load ${url}`, error);
+          },
+        )
+        .then(() => {
+          this.loadingTypes.delete(url);
+          this.refresh();
+        }),
     );
   }
 
@@ -473,7 +499,7 @@ export class MapView {
       if (type && !this.failed.has(type.url)) {
         asset = this.assets.get(type.url);
         if (!asset) {
-          this.load(type.url, () => this.refresh());
+          this.loadModuleType(type.url);
           // Keep drawing the previous model of this type until the new one arrives.
           asset = this.batches.get(typeId)?.asset;
           if (!asset) {
