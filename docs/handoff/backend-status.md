@@ -489,3 +489,28 @@ by Claude. Each entry records the change, the tests and any deviation.
   real project pages to the end; a pending Agent edit that only the
   continuation's flush processes). The F11 paging tests now also assert that
   every continuation flushed first. Deviation: none.
+- **F23 complete:** `docs/protocol.md` section 3 now has a "違規的 params" table
+  listing each kind's params with names, types and meanings, plus the
+  `OffGridField`, `RotationField` and `MissingReferenceReason` values (additions
+  only; `ViolationView.params` stays `Record<string, unknown>`). Shapes chosen
+  for translation: `off_grid {field, values, nearest, moduleType?}`,
+  `bad_rotation {field, rotation, step, nearest, moduleType?}`,
+  `out_of_bounds {edges: [{edge, distance}], bounds, size}`,
+  `missing_reference {reason, reference, moduleType?}`,
+  `incompatible_socket {reason, socketA, socketB, typeA, typeB}`,
+  `overlap {target: 'module' | 'terrain'}` (replacing the undocumented
+  `terrain: true`) and `unsupported {}`; file-backed violations add `file` and
+  `line`. `packages/protocol` exports `ViolationParamsByKind`,
+  `TypedViolationView` and `violationParamsProblems()`, a strict checker that also
+  reports undocumented keys. `createViolation` in core now requires exactly the
+  documented params for its kind at compile time, so every compiler, geometry,
+  editor-preview and mock producer was updated; `exceededMapEdges` computes the
+  edges for both the compiler and the mock. The mock scene's socket example now
+  uses roof and stair, which really are incompatible. Tests:
+  `core/test/violation-params.test.ts` compiles projects that produce every kind,
+  field and reason and checks each violation with the checker (failed first on
+  missing `field`/`target`); `server/test/violation-params.test.ts` checks the
+  mock scene, mock previews and real editor previews (all three failed against
+  the previous producers). `server/test/build-project.test.ts` now reads
+  `params.target`. Deviation: none; `immovable_object` was added to the reasons for
+  editor previews that try to move a Module or an attached Structure.

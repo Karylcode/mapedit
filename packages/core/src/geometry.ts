@@ -233,7 +233,7 @@ export async function checkGeometry(
             source: instance.source,
             message: `${instance.ref} overlaps the terrain.`,
             suggestion: `Raise the Structure or use a Foundation or terrain-following Module. ${RECHECK_FOR_ADVICE}`,
-            params: { terrain: true },
+            params: { target: 'terrain' },
             location: contact.location,
             rule: 'terrain',
           }),
@@ -279,6 +279,7 @@ export async function checkGeometry(
             source: a.instance.source,
             message: `${a.instance.ref} overlaps ${b.instance.ref}.`,
             suggestion: `Move one of the overlapping Structures or change a Module shape. ${RECHECK_FOR_ADVICE}`,
+            params: { target: 'module' },
             location,
           }),
         );
@@ -319,6 +320,7 @@ export async function checkGeometry(
             refs: [entry.instance.ref],
             source: entry.instance.source,
             message: `${entry.instance.ref} has no Support connected to terrain.`,
+            params: {},
             suggestion: `Lower it onto terrain or a supported Module, or attach it to a compatible supported Socket. ${RECHECK_FOR_ADVICE}`,
             location: [
               (entry.bounds.min[0] + entry.bounds.max[0]) / 2,

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { transformMatrix, createViolation, snapMove } from '@mapedit/core';
+import { transformMatrix, createViolation, exceededMapEdges, snapMove } from '@mapedit/core';
 import { parseObjectRef, markerPosition } from '@mapedit/protocol';
 import type {
   Edit,
@@ -7,6 +7,7 @@ import type {
   ProjectInfo,
   SceneSnapshot,
   ServerMessage,
+  Vec3,
   ViolationView,
   NoticeCode,
 } from '@mapedit/protocol';
@@ -102,7 +103,7 @@ export class MemoryState extends EventEmitter implements StateStore {
             message: exists
               ? `Move the whole Structure; ${edit.ref} is a Module inside it.`
               : `Unknown object "${edit.ref}".`,
-            params: { reference: edit.ref },
+            params: { reason: exists ? 'immovable_object' : 'unknown_object', reference: edit.ref },
             refs: [edit.ref],
             suggestion: 'Reload the map and select an existing structure or marker.',
             rule: 'mock-preview-reference',
@@ -117,18 +118,19 @@ export class MemoryState extends EventEmitter implements StateStore {
       marker ? { markerPosition: markerPosition(marker.shape) } : {},
       mockTerrainHeight,
     );
+    // Mock Structures are one 2 m block; Markers are checked at their position.
     const extent = object?.kind === 'structure' ? 2 : 0;
-    if (
-      position[0] < 0 ||
-      position[2] < 0 ||
-      position[0] + extent > this.scene.map.size.x ||
-      position[2] + extent > this.scene.map.size.z
-    )
+    const bounds = {
+      min: position,
+      max: [position[0] + extent, position[1] + extent, position[2] + extent] as Vec3,
+    };
+    const edges = exceededMapEdges(bounds, this.scene.map.size);
+    if (edges.length)
       violations.push(
         createViolation({
           kind: 'out_of_bounds',
           message: 'The object would be outside the map.',
-          params: { position },
+          params: { edges, bounds, size: this.scene.map.size },
           refs: [edit.ref],
           location: position,
           suggestion: 'Move the object inside the map.',

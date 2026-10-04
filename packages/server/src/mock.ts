@@ -2,6 +2,13 @@ import type { SceneSnapshot, StructureView, Vec3 } from '@mapedit/protocol';
 import { structureRef, moduleRef, markerRef } from '@mapedit/protocol';
 import { transformMatrix, createViolation, type CreateViolationInput } from '@mapedit/core';
 
+/** One mock violation per kind, with params from protocol section 3. */
+type MockViolationInput = CreateViolationInput extends infer Input
+  ? Input extends CreateViolationInput
+    ? Omit<Input, 'refs' | 'source' | 'rule'> & { ids: string[] }
+    : never
+  : never;
+
 export function mockScene(): SceneSnapshot {
   const structure = (
     id: string,
@@ -17,16 +24,13 @@ export function mockScene(): SceneSnapshot {
       { ref: moduleRef(id, 'base'), moduleType, transform: transformMatrix(position, rotation) },
     ],
   });
-  const violation = ({
-    ids,
-    ...input
-  }: Omit<CreateViolationInput, 'refs' | 'source' | 'rule'> & { ids: string[] }) =>
+  const violation = ({ ids, ...input }: MockViolationInput) =>
     createViolation({
       ...input,
       refs: ids.map((id) => moduleRef(id, 'base')),
       source: { file: `maps/village/structures/${ids[0]}.yaml`, line: 3 },
       rule: 'mock-scene',
-    });
+    } as CreateViolationInput);
   return {
     protocolVersion: 1,
     revision: 0,
@@ -105,6 +109,7 @@ export function mockScene(): SceneSnapshot {
         kind: 'overlap',
         ids: ['overlap_a', 'overlap_b'],
         message: 'Two blocks overlap by 0.5 m.',
+        params: { target: 'module' },
         suggestion: `Move ${structureRef('overlap_a')} west by 0.5 m to clear the overlap with ${structureRef('overlap_b')}.`,
         location: [41.75, 1, 11],
       }),
@@ -112,6 +117,7 @@ export function mockScene(): SceneSnapshot {
         kind: 'unsupported',
         ids: ['unsupported'],
         message: 'The block is 2 m above the terrain.',
+        params: {},
         suggestion: `Move ${structureRef('unsupported')} down by 2 m to reach the terrain.`,
         location: [51, 2, 11],
       }),
@@ -119,6 +125,7 @@ export function mockScene(): SceneSnapshot {
         kind: 'off_grid',
         ids: ['off_grid'],
         message: 'The X coordinate 60.25 is not on the 0.5 m grid.',
+        params: { field: 'structure_position', values: [60.25, 10], nearest: [60.5, 10] },
         suggestion: 'Set position.x to the nearest grid coordinate, 60.5 m.',
         location: [60.25, 0, 10],
       }),
@@ -126,6 +133,7 @@ export function mockScene(): SceneSnapshot {
         kind: 'bad_rotation',
         ids: ['bad_rotation'],
         message: 'Rotation 7 degrees is not a multiple of 15.',
+        params: { field: 'structure', rotation: 7, step: 15, nearest: 0 },
         suggestion: 'Set rotation to the nearest valid angle, 0 degrees.',
         location: [70, 0, 10],
       }),
@@ -133,6 +141,11 @@ export function mockScene(): SceneSnapshot {
         kind: 'out_of_bounds',
         ids: ['out_of_bounds'],
         message: 'The block extends 1 m beyond the east edge.',
+        params: {
+          edges: [{ edge: 'east', distance: 1 }],
+          bounds: { min: [99, 0, 10], max: [101, 2, 12] },
+          size: { x: 100, z: 100 },
+        },
         suggestion: `Move ${structureRef('out_of_bounds')} west by 1 m to fit inside the map.`,
         location: [100, 1, 11],
       }),
@@ -140,15 +153,22 @@ export function mockScene(): SceneSnapshot {
         kind: 'missing_reference',
         ids: ['missing_reference'],
         message: 'Module missing_block does not exist.',
+        params: { reason: 'unknown_module', reference: 'missing_block' },
         suggestion: 'Replace missing_block with the available module block.',
         location: [30, 0, 30],
       }),
       violation({
         kind: 'incompatible_socket',
         ids: ['socket_a', 'socket_b'],
-        message: 'The wall socket cannot connect to a foundation socket.',
-        suggestion:
-          'Connect the wall socket to another wall socket instead of a foundation socket.',
+        message: 'Socket types "roof" and "stair" cannot connect.',
+        suggestion: 'Connect the roof socket to a wall or roof socket instead of a stair socket.',
+        params: {
+          reason: 'types',
+          socketA: `${moduleRef('socket_a', 'base')}.east`,
+          socketB: `${moduleRef('socket_b', 'base')}.west`,
+          typeA: 'roof',
+          typeB: 'stair',
+        },
         location: [42, 1, 31],
       }),
     ],

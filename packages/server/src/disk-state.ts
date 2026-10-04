@@ -287,6 +287,11 @@ export class DiskState extends EventEmitter implements StateStore {
         ...(transform ? { transform } : {}),
       };
     } catch (error) {
+      // An existing object that cannot be edited is a Module inside a Structure or an
+      // attached Structure; anything else is a stale or malformed ref.
+      const reason = cached.compilation.sourceRefs[edit.ref]
+        ? 'immovable_object'
+        : 'unknown_object';
       return {
         type: 'previewResult',
         requestId,
@@ -295,7 +300,7 @@ export class DiskState extends EventEmitter implements StateStore {
           createViolation({
             kind: 'missing_reference',
             message: error instanceof Error ? error.message : String(error),
-            params: { reference: edit.ref },
+            params: { reason, reference: edit.ref },
             refs: [edit.ref],
             suggestion: 'Reload the map and select an existing object.',
             rule: 'edit-reference',

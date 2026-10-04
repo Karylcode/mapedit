@@ -139,6 +139,64 @@ interface ProjectInfo {
 }
 ```
 
+### 違規的 params
+
+每一種 `kind` 的 `params` 如下表。來自檔案的違規另外都帶 `file`（專案內的相對路徑，用 / 分隔）和 `line`（行號）；編輯器操作產生、沒有檔案位置的違規（例如拖動預覽的 `unknown_object`）不帶。長度和座標是公尺，角度是度。`packages/protocol` 匯出每一種 kind 的型別（`ViolationParamsByKind`），以及依 `kind` 區分 `params` 型別的 `TypedViolationView`。
+
+| kind | 欄位 | 型別 | 意思 |
+|---|---|---|---|
+| `off_grid` | `field` | `OffGridField` | 哪一個值不在 0.5 公尺的格子上，見下方列表 |
+| | `values` | `number[]` | 違規的值：寫在檔案裡的值，或接上插槽後算出來的值（結構位置是 `[x, z]`，高度是 `[y]`，其他是 `[x, y, z]`） |
+| | `nearest` | `number[]` | 和 `values` 一一對應、最接近的合法值 |
+| | `moduleType` | `string`（選填） | 模組定義的問題（`module_size`、`socket_position`）才有，是模組 id |
+| `bad_rotation` | `field` | `RotationField` | 哪一個角度不合法，見下方列表 |
+| | `rotation` | `number` | 違規的角度：寫在檔案裡的角度，或接上插槽後算出來的角度 |
+| | `step` | `15 \| 90` | 角度必須是幾度的倍數 |
+| | `nearest` | `number` | 最接近的合法角度 |
+| | `moduleType` | `string`（選填） | 插槽角度的問題（`socket`）才有，是模組 id |
+| `out_of_bounds` | `edges` | `{ edge: 'north' \| 'south' \| 'east' \| 'west'; distance: number }[]` | 超出地圖的哪幾個邊、各超出幾公尺（北邊是 z = 0，西邊是 x = 0） |
+| | `bounds` | `{ min: Vec3; max: Vec3 }` | 物件在地圖座標的範圍 |
+| | `size` | `{ x: number; z: number }` | 地圖大小 |
+| `missing_reference` | `reason` | `MissingReferenceReason` | 缺的是什麼，見下方列表 |
+| | `reference` | `string` | 找不到的東西：模組 id、插槽類型、材質、標記類型、`attach.to` 或 ObjectRef；循環接合時是循環裡的模組或結構 id |
+| | `moduleType` | `string`（選填） | 模組定義的問題才有，是模組 id |
+| `incompatible_socket` | `reason` | `'types' \| 'occupied' \| 'directions'` | 插槽類型不相容、插槽已經接了別的東西，或兩個插槽的方向無法相對 |
+| | `socketA`、`socketB` | `string` | 兩個插槽，格式是 `module:<structureId>/<instanceId>.<socketId>` |
+| | `typeA`、`typeB` | `string` | 兩個插槽各自的插槽類型 |
+| `overlap` | `target` | `'module' \| 'terrain'` | 和另一個模組重疊（`refs` 有兩個模組），或埋進地形（`refs` 只有一個模組） |
+| `unsupported` | （無） | | 只有共同的 `file`、`line` |
+
+`OffGridField`：
+
+- `structure_position`：結構的 `position`
+- `structure_height`：結構的 `height`
+- `module_position`：模組的 `at`
+- `attached_module_position`：用插槽接上的模組，算出來的位置（旋轉後範圍的最小角）
+- `module_size`：模組定義的 `size`
+- `socket_position`：模組定義裡插槽的 `position`
+- `marker_position`：標記的 `position`（點）或 `center`（方形）
+- `marker_size`：方形標記的 `size`
+
+`RotationField`：
+
+- `structure`：結構的 `rotation`（`step` 15）
+- `structure_attachment`：結構用插槽接到另一個結構後，相對於目標結構的角度（`step` 90）
+- `module`：模組的 `rotation`（`step` 90）
+- `attached_module`：模組用插槽接上後算出來的角度（`step` 90）
+- `socket`：模組定義裡插槽的 `rotation`（`step` 90）
+- `marker`：標記的 `rotation`（`step` 15）
+
+`MissingReferenceReason`：
+
+- `unknown_module`：結構裡用到不存在的模組
+- `unknown_socket_type`：模組的插槽，或 `project.yaml` 的 `compatibleWith`，用到不存在的插槽類型
+- `unknown_material`：模組用到不存在的材質
+- `unknown_marker_type`：標記用到不存在的標記類型
+- `unresolved_attachment`：`attach` 找不到自己的插槽或目標插槽（`reference` 是 `attach.to`）
+- `attachment_cycle`：模組或結構的 `attach` 形成循環
+- `unknown_object`：編輯器送來的 ref 格式錯誤，或指向不存在的物件（第 4 節流程 7）
+- `immovable_object`：編輯器想移動不能單獨移動的物件，例如結構裡的單一模組，或已經接到別的結構上的結構（要移動它所在的整個結構）
+
 ## 4. WebSocket 訊息
 
 連線網址是 `ws://127.0.0.1:4790/ws`，訊息一律是 JSON。

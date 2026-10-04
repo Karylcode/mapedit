@@ -148,7 +148,7 @@ describe('real model and terrain project compilation', () => {
     const ordinary = await buildProject(root, 'test');
     expect(
       ordinary.scene.violations.some(
-        (violation) => violation.kind === 'overlap' && violation.params.terrain,
+        (violation) => violation.kind === 'overlap' && violation.params.target === 'terrain',
       ),
     ).toBe(true);
     await write(
