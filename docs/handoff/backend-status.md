@@ -228,3 +228,9 @@ recorded after all corrections are complete.
   coverage, then verifies assets, notices, snapshots, invalid requests and route
   isolation. Mock, protocol, MCP and real-server suites (24 tests), typecheck and
   scoped lint pass. Deviation: none.
+- **F9 complete:** project parsing rejects every `materials` declaration, including
+  empty and null values, with a source-located format error explaining the version
+  1 built-in-only policy. Format documentation no longer promises custom materials.
+  `core/test/material-policy.test.ts` reproduces all three invalid declarations
+  and verifies built-in material authoring. All 41 related parsing/compiler tests,
+  typecheck and scoped lint pass. Deviation: none.

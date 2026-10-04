@@ -213,7 +213,12 @@ export function parseProject(inputFiles: Record<string, string>): ParsedProject 
   };
   const project =
     read(projectFile, (value): Project => {
-      fields(value, ['version', 'name', 'socketTypes', 'markerTypes', 'materials'], []);
+      if (Object.hasOwn(value, 'materials'))
+        throw new InvalidFormat(
+          'Version 1 only supports built-in materials; remove project materials.',
+          ['materials'],
+        );
+      fields(value, ['version', 'name', 'socketTypes', 'markerTypes'], []);
       if (number(value.version, ['version'], 1) !== 1)
         throw new InvalidFormat('Unsupported format version. Use version: 1.', ['version']);
       const result = {
@@ -245,10 +250,6 @@ export function parseProject(inputFiles: Record<string, string>): ParsedProject 
           ]);
         result.markerTypes[key] = { shape: definition.shape };
       }
-      result.materials = [
-        ...BUILTIN_MATERIAL_IDS,
-        ...array(value.materials, ['materials'], []).map((entry, i) => id(entry, ['materials', i])),
-      ];
       return result;
     }) ?? defaultProject;
   const modules: Record<string, ModuleDefinition> = Object.create(null) as Record<
