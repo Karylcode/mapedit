@@ -52,7 +52,9 @@ Call the same tool with only `{"cursor":"..."}` until `nextCursor` is `null`,
 then concatenate the fragments in order to recover the original text (normally
 JSON). Continuations read the captured result, so terrain changes, exports and
 module builds run only once; images appear on the first page. Captures expire
-after five minutes and may be evicted when the cache fills. If a cursor expires,
+after five minutes and may be evicted when the cache fills. If project files change
+between pages, the continuation returns `Results changed since the first page.`;
+run the tool again without `cursor`. If a cursor expires or is voided this way,
 inspect current state before deciding whether to repeat a modifying tool.
 Collection `offset` and `limit` arguments still select which items to inspect.
 
