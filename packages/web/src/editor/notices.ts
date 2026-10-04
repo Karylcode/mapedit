@@ -11,7 +11,8 @@ export type Notice = Extract<ServerMessage, { type: 'notice' }>;
  */
 export function noticeToast(notice: Notice, index: SnapshotIndex | undefined): ToastInput {
   const refs = notice.refs ?? [];
-  const objects = (t: Parameters<typeof objectNames>[2]) => objectNames(refs, index, t);
+  const objects = (t: Parameters<typeof objectNames>[2]) =>
+    objectNames(refs, index, t, { byStructure: true });
   switch (notice.code) {
     case 'agent_changed':
       return {

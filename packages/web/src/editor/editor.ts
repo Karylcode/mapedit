@@ -15,6 +15,7 @@ import { OverviewInput } from './input.js';
 import { clickSelection, keepSelection } from './selection.js';
 import { EditController } from './editing.js';
 import { FileErrorFilter, noticeToast } from './notices.js';
+import { wholeObjects } from './describe.js';
 import { TitleBlock } from './hud/title-block.js';
 import { StatusCard } from './hud/status-card.js';
 import { Tooltip } from './hud/tooltip.js';
@@ -230,7 +231,7 @@ export function start(root: HTMLElement = document.body): void {
       toasts.show(noticeToast(message, map.index));
       if (message.code === 'agent_changed' && message.refs?.length) {
         // Briefly outline what the Agent touched, so a watching human can spot it.
-        map.setOutlines('flash', message.refs);
+        map.setOutlines('flash', wholeObjects(message.refs, map.index));
         window.clearTimeout(flash);
         flash = window.setTimeout(() => map.setOutlines('flash', []), FLASH_MS);
       }

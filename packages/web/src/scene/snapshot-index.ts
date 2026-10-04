@@ -17,17 +17,31 @@ export class SnapshotIndex {
   readonly moduleTypes = new Map<string, ModuleTypeView>();
   /** Instance ref → the structure that draws it. */
   private readonly owners = new Map<ObjectRef, StructureView>();
+  /** How many structures share each name. */
+  private readonly nameCounts = new Map<string, number>();
 
   constructor(readonly scene: SceneSnapshot) {
     for (const type of scene.moduleTypes) this.moduleTypes.set(type.id, type);
     for (const structure of scene.structures) {
       this.structures.set(structure.ref, structure);
+      const name = structure.name ?? idOf(structure.ref);
+      this.nameCounts.set(name, (this.nameCounts.get(name) ?? 0) + 1);
       for (const instance of structure.instances) {
         this.instances.set(instance.ref, instance);
         this.owners.set(instance.ref, structure);
       }
     }
     for (const marker of scene.markers) this.markers.set(marker.ref, marker);
+  }
+
+  /**
+   * A structure's name that tells it apart: its name, followed by its id
+   * when other structures share the name (several "Starter House"s).
+   */
+  structureName(ref: ObjectRef): string {
+    const name = this.label(ref);
+    const id = idOf(ref);
+    return (this.nameCounts.get(name) ?? 0) > 1 && name !== id ? `${name} (${id})` : name;
   }
 
   /** The structure a structure or module ref belongs to. */

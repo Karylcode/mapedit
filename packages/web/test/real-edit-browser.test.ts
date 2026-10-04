@@ -15,6 +15,7 @@ import {
   openEditor,
   projectPoint,
   screenPoint,
+  poll,
 } from './browser/harness.js';
 
 const executable = await findBrowser();
@@ -67,7 +68,7 @@ describe.skipIf(!executable)('editing a real project in a real browser', () => {
     const from = await screenPoint(page, 'module:house/roof');
     const to = await projectPoint(page, [22 + 8, 4, 22]);
     await dragTo(page, from, to);
-    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    await poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
     const text = await house();
     expect(text).toMatch(/^# A walkable room: the door and window are genuine cutouts/);
     expect(text).toMatch(/position: \[(27\.5|28|28\.5), (19\.5|20|20\.5)\]/);
@@ -79,27 +80,23 @@ describe.skipIf(!executable)('editing a real project in a real browser', () => {
     await page.keyboard.press('Escape');
     const roof = await screenPoint(page, 'module:house/roof');
     await page.mouse.click(roof.x, roof.y);
-    await expect
-      .poll(() => editorState(page, (e) => e.store.state.selection))
-      .toBe('structure:house');
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:house');
     let start = await revision();
     await page.keyboard.press('r');
-    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    await poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
     expect(await house()).toMatch(/rotation: 15/);
 
     const stairs = await screenPoint(page, 'module:house/stairs');
     await page.mouse.click(stairs.x, stairs.y);
-    await expect
-      .poll(() => editorState(page, (e) => e.store.state.selection))
-      .toBe('module:house/stairs');
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('module:house/stairs');
     start = await revision();
     await page.keyboard.press('Delete');
-    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    await poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
     expect(await house()).not.toMatch(/id: stairs/);
     expect(await house()).toMatch(/^# A walkable room/);
     start = await revision();
     await page.keyboard.press('Control+z');
-    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    await poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
     expect(await house()).toMatch(/id: stairs/);
   });
 
@@ -109,7 +106,7 @@ describe.skipIf(!executable)('editing a real project in a real browser', () => {
     const spawn = await screenPoint(page, 'marker:player_spawn');
     const to = await projectPoint(page, [40, 0, 40]);
     await dragTo(page, spawn, to);
-    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    await poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
     const text = await markers();
     expect(text).toMatch(/properties: \{ team: player \}/);
     expect(text).not.toMatch(/position: \[22, 0, 28\]/);
@@ -122,7 +119,7 @@ describe.skipIf(!executable)('editing a real project in a real browser', () => {
       join(root, 'maps/village/structures/house.yaml'),
       text.replace(/position: \[[^\]]+\]/, 'position: [60, 60]'),
     );
-    await expect.poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    await poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
     const origin = await editorState(page, (e) => {
       const transform = e.store.state.scene.structures.find(
         (s: { ref: string }) => s.ref === 'structure:house',

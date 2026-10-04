@@ -1,6 +1,7 @@
 import { parseObjectRef, type HistoryEntry } from '@mapedit/protocol';
 import type { Translator } from '../i18n/i18n.js';
-import { idOf, type SnapshotIndex } from '../scene/snapshot-index.js';
+import type { SnapshotIndex } from '../scene/snapshot-index.js';
+import { objectName } from './describe.js';
 
 /** One history row in the interface language: what changed, by whom. */
 export function describeEntry(
@@ -12,7 +13,7 @@ export function describeEntry(
   const match = /^(Move|Delete) (\S+)$/.exec(entry.summary);
   if (match && parseObjectRef(match[2]!)) {
     const ref = match[2]!;
-    const name = index?.has(ref) ? index.label(ref) : idOf(ref);
+    const name = objectName(ref, index);
     return t(match[1] === 'Move' ? 'history.move' : 'history.delete', { name });
   }
   if (entry.files.length) {

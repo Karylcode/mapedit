@@ -30,34 +30,44 @@ export function describeObject(
     return {
       kind: t('object.module'),
       name: index.label(ref),
-      detail: `${index.label(structure.ref)} · ${idOf(ref)}`,
+      detail: `${index.structureName(structure.ref)} · ${idOf(ref)}`,
     };
-  const modules = structure.instances.length;
+  const name = index.structureName(structure.ref);
+  const id = idOf(structure.ref);
+  const modules = t('object.moduleCount', { count: structure.instances.length });
   return {
     kind: t('object.structure'),
-    name: index.label(structure.ref),
-    detail: t('object.moduleCount', { count: modules }),
+    name,
+    // The id is worth showing unless the name already includes it.
+    detail: name === id || name.endsWith(`(${id})`) ? modules : `${id} · ${modules}`,
   };
 }
 
+/** One object's name in lists: modules read "Structure · instance". */
+export function objectName(ref: ObjectRef, index: SnapshotIndex | undefined): string {
+  if (!index?.has(ref)) return idOf(ref);
+  const structure = index.structureOf(ref);
+  if (!structure) return index.label(ref);
+  const name = index.structureName(structure.ref);
+  return parseObjectRef(ref)?.kind === 'module' ? `${name} · ${idOf(ref)}` : name;
+}
+
 /**
- * Names for a list of objects, such as "House、Watchtower 等 5 個". Modules
- * show their structure as well; refs that no longer exist show their id.
+ * Names for a list of objects, such as "House、Watchtower 等 5 個". With
+ * `byStructure`, modules count as their structure, so "the Agent changed a
+ * house" does not list all of its walls.
  */
 export function objectNames(
   refs: readonly ObjectRef[],
   index: SnapshotIndex | undefined,
   t: Translator,
-  limit = 3,
+  { limit = 3, byStructure = false }: { limit?: number; byStructure?: boolean } = {},
 ): string {
   const names = [
     ...new Set(
       refs.map((ref) => {
-        if (!index?.has(ref)) return idOf(ref);
-        const structure = index.structureOf(ref);
-        if (parseObjectRef(ref)?.kind === 'module' && structure)
-          return `${index.label(structure.ref)} · ${idOf(ref)}`;
-        return index.label(ref);
+        const owner = byStructure ? index?.structureOf(ref)?.ref : undefined;
+        return objectName(owner ?? ref, index);
       }),
     ),
   ];
@@ -68,6 +78,14 @@ export function objectNames(
     count: names.length,
     more: names.length - limit,
   });
+}
+
+/** Structures and markers among some refs, with modules replaced by their structure. */
+export function wholeObjects(
+  refs: readonly ObjectRef[],
+  index: SnapshotIndex | undefined,
+): ObjectRef[] {
+  return [...new Set(refs.map((ref) => index?.structureOf(ref)?.ref ?? ref))];
 }
 
 /** Violations that mention an object, including through its structure or modules. */

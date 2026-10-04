@@ -11,6 +11,7 @@ import type { Toasts } from './hud/toasts.js';
 import type { CursorNote } from './hud/cursor-note.js';
 import { PreviewThrottle } from './preview-throttle.js';
 import { movableOf } from './selection.js';
+import { objectName } from './describe.js';
 import { normalizeAngle, turnAbout, turnXZ, yawOf } from './move-math.js';
 import { violationMessage, violationTitle } from './violations.js';
 
@@ -272,7 +273,7 @@ export class EditController {
     if (result.ok) return;
     const reason = result.reason ?? '';
     if (pending.kind === 'apply') {
-      const name = this.map.index?.label(pending.ref) ?? pending.ref;
+      const name = objectName(pending.ref, this.map.index);
       const key: MessageKey =
         pending.action === 'delete'
           ? 'edit.deleteRejected'

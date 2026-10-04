@@ -10,6 +10,7 @@ import {
   projectPoint,
   screenPoint,
   type EditorHandle,
+  poll,
 } from './browser/harness.js';
 
 const executable = await findBrowser();
@@ -68,19 +69,15 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
   it('names what is under the pointer and selects structure, then module; Esc clears', async () => {
     const house = await screenPoint(page, 'module:house/base');
     await page.mouse.move(house.x, house.y);
-    await expect.poll(() => page.locator('.tooltip').isVisible()).toBe(true);
+    await poll(() => page.locator('.tooltip').isVisible()).toBe(true);
     expect(await page.locator('.tooltip').innerText()).toMatch(/House/);
     await page.mouse.click(house.x, house.y);
-    await expect
-      .poll(() => editorState(page, (e) => e.store.state.selection))
-      .toBe('structure:house');
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:house');
     expect(await page.locator('.action-name').innerText()).toBe('House');
     await page.mouse.click(house.x, house.y);
-    await expect
-      .poll(() => editorState(page, (e) => e.store.state.selection))
-      .toBe('module:house/base');
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('module:house/base');
     await page.keyboard.press('Escape');
-    await expect.poll(() => editorState(page, (e) => e.store.state.selection)).toBeUndefined();
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBeUndefined();
   });
 
   it('selects markers and clears the selection on empty ground', async () => {
@@ -93,11 +90,11 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     });
     const zone = await screenPoint(page, 'marker:spawn');
     await page.mouse.click(zone.x, zone.y);
-    await expect.poll(() => editorState(page, (e) => e.store.state.selection)).toBe('marker:spawn');
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('marker:spawn');
     expect(await page.locator('.action-kind').innerText()).toMatch(/spawn point/i);
     const empty = await projectPoint(page, [14, 0, 2]);
     await page.mouse.click(empty.x, empty.y);
-    await expect.poll(() => editorState(page, (e) => e.store.state.selection)).toBeUndefined();
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBeUndefined();
   });
 
   it('focuses the selection with F', async () => {
@@ -111,9 +108,7 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     const target = await screenPoint(page, 'module:raised_foundation/base');
     await page.mouse.click(target.x, target.y);
     await page.keyboard.press('f');
-    await expect
-      .poll(() => editorState(page, (e) => e.controls.moving), { timeout: 3000 })
-      .toBe(false);
+    await poll(() => editorState(page, (e) => e.controls.moving), { timeout: 3000 }).toBe(false);
     const after = await editorState(page, (e) => ({
       target: e.viewport.overview.target.toArray(),
       distance: e.viewport.overview.distance,
@@ -149,7 +144,7 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     expect(panned.distance).toBeCloseTo(orbited.distance);
 
     await page.mouse.wheel(0, -400);
-    await expect.poll(async () => (await camera()).distance).toBeLessThan(panned.distance);
+    await poll(async () => (await camera()).distance).toBeLessThan(panned.distance);
 
     const beforeKeys = (await camera()).target;
     await page.keyboard.down('KeyW');

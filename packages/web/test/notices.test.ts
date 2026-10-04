@@ -4,7 +4,7 @@ import type { NoticeCode, SceneSnapshot } from '@mapedit/protocol';
 import { SnapshotIndex } from '../src/scene/snapshot-index.js';
 import { FileErrorFilter, noticeToast, type Notice } from '../src/editor/notices.js';
 import { violationText, VIOLATION_KINDS } from '../src/editor/violations.js';
-import { objectNames } from '../src/editor/describe.js';
+import { objectNames, wholeObjects } from '../src/editor/describe.js';
 import { translate, type Translator, type Lang } from '../src/i18n/i18n.js';
 import type { Localized } from '../src/editor/hud/toasts.js';
 
@@ -127,6 +127,27 @@ describe('violation text', () => {
       params: { values: 'x' },
     };
     expect(violationText(odd, index, tr('zh-TW')).message).toBe(odd.message);
+  });
+
+  it('tells apart structures that share a name and groups modules for notices', () => {
+    const scene = mockScene();
+    const copy = structuredClone(scene.structures[0]!);
+    copy.ref = 'structure:house_two';
+    copy.instances = [{ ...copy.instances[0]!, ref: 'module:house_two/base' }];
+    scene.structures.push(copy);
+    const twins = new SnapshotIndex(scene);
+    expect(twins.structureName('structure:house')).toBe('House (house)');
+    expect(twins.structureName('structure:house_two')).toBe('House (house_two)');
+    expect(objectNames(['module:house/base', 'module:house_two/base'], twins, tr('en'))).toBe(
+      'House (house) · base, House (house_two) · base',
+    );
+    expect(
+      objectNames(['structure:house', 'module:house/base'], twins, tr('en'), { byStructure: true }),
+    ).toBe('House (house)');
+    expect(wholeObjects(['module:house/base', 'structure:house', 'marker:spawn'], twins)).toEqual([
+      'structure:house',
+      'marker:spawn',
+    ]);
   });
 
   it('shortens long object lists', () => {

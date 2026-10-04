@@ -2,6 +2,7 @@ import { access, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { expect } from 'vitest';
 import { build } from 'vite';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import type { ObjectRef } from '@mapedit/protocol';
@@ -39,6 +40,14 @@ export async function findBrowser(): Promise<string | undefined> {
     )
       return path;
   return undefined;
+}
+
+/**
+ * `expect.poll` with room for slow machines: CI runners draw WebGL in
+ * software and rebuild real projects more slowly than a desktop.
+ */
+export function poll<T>(read: () => T | Promise<T>, options: { timeout?: number } = {}) {
+  return expect.poll(read, { interval: 50, ...options, timeout: options.timeout ?? 15_000 });
 }
 
 /** Build the production bundle into a temporary folder the backend can serve. */

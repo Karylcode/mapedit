@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Browser, Page } from 'playwright-core';
 import { createServer, type MapeditServer } from '@mapedit/server';
 import type { NoticeCode } from '@mapedit/protocol';
-import { buildWeb, editorState, findBrowser, launch, openEditor } from './browser/harness.js';
+import { buildWeb, editorState, findBrowser, launch, openEditor, poll } from './browser/harness.js';
 
 const executable = await findBrowser();
 
@@ -68,9 +68,7 @@ describe.skipIf(!executable)('violations, notices and language in a real browser
   it('flies to a violation, enlarges its flag and outlines its objects when clicked', async () => {
     const before = await editorState(page, (e) => e.viewport.overview.target.toArray());
     await page.locator('.issue').nth(1).click();
-    await expect
-      .poll(() => editorState(page, (e) => e.controls.moving), { timeout: 3000 })
-      .toBe(false);
+    await poll(() => editorState(page, (e) => e.controls.moving), { timeout: 3000 }).toBe(false);
     const state = await editorState(page, (e) => ({
       target: e.viewport.overview.target.toArray(),
       focus: e.map.outlines.focus.refs,
@@ -81,9 +79,7 @@ describe.skipIf(!executable)('violations, notices and language in a real browser
     expect(state.focus).toEqual(['module:unsupported/base']);
     expect(await page.locator('.issue').nth(1).getAttribute('aria-pressed')).toBe('true');
     await page.keyboard.press('Escape');
-    await expect
-      .poll(() => editorState(page, (e) => e.store.state.focusedViolation))
-      .toBeUndefined();
+    await poll(() => editorState(page, (e) => e.store.state.focusedViolation)).toBeUndefined();
   });
 
   it('shows every notice code in the interface language', async () => {
@@ -96,12 +92,12 @@ describe.skipIf(!executable)('violations, notices and language in a real browser
     ];
     for (const [code, text] of expected) {
       expect(await trigger(code)).toBe(200);
-      await expect
-        .poll(async () => (await page.locator('.toast-text').allInnerTexts()).join('\n'))
-        .toMatch(text);
+      await poll(async () =>
+        (await page.locator('.toast-text').allInnerTexts()).join('\n'),
+      ).toMatch(text);
     }
     // file_error also adds a file error to the next snapshot.
-    await expect.poll(() => page.locator('.file-error').count()).toBe(2);
+    await poll(() => page.locator('.file-error').count()).toBe(2);
   });
 
   it('switches every interface text to English and remembers the choice', async () => {

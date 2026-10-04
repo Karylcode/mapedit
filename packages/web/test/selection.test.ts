@@ -57,7 +57,7 @@ describe('object descriptions', () => {
     expect(describeObject('structure:house', index, t)).toEqual({
       kind: 'Structure',
       name: 'House',
-      detail: '2 modules',
+      detail: 'house · 2 modules',
     });
     expect(describeObject('module:house/roof', index, t)).toEqual({
       kind: 'Module',

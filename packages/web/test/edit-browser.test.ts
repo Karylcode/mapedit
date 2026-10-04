@@ -11,6 +11,7 @@ import {
   openEditor,
   projectPoint,
   screenPoint,
+  poll,
 } from './browser/harness.js';
 
 const executable = await findBrowser();
@@ -83,9 +84,9 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     expect(ghost).toEqual({ state: 'ok', visible: true });
     expect((await messages()).filter((type) => type === 'previewResult').length).toBeGreaterThan(0);
     // Snapped by the backend to the 0.5 m grid near the pointer.
-    await expect
-      .poll(async () => Math.abs((await placement(page, 'structure:house'))!.x - before.x - 10))
-      .toBeLessThanOrEqual(0.5);
+    await poll(async () =>
+      Math.abs((await placement(page, 'structure:house'))!.x - before.x - 10),
+    ).toBeLessThanOrEqual(0.5);
     const after = (await placement(page, 'structure:house'))!;
     expect(Math.abs(after.z - before.z - 6)).toBeLessThanOrEqual(0.5);
     expect(after.x % 0.5).toBe(0);
@@ -108,9 +109,9 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     const to = await projectPoint(page, [-8, 0, before.z + 1]);
     let during: { state?: string; note: boolean; text: string } | undefined;
     await dragTo(page, from, to, async () => {
-      await expect
-        .poll(() => editorState(page, (e) => e.viewport.scene.getObjectByName('ghost')?.state))
-        .toBe('blocked');
+      await poll(() =>
+        editorState(page, (e) => e.viewport.scene.getObjectByName('ghost')?.state),
+      ).toBe('blocked');
       during = {
         state: 'blocked',
         note: await page.locator('.cursor-note').isVisible(),
@@ -119,9 +120,9 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     });
     expect(during?.note).toBe(true);
     expect(during?.text).toMatch(/Can't place it here[\s\S]*Out of bounds/);
-    await expect
-      .poll(() => page.locator('.toast-text').first().innerText())
-      .toMatch(/House was not moved/);
+    await poll(() => page.locator('.toast-text').first().innerText()).toMatch(
+      /House was not moved/,
+    );
     expect(await placement(page, 'structure:house')).toEqual(before);
     expect(
       await editorState(page, (e) => e.viewport.scene.getObjectByName('ghost')),
@@ -134,13 +135,9 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     await page.mouse.click(
       ...(Object.values(await screenPoint(page, 'module:house/base')) as [number, number]),
     );
-    await expect
-      .poll(() => editorState(page, (e) => e.store.state.selection))
-      .toBe('structure:house');
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:house');
     await page.keyboard.press('r');
-    await expect
-      .poll(async () => Math.round((await placement(page, 'structure:house'))!.yaw))
-      .toBe(15);
+    await poll(async () => Math.round((await placement(page, 'structure:house'))!.yaw)).toBe(15);
   });
 
   it('rotates the dragged preview with R before dropping', async () => {
@@ -152,9 +149,9 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
       await page.keyboard.press('r');
       await page.waitForTimeout(200);
     });
-    await expect
-      .poll(async () => Math.round((await placement(page, 'structure:overlap_b'))!.yaw))
-      .toBe(30);
+    await poll(async () => Math.round((await placement(page, 'structure:overlap_b'))!.yaw)).toBe(
+      30,
+    );
   });
 
   it('deletes with Delete, then undoes and redoes with Ctrl+Z and Ctrl+Y', async () => {
@@ -165,24 +162,20 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     await page.mouse.click(
       ...(Object.values(await screenPoint(page, 'module:socket_a/base')) as [number, number]),
     );
-    await expect
-      .poll(() => editorState(page, (e) => e.store.state.selection))
-      .toBe('structure:socket_a');
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:socket_a');
     await page.keyboard.press('Delete');
-    await expect.poll(exists).toBe(false);
+    await poll(exists).toBe(false);
     expect(await editorState(page, (e) => e.store.state.selection)).toBeUndefined();
     await page.keyboard.press('Control+z');
-    await expect.poll(exists).toBe(true);
+    await poll(exists).toBe(true);
     await page.keyboard.press('Control+y');
-    await expect.poll(exists).toBe(false);
+    await poll(exists).toBe(false);
     await page.keyboard.press('Control+Shift+z');
-    await expect
-      .poll(() => page.locator('.toast-text').first().innerText())
-      .toBe('Nothing to redo');
+    await poll(() => page.locator('.toast-text').first().innerText()).toBe('Nothing to redo');
     const history = await editorState(page, (e) => e.store.state.history);
     expect(history.cursor).toBe(history.entries.length);
     await page.locator('.history .chip-button').first().click();
-    await expect.poll(exists).toBe(true);
+    await poll(exists).toBe(true);
     expect(await page.locator('.history-entry[data-undone="true"]').count()).toBe(1);
   });
 
@@ -190,21 +183,19 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     const point = await screenPoint(page, 'module:off_grid/base');
     await page.mouse.click(point.x, point.y);
     await page.mouse.click(point.x, point.y);
-    await expect
-      .poll(() => editorState(page, (e) => e.store.state.selection))
-      .toBe('module:off_grid/base');
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe(
+      'module:off_grid/base',
+    );
     await page.keyboard.press('Delete');
-    await expect
-      .poll(() =>
-        editorState(
-          page,
-          (e) =>
-            e.store.state.scene.structures.find(
-              (s: { ref: string }) => s.ref === 'structure:off_grid',
-            )?.instances.length,
-        ),
-      )
-      .toBe(0);
+    await poll(() =>
+      editorState(
+        page,
+        (e) =>
+          e.store.state.scene.structures.find(
+            (s: { ref: string }) => s.ref === 'structure:off_grid',
+          )?.instances.length,
+      ),
+    ).toBe(0);
   });
 
   it('cancels a drag with Escape', async () => {
