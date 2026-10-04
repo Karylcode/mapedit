@@ -674,12 +674,8 @@ export function compileMap(
       views
         .get(placement.root)!
         .instances.push({ ref, moduleType: local.definition.id, transform });
-      if (
-        bounds.min[0] < -EPSILON ||
-        bounds.min[2] < -EPSILON ||
-        bounds.max[0] > map.size.x + EPSILON ||
-        bounds.max[2] > map.size.z + EPSILON
-      )
+      const edges = exceededMapEdges(bounds, map.size);
+      if (edges.length)
         violations.push(
           createViolation({
             kind: 'out_of_bounds',
@@ -692,7 +688,7 @@ export function compileMap(
               map.size,
             ),
             location: bounds.min,
-            params: { edges: exceededMapEdges(bounds, map.size), bounds, size: map.size },
+            params: { edges, bounds, size: map.size },
           }),
         );
       for (const socket of local.definition.sockets) {
@@ -769,12 +765,8 @@ export function compileMap(
       centered[14] = position[2] + localMin[2];
       bounds = transformBounds(centered, shape.size);
     }
-    if (
-      bounds.min[0] < -EPSILON ||
-      bounds.min[2] < -EPSILON ||
-      bounds.max[0] > map.size.x + EPSILON ||
-      bounds.max[2] > map.size.z + EPSILON
-    )
+    const edges = exceededMapEdges(bounds, map.size);
+    if (edges.length)
       violations.push(
         createViolation({
           kind: 'out_of_bounds',
@@ -783,7 +775,7 @@ export function compileMap(
           source: marker.source,
           suggestion: advice.bounds(ref, bounds, map.size),
           location: position,
-          params: { edges: exceededMapEdges(bounds, map.size), bounds, size: map.size },
+          params: { edges, bounds, size: map.size },
         }),
       );
     scene.markers.push({ ref, type: marker.type, shape, properties: marker.properties });

@@ -1,6 +1,14 @@
 import { parseObjectRef, structureRef, type Mat4, type Vec3 } from '@mapedit/protocol';
 import type { Bounds, Compilation, CompiledSocket } from './domain.js';
-import { clean, compareText, inverseRigid, multiplyMatrices, transformMatrix } from './math.js';
+import { exceededMapEdges } from './compiler.js';
+import {
+  clean,
+  compareText,
+  inverseRigid,
+  multiplyMatrices,
+  transformBounds,
+  transformMatrix,
+} from './math.js';
 import { socketAttachment, socketTypesCompatible } from './socket-rules.js';
 import { moveSolid, type PlacedSolid } from './solid.js';
 import { supportedFrom } from './support.js';
@@ -32,10 +40,15 @@ interface SocketOption {
   own: CompiledSocket;
   target: CompiledSocket;
   distance: number;
-  clear: boolean;
+  /** Inside the own Structure only this Module and its attachment chain move. */
+  sameStructure: boolean;
+  /** The target Socket as the suggestion names it. */
+  targetName: string;
   text: string;
   /** Added when the target Module needs Support of its own first. */
   note: string;
+  /** Whether the attached position is clear; tested on demand, since a test moves Modules. */
+  clear(): boolean;
 }
 const directions: { name: string; step: Vec3 }[] = [
   { name: 'east', step: [1, 0, 0] },
@@ -45,6 +58,8 @@ const directions: { name: string; step: Vec3 }[] = [
 ];
 const locationText = (location: Vec3): string => `[${location.map(clean).join(', ')}] m`;
 const SOCKET_SEARCH_DISTANCE = 5;
+/** Socket options whose attached position one suggestion tests, nearest first. */
+const SOCKET_TEST_LIMIT = 8;
 
 /** Describe where the target Socket is, seen from the own Socket. */
 function socketRelation(own: CompiledSocket, target: CompiledSocket): string {
@@ -77,6 +92,8 @@ export function createGeometryAdvice(context: AdviceContext): {
         instance.ref,
       ]);
   const placements = new Map<string, Placement>();
+  /** Target Socket ref -> the Module it was first suggested for, in report order. */
+  const claims = new Map<string, string>();
   const supportedWithout = new Map<string, ReadonlySet<string>>();
   const reachable = (seeds: Iterable<string>, accepts: (ref: string) => boolean) =>
     supportedFrom(seeds, context.supportLinks, accepts);
@@ -104,12 +121,12 @@ export function createGeometryAdvice(context: AdviceContext): {
       const entry = moveSolid(original, matrix);
       try {
         const { bounds, instance } = entry;
-        if (
-          bounds.min[0] < -context.tolerance ||
-          bounds.min[2] < -context.tolerance ||
-          bounds.max[0] > context.compilation.scene.map.size.x + context.tolerance ||
-          bounds.max[2] > context.compilation.scene.map.size.z + context.tolerance
-        ) {
+        // The compiler checks Module bounds against the map, so a clear move must pass that.
+        const moduleBounds = transformBounds(
+          multiplyMatrices(matrix, instance.transform),
+          instance.size,
+        );
+        if (exceededMapEdges(moduleBounds, context.compilation.scene.map.size).length) {
           result.clear = false;
           break;
         }
@@ -245,26 +262,53 @@ export function createGeometryAdvice(context: AdviceContext): {
         if (!attached.facing) continue;
         const matrix = multiplyMatrices(attached.transform, inverseRigid(instance.transform));
         const group = sameStructure ? chain : (solidsByStructure.get(instance.structureId) ?? []);
-        const clear = place(
-          sameStructure ? `module:${instance.ref}` : `structure:${instance.structureId}`,
-          group,
-          matrix,
-        ).clear;
+        const clear = () =>
+          place(
+            sameStructure ? `module:${instance.ref}` : `structure:${instance.structureId}`,
+            group,
+            matrix,
+          ).clear;
         const relation = socketRelation(own, target);
+        const targetName = sameStructure
+          ? `${targetOwner.instanceId}.${target.id}`
+          : `${targetOwner.structureId}/${targetOwner.instanceId}.${target.id}`;
         const text = sameStructure
           ? `Attach ${owner.instanceId} to ${targetOwner.instanceId}.${target.id} (${relation}): in ${instance.source.file} ${instance.attachTo ? `change the attach of ${owner.instanceId} to` : `replace the at and rotation of ${owner.instanceId} with`} attach: {socket: ${own.id}, to: ${targetOwner.instanceId}.${target.id}}`
           : `Attach ${structureRef(owner.structureId)} to ${targetOwner.structureId}/${targetOwner.instanceId}.${target.id} (${relation}): in ${instance.source.file} replace the position, height and rotation of Structure ${owner.structureId} with attach: {socket: ${owner.instanceId}.${own.id}, to: ${targetOwner.structureId}/${targetOwner.instanceId}.${target.id}}`;
         const note = targetSupported
           ? ''
           : ` ${targetOwner.instanceId} has no Support yet; give it Support first, as its own unsupported violation suggests.`;
-        options.push({ own, target, distance, clear, text, note });
+        options.push({ own, target, distance, sameStructure, targetName, text, note, clear });
       }
     return options.sort(
       (a, b) =>
+        Number(b.sameStructure) - Number(a.sameStructure) ||
         a.distance - b.distance ||
         compareText(a.own.ref, b.own.ref) ||
         compareText(a.target.ref, b.target.ref),
     );
+  };
+  /** The nearest clear option, preferring Sockets not yet suggested to another Module. */
+  const firstClear = (options: SocketOption[]): SocketOption | undefined => {
+    let claimed: SocketOption | undefined;
+    for (const option of options.slice(0, SOCKET_TEST_LIMIT)) {
+      if (!option.clear()) continue;
+      if (!claims.has(option.target.ref)) return option;
+      claimed ??= option;
+    }
+    return claimed;
+  };
+  /** Suggest an option, and say when its Socket was already suggested for another Module. */
+  const attach = (option: SocketOption, ref: string, clear: boolean): string => {
+    const other = claims.get(option.target.ref);
+    if (!other) claims.set(option.target.ref, ref);
+    const shared =
+      other && other !== ref
+        ? ` ${option.targetName} is also suggested for ${other}, and a Socket takes one attachment; attach only one of them there.`
+        : '';
+    return clear
+      ? `${option.text}, then run check.${option.note}${shared}`
+      : `${option.text}. The attached position overlaps another Module or the terrain, so move that obstruction too, then run check.${option.note}${shared}`;
   };
   /** Lower only this Module and the Modules attached to it onto terrain or a supported Module. */
   const lowerModule = (entry: PlacedSolid): string | undefined => {
@@ -302,14 +346,20 @@ export function createGeometryAdvice(context: AdviceContext): {
         return `Lower ${structureRef(instance.structureId)} by ${distance} m to reach terrain or a supported Module; set its explicit height to ${height} m and run check again.`;
       }
     }
+    // Fixes inside the own Structure come before attaching the whole Structure elsewhere,
+    // which moves and merges it. A compatible Socket is the intended fix even when something
+    // is in the way.
     const options = socketOptions(entry);
-    const clear = options.find((option) => option.clear);
-    if (clear) return `${clear.text}, then run check.${clear.note}`;
+    const inside = options.filter((option) => option.sameStructure);
+    const elsewhere = options.filter((option) => !option.sameStructure);
+    const insideClear = firstClear(inside);
+    if (insideClear) return attach(insideClear, instance.ref, true);
     const lowered = lowerModule(entry);
     if (lowered) return lowered;
-    // A compatible Socket is the intended fix even when something is in the way.
-    if (options[0])
-      return `${options[0].text}. The attached position overlaps another Module or the terrain, so move that obstruction too, then run check.${options[0].note}`;
+    if (inside[0]) return attach(inside[0], instance.ref, false);
+    const elsewhereClear = firstClear(elsewhere);
+    if (elsewhereClear) return attach(elsewhereClear, instance.ref, true);
+    if (elsewhere[0]) return attach(elsewhere[0], instance.ref, false);
     return `No clear downward move of ${structureRef(instance.structureId)} or ${instance.ref} within 3 m, no compatible free Socket in its Structure and no compatible supported free Socket within ${SOCKET_SEARCH_DISTANCE} m in another Structure was found for ${instance.ref}. If it is intentionally floating, set canFloat: true in ${instance.definition.source.file}.`;
   };
   return { overlap, unsupported };

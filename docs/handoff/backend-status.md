@@ -851,3 +851,40 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   notice came first and had no `mapId` before). It also covers
   `overwritten_by_agent` after the scene, `edit_rejected` with its `mapId`,
   and mock mode. Deviation: none.
+- **F36 complete:**
+  - **Order:** `unsupported` advice now tries the fixes in this order:
+    1. lowering the whole Structure;
+    2. a clear compatible Socket inside the Structure;
+    3. lowering only the Module and its attachment chain;
+    4. an obstructed Socket inside the Structure;
+    5. a clear Socket in another Structure, which moves and merges a whole
+       Structure;
+    6. an obstructed one there;
+    7. `canFloat`.
+  - **Socket options:** they are sorted with same-Structure options first. The
+    expensive placement test is lazy: only up to 8 options, nearest first, are
+    tested per suggestion, so not every candidate Socket moves a whole
+    Structure.
+  - **Shared Sockets:** the advice remembers which Module each target Socket
+    was suggested for during one check. It prefers a Socket that no other
+    Module was given. When only a taken one fits, it adds "wall_n.top is also
+    suggested for module:house/roof_a, and a Socket takes one attachment;
+    attach only one of them there."
+  - **Map bounds:** the placement test checks the moved Module bounds with
+    `exceededMapEdges`, the compiler's own test and tolerance (1e-7), instead
+    of the solid's bounds with 1e-4. The compiler's Module and marker bounds
+    checks call `exceededMapEdges` once instead of repeating its comparisons.
+  - Tests: `core/test/suggestions.test.ts` "F36":
+    - A lamp floating 0.5 m over a table edge, with a neighbour's free Socket
+      3 m away. It is now told to lower the lamp; before, it was told to
+      attach the whole house to the neighbour.
+    - Two roof halves above one free `wall_n.top`. The second now carries the
+      note; before, there was no note.
+    - A 1 m model in a 2 m Module next to the east edge. The suggested move
+      now stays inside the map when recompiled; before, it produced
+      `out_of_bounds`.
+    - A performance test with 2,000 Modules, whose 1,000 floating blocks each
+      see about ten cross-Structure Sockets. It took 0.33 s on this machine
+      both before and after the lazy test, because placements are cached and
+      boxes use arithmetic; it stays as the measurement F20 lacked.
+  - Deviation: none.
