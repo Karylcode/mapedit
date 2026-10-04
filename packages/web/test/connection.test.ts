@@ -91,6 +91,30 @@ describe('Connection', () => {
     expect(statuses.at(-1)).toBe('open');
   });
 
+  it('opens the map exactly once per connection when the page opens it on welcome (FE10)', () => {
+    const { connection, timers } = fakeConnection();
+    // Like the editor: choose and open a map whenever the server says welcome.
+    connection.on('welcome', () => connection.openMap('village'));
+    const openMaps = (socket: FakeSocket) => socket.sent.filter((m) => m.type === 'openMap');
+    connection.start();
+    FakeSocket.all[0]!.open();
+    FakeSocket.all[0]!.receive({ type: 'welcome', protocolVersion: 1, project });
+    expect(openMaps(FakeSocket.all[0]!)).toHaveLength(1);
+    FakeSocket.all[0]!.drop();
+    timers.shift()!();
+    FakeSocket.all[1]!.open();
+    FakeSocket.all[1]!.receive({ type: 'welcome', protocolVersion: 1, project });
+    expect(openMaps(FakeSocket.all[1]!)).toHaveLength(1);
+    // Switching maps still sends each new choice.
+    connection.openMap('second');
+    connection.openMap('village');
+    expect(openMaps(FakeSocket.all[1]!).map((m) => m.mapId)).toEqual([
+      'village',
+      'second',
+      'village',
+    ]);
+  });
+
   it('keeps retrying while the server is down, backing off', () => {
     const { connection, timers, statuses } = fakeConnection();
     connection.start();

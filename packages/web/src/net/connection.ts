@@ -59,6 +59,8 @@ export class Connection {
   private mapId?: string;
   private socket?: SocketLike;
   private welcomed = false;
+  /** The map last opened on the current socket. */
+  private openedMap?: string;
   private failures = 0;
   private nextRequestId = 1;
   private timer?: unknown;
@@ -93,7 +95,13 @@ export class Connection {
   /** The map to show; it is reopened automatically after every reconnect. */
   openMap(mapId: string): void {
     this.mapId = mapId;
-    if (this.welcomed) this.send({ type: 'openMap', mapId });
+    if (this.welcomed) this.sendOpenMap();
+  }
+
+  /** Each connection opens a map once: the server answers every openMap with a full snapshot. */
+  private sendOpenMap(): void {
+    if (this.mapId === undefined || this.mapId === this.openedMap) return;
+    if (this.send({ type: 'openMap', mapId: this.mapId })) this.openedMap = this.mapId;
   }
 
   get currentMap(): string | undefined {
@@ -136,6 +144,7 @@ export class Connection {
     }
     this.socket = socket;
     this.welcomed = false;
+    this.openedMap = undefined;
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.send({ type: 'hello', protocolVersion: 1, client: this.options.client });
@@ -166,8 +175,9 @@ export class Connection {
       this.failures = 0;
       this.project = message.project;
       this.setStatus('open');
+      // Reopen the current map before listeners run, so one choosing the same map adds nothing.
+      this.sendOpenMap();
       this.emit('welcome', message.project);
-      if (this.mapId !== undefined) this.send({ type: 'openMap', mapId: this.mapId });
     }
     this.emit('message', message);
   }
