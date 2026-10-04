@@ -447,3 +447,13 @@ by Claude. Each entry records the change, the tests and any deviation.
   under 2 s; the first took 8 s before the fix) and `core/test/solid.test.ts`
   (box detection, box arithmetic equal to the Boolean result for overlap, contact
   and separation, and box tracking through moves). Deviation: none.
+- **Extra (frontend request) – sun and point-marker directions:** the frontend
+  defined in `docs/protocol.md` section 2 (frontend branch, commit `5169f13`)
+  that `sun.azimuth` is measured clockwise from north viewed from above (0 north
+  −Z, 90 east +X, 180 south +Z) and that a point marker faces south (+Z, glTF
+  forward) at rotation 0. `docs/map-format.md` and the generated Agent guide
+  (`templates/authoring.md`, `AGENTS.md`, `SKILL.md`) now say the same. The
+  backend already matched: it passes `sun` through unchanged, exports marker
+  rotation as the glTF node rotation around +Y, and the Unity importer places
+  the mapped prefab at local identity under that node, so a spawn prefab faces
+  glTF forward (+Z) at rotation 0. No code change was needed.
