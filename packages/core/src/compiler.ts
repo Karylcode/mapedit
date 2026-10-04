@@ -101,7 +101,7 @@ export function compileMap(
       message: `Map "${mapId}" does not exist. Choose a map listed in project information.`,
     });
   const violations: ViolationView[] = [],
-    sourceRefs: Compilation['sourceRefs'] = {};
+    sourceRefs = Object.create(null) as Compilation['sourceRefs'];
   const instances: CompiledInstance[] = [],
     sockets: CompiledSocket[] = [],
     socketConnections: Compilation['socketConnections'] = [];

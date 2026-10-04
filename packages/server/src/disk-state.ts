@@ -265,7 +265,7 @@ export class DiskState extends EventEmitter implements StateStore {
     });
     try {
       if (edit.kind === 'delete') {
-        if (!cached.compilation.sourceRefs[edit.ref])
+        if (!Object.hasOwn(cached.compilation.sourceRefs, edit.ref))
           throw new EditError(`Unknown object "${edit.ref}".`, 'unknown_object');
         return { type: 'previewResult', requestId, ok: true, violations: [] };
       }

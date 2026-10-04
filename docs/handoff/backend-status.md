@@ -686,3 +686,16 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   checks `immovable_object`, `unknown_object` and `violations` codes; updated
   expectations in the disk-state, drag, consistency and history tests.
   Deviation: none.
+- **F29 complete:** `compileMap` builds `sourceRefs` as a null-prototype record
+  and the server's delete preview checks it with `Object.hasOwn`, so names on
+  `Object.prototype` are never existing objects. Moves already went through
+  `applySourceEdit`, which finds objects in arrays and, since F28, reports
+  `unknown_object`. The other lookups by client or Agent strings were checked:
+  `parsed.modules`, `parsed.maps`, `socketTypes` and `markerTypes` were already
+  null-prototype, MCP tools and paging cursors use `Map`, and the mock state
+  searches arrays. Tests: `server/test/prototype-names.test.ts` previews and
+  applies delete and move for `constructor`, `__proto__`, `toString`,
+  `hasOwnProperty` and `valueOf` over a real WebSocket (delete previews answered
+  `ok: true` before), runs MCP `build_module` with those names, compiles them as
+  map ids and as a Module type, and checks that `sourceRefs` has no prototype.
+  Deviation: none.

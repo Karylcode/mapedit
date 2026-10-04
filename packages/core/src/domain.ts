@@ -118,6 +118,7 @@ export interface Compilation {
   sockets: CompiledSocket[];
   socketConnections: { a: string; b: string }[];
   socketTypes: Record<string, SocketType>;
+  /** Null-prototype; look up refs from clients with Object.hasOwn. */
   sourceRefs: Record<string, SourceRef>;
 }
 export const BUILTIN_SOCKET_TYPES: Record<string, SocketType> = {
