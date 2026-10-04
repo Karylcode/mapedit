@@ -1,0 +1,12 @@
+# Normalize text files to LF so Windows and Linux checkouts match
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.glb binary
+*.bin binary
+*.ktx2 binary
+*.hdr binary
+*.exr binary
