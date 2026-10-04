@@ -39,6 +39,18 @@ export async function findBrowser(): Promise<string | undefined> {
   return undefined;
 }
 
+/**
+ * Headless browser flags. SwiftShader lets the render page create a WebGL context on
+ * machines without a GPU, such as CI runners; with a GPU it changes nothing.
+ */
+export const SCREENSHOT_BROWSER_ARGS = ['--disable-dev-shm-usage', '--enable-unsafe-swiftshader'];
+
+/** The render page's own error text, without Playwright's call prefix and stack. */
+function renderPageError(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return (text.split('\n')[0] ?? text).replace(/^page\.evaluate: /, '').replace(/^Error: /, '');
+}
+
 /** The front end owns rendering; the backend only calls the documented page contract. */
 export class ScreenshotService {
   private browser?: Browser;
@@ -58,7 +70,7 @@ export class ScreenshotService {
         this.browser = await chromium.launch({
           executablePath,
           headless: true,
-          args: ['--disable-dev-shm-usage'],
+          args: SCREENSHOT_BROWSER_ARGS,
         });
         return this.browser;
       })().catch((error) => {
@@ -85,10 +97,12 @@ export class ScreenshotService {
         undefined,
         { timeout: 30_000 },
       );
-      const data = await page.evaluate(
-        async (value) => (window as unknown as RenderWindow).mapeditRender(value),
-        spec,
-      );
+      // The page reports problems such as missing WebGL or an unknown map as errors.
+      const data = await page
+        .evaluate(async (value) => (window as unknown as RenderWindow).mapeditRender(value), spec)
+        .catch((error: unknown) => {
+          throw new Error(`Render page error: ${renderPageError(error)}`);
+        });
       if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(data))
         throw new Error('The render page did not return a PNG data URL.');
       const png = Buffer.from(data.slice('data:image/png;base64,'.length), 'base64');

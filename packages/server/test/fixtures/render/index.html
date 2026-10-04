@@ -16,6 +16,12 @@
           window.mapeditRenderReady = true;
         });
       window.mapeditRender = async (spec) => {
+        // Test modes: a page error the backend must relay, and a real WebGL context.
+        if (map === 'broken') throw new Error('WebGL is not available in this browser: test mode');
+        if (map === 'webgl') {
+          const gl = document.createElement('canvas').getContext('webgl2');
+          if (!gl) throw new Error('WebGL is not available in this browser: no context');
+        }
         while (scene.revision < (spec.minRevision || 0)) {
           scene = await (await fetch('/api/scene?map=' + encodeURIComponent(map))).json();
           await new Promise((resolve) => setTimeout(resolve, 10));

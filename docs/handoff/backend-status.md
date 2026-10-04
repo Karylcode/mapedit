@@ -581,3 +581,15 @@ by Claude. Each entry records the change, the tests and any deviation.
   golden tests confirm the text is unchanged, and the F15 identity test now
   expects the fixed rule. Deviation: item (1) keeps the lines because F20 made
   them live.
+- **Extra (frontend request) – screenshots without a GPU:** the headless browser
+  now starts with `SCREENSHOT_BROWSER_ARGS` =
+  `--disable-dev-shm-usage --enable-unsafe-swiftshader` (`server/src/screenshot.ts`),
+  so the three.js `/render` page can fall back to software WebGL on machines
+  without a GPU, such as GitHub's Ubuntu runner; with a GPU nothing changes.
+  When `mapeditRender` throws (the frontend reports missing WebGL or an unknown
+  map that way instead of hanging), the screenshot error is the page's own
+  message, for example `Render page error: WebGL is not available in this
+  browser: …`, without Playwright's prefix and stack. Tests:
+  `server/test/screenshot.test.ts` (the flag, the relayed page error, and a real
+  WebGL2 context in the headless render page, which also runs on CI); the first
+  two failed before the change.
