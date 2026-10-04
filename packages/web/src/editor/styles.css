@@ -65,6 +65,19 @@ select {
   inset: 0;
 }
 
+.stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.viewport-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
 .hud {
   position: absolute;
   inset: 0;
@@ -225,4 +238,52 @@ select {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Status card: waiting for the server, a map or its models ---------------- */
+
+.status-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(360px, calc(100vw - 2 * var(--gutter)));
+  transform: translate(-50%, -50%);
+  padding: 14px 16px 12px;
+  background: var(--chalk-raised);
+  border: 1px solid var(--ink);
+  box-shadow: var(--tag-lift);
+}
+
+.status-card[hidden] {
+  display: none;
+}
+
+.status-message {
+  margin: 0;
+  font: 600 15px/1.35 var(--font-label);
+}
+
+.status-meter {
+  height: 6px;
+  margin-top: 10px;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.status-meter-fill {
+  width: 0;
+  height: 100%;
+  background: var(--chalkline);
+  transition: width 0.2s ease-out;
+}
+
+.status-count {
+  margin: 6px 0 0;
+  font: 12px/1.3 var(--font-mono);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+[hidden] {
+  display: none !important;
 }
