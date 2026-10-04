@@ -10,6 +10,9 @@ is not modified here.
 `packages/web/src/main.ts` 開始：`editor/` 是編輯器（`editor.ts` 把連線、場景、輸入、編輯和介面接在一起），
 `render/` 是截圖頁，`scene/` 是兩者共用的 three.js 畫面，`net/connection.ts` 是 WebSocket 客戶端，
 `i18n/` 是兩種語言的文字。
+[PR #2](https://github.com/Karylcode/mapedit/pull/2) 的 CI（[run 37237237682](https://github.com/Karylcode/mapedit/actions/runs/37237237682)）
+在 Windows／Ubuntu × Node 22／24 四個組合全部通過：Windows 68 個檔案全過；Ubuntu 只略過 Windows PowerShell 的
+測試，沒有 GPU 的 runner 上 6 個瀏覽器測試檔（含真的 MCP `screenshot`、`build_module`）都實際執行並通過。
 
 ## 目前進度
 
@@ -197,6 +200,8 @@ is not modified here.
 
 ## 已知問題
 
+- 後端提醒：這台 Windows 的 Node 24 偶爾會有一個 vitest worker 以 0xC0000409 結束（nodejs/node#56645，和程式碼無關），
+  重跑就會過；詳見 backend-status.md 的「已知問題」。
 - three.js 讓主要的 JavaScript 檔約 690 KB（gzip 後約 177 KB）；本機工具可以接受，沒有再拆。
 - 違規非常多（例如 100 個以上）時，看整張地圖會有很多旗子；遠的旗子會縮小到 45%，點清單可以飛過去看。
 - 這個環境的 PATH 上沒有 pnpm；我用 `corepack pnpm@11.19.0` 當 `pnpm`。如果用 corepack 但沒指定版本，
