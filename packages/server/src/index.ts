@@ -36,6 +36,8 @@ export interface ServerOptions {
   webRoot?: string;
   state?: StateStore;
   browserPath?: string;
+  /** How long a screenshot waits for the render page; 60 seconds unless a test shortens it. */
+  screenshotTimeoutMs?: number;
   services?: AgentServices;
 }
 export interface MapeditServer {
@@ -368,7 +370,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Unable to bind local server.');
   port = address.port;
-  const screenshots = new ScreenshotService(`http://127.0.0.1:${port}`, options.browserPath);
+  const screenshots = new ScreenshotService(`http://127.0.0.1:${port}`, options.browserPath, {
+    ...(options.screenshotTimeoutMs ? { renderTimeoutMs: options.screenshotTimeoutMs } : {}),
+  });
   const mcp = createMcpHttpHandler(
     options.services ?? state.createAgentServices(screenshots),
     screenshots,

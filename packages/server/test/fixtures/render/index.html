@@ -16,8 +16,14 @@
           window.mapeditRenderReady = true;
         });
       window.mapeditRender = async (spec) => {
-        // Test modes: a page error the backend must relay, and a real WebGL context.
+        // Test modes: a page error the backend must relay, an oversized error, a render that
+        // never finishes while holding a request open, and a real WebGL context.
         if (map === 'broken') throw new Error('WebGL is not available in this browser: test mode');
+        if (map === 'verbose') throw new Error('Shader log: ' + 'x'.repeat(20000));
+        if (map === 'hang') {
+          fetch('/hold').catch(() => {});
+          return new Promise(() => {});
+        }
         if (map === 'webgl') {
           const gl = document.createElement('canvas').getContext('webgl2');
           if (!gl) throw new Error('WebGL is not available in this browser: no context');

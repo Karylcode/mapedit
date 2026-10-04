@@ -724,3 +724,17 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   `protocol/test/catalogs.test.ts` now compares `VIOLATION_KINDS`,
   `NOTICE_CODES` and `EDIT_FAILURES` with their unions in `docs/protocol.md`.
   Deviation: none.
+- **F31 complete:** `ScreenshotService` races the render page's
+  `mapeditRender` call against a 60 second limit. When the limit passes, the
+  capture fails with "The render page did not finish within 60 seconds and was
+  closed…", the `finally` block closes the page (which also ends the pending
+  evaluate call), and the browser stays usable for the next capture. The
+  limit is a constructor option and `ServerOptions.screenshotTimeoutMs`, so
+  tests use 0.5 seconds. Relayed render page errors keep their first line and
+  are cut at 1,000 characters with "… (N more characters)". Tests:
+  `server/test/screenshot.test.ts` "F31" uses new fixture modes: `hang`
+  (`mapeditRender` never resolves while the page holds a request open; the
+  capture fails in time, the held request is closed, and a later capture
+  works; before, it waited forever), `verbose` (a 20,000-character page error
+  is capped), and an MCP `screenshot` call on a real server whose web root is
+  the fixture, which answers the timeout error. Deviation: none.
