@@ -89,4 +89,25 @@ describe('MapView while module models load', () => {
     expect(refreshes).toBeLessThanOrEqual(types.length);
     expect(batches(view).filter((mesh) => mesh.count > 0)).toHaveLength(20);
   });
+
+  it('keeps the instance buffer size when a type swaps its model (FE2)', async () => {
+    const network = controlledFetcher();
+    const view = new MapView(new AssetCache(network.fetcher));
+    view.apply(snapshot(['/assets/fe2/wall-0.glb'], 40));
+    await network.release('/assets/fe2/wall-0.glb');
+    await view.settled();
+    const capacity = batches(view)[0]!.instanceMatrix.count;
+    expect(capacity).toBeGreaterThanOrEqual(40);
+    // The Agent keeps adjusting the wall model; the number of walls stays the same.
+    for (let i = 1; i <= 20; i++) {
+      const url = `/assets/fe2/wall-${i}.glb`;
+      view.apply(snapshot([url], 40, i));
+      await network.release(url);
+      await view.settled();
+    }
+    const meshes = batches(view);
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0]!.count).toBe(40);
+    expect(meshes[0]!.instanceMatrix.count).toBe(capacity);
+  });
 });

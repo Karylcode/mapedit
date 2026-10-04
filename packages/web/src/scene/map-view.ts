@@ -563,7 +563,11 @@ export class MapView {
     const existing = this.batches.get(typeId);
     if (existing && existing.asset === asset && existing.capacity >= count) return existing;
     if (existing) this.removeBatch(existing);
-    const capacity = Math.max(count, existing ? existing.capacity * 2 : 0, 1);
+    // A new model for the same instances keeps the buffer; only more instances grow it.
+    const capacity =
+      existing && count <= existing.capacity
+        ? existing.capacity
+        : Math.max(count, existing ? existing.capacity * 2 : 0, 1);
     const batch: ModuleBatch = { asset, meshes: [], capacity, refs: [] };
     const parts = asset
       ? asset.parts.map((part) => ({ geometry: part.geometry, material: part.material }))
