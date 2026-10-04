@@ -189,6 +189,9 @@ is not modified here.
   取消點選的違規、取消選取。測試：`test/keys.test.ts` 測各種鍵盤配置和組合鍵；`test/keys-browser.test.ts` 在瀏覽器裡
   送出德文（QWERTZ）和法文（AZERTY）鍵盤的事件：印著 Z 的鍵加 Ctrl 會復原、印著 Y 的鍵會重做
   （修正前德文鍵盤的 Ctrl+Z 會重做）。
+- **FE8 完成**：`pointercancel`、`lostpointercapture` 和視窗失去焦點時，結束目前的手勢；還沒放下的拖動直接取消
+  （預覽消失、不套用），平移也會結束。測試：`test/edit-browser.test.ts` 對三種中斷各測一次：拖動中送出事件後
+  預覽消失、不再是拖動狀態，接著 Delete 會正常送出（修正前預覽一直留著）。
 
 ## 自行決定的事
 

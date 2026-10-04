@@ -213,4 +213,37 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     await page.waitForTimeout(200);
     expect(await placement(page, 'structure:out_of_bounds')).toEqual(before);
   });
+
+  for (const interruption of ['pointercancel', 'lostpointercapture', 'blur'] as const)
+    it(`drops a drag the browser interrupts with ${interruption} (FE8)`, async () => {
+      const ghost = () => editorState(page, (e) => e.viewport.scene.getObjectByName('ghost')?.name);
+      const from = await screenPoint(page, 'module:house/base');
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(from.x + 40, from.y + 30, { steps: 6 });
+      await poll(ghost).toBe('ghost');
+      await page.evaluate((type) => {
+        const canvas = document.querySelector('canvas')!;
+        if (type === 'blur') window.dispatchEvent(new FocusEvent('blur'));
+        else canvas.dispatchEvent(new PointerEvent(type, { pointerId: 1, bubbles: true }));
+      }, interruption);
+      await poll(ghost).toBeUndefined();
+      expect(await editorState(page, (e) => e.edits.dragging)).toBe(false);
+      await page.mouse.up();
+      // Keys work again: Delete reaches the selected house.
+      const requests = await page.evaluate(() => {
+        const editor = (
+          globalThis as unknown as {
+            mapeditEditor: { connection: { request(m: { type: string }): number | undefined } };
+          }
+        ).mapeditEditor;
+        const log: string[] = [];
+        const original = editor.connection.request.bind(editor.connection);
+        editor.connection.request = (message) => (log.push(message.type), undefined);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+        editor.connection.request = original;
+        return log;
+      });
+      expect(requests).toEqual(['applyEdit']);
+    });
 });

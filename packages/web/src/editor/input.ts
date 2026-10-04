@@ -30,6 +30,8 @@ export interface InputActions {
   dragStart?(hit: ObjectRef, pointer: Vector2, client: ClientPoint): 'drag' | 'pan' | 'blocked';
   dragMove?(pointer: Vector2, client: ClientPoint): void;
   dragEnd?(pointer: Vector2, client: ClientPoint): void;
+  /** The browser took the pointer away before the drop, e.g. on a window switch. */
+  dragCancel?(): void;
   /** A key press that is not camera movement; return true when handled. */
   key(event: KeyboardEvent): boolean;
 }
@@ -74,7 +76,10 @@ export class OverviewInput {
     canvas.addEventListener('pointerdown', (event) => this.pointerDown(event));
     canvas.addEventListener('pointermove', (event) => this.pointerMove(event));
     canvas.addEventListener('pointerup', (event) => this.pointerUp(event));
-    canvas.addEventListener('pointercancel', (event) => this.pointerUp(event, true));
+    // The browser can end a gesture without a pointerup: touch and pen cancels,
+    // a lost capture, or the window losing focus mid-drag.
+    canvas.addEventListener('pointercancel', (event) => this.interrupt(event.pointerId));
+    canvas.addEventListener('lostpointercapture', (event) => this.interrupt(event.pointerId));
     canvas.addEventListener('pointerleave', () => {
       this.hoverPointer = undefined;
       if (!this.gesture) this.actions.hover(undefined, 0, 0);
@@ -83,7 +88,10 @@ export class OverviewInput {
     canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     window.addEventListener('keydown', (event) => this.keyDown(event));
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      if (this.gesture) this.interrupt(this.gesture.id);
+    });
     viewport.addTask((seconds) => this.frame(seconds));
   }
 
@@ -117,6 +125,17 @@ export class OverviewInput {
   cancelGesture(): void {
     this.gesture = undefined;
     this.controls.endPan();
+  }
+
+  /** The gesture ended without a drop: a drag in progress is called off, nothing is applied. */
+  private interrupt(pointerId: number): void {
+    const gesture = this.gesture;
+    if (!gesture || gesture.id !== pointerId) return;
+    this.cancelGesture();
+    if (this.canvas.hasPointerCapture(pointerId)) this.canvas.releasePointerCapture(pointerId);
+    if (gesture.kind === 'drag') this.actions.dragCancel?.();
+    this.hoverStale = true;
+    this.viewport.invalidate();
   }
 
   private pointerDown(event: PointerEvent): void {
@@ -180,15 +199,15 @@ export class OverviewInput {
     this.viewport.invalidate();
   }
 
-  private pointerUp(event: PointerEvent, cancelled = false): void {
+  private pointerUp(event: PointerEvent): void {
     const gesture = this.gesture;
     if (!gesture || gesture.id !== event.pointerId) return;
     this.gesture = undefined;
     if (this.canvas.hasPointerCapture(event.pointerId))
       this.canvas.releasePointerCapture(event.pointerId);
-    if (gesture.kind === 'press' && !cancelled) this.actions.click(gesture.hit);
+    if (gesture.kind === 'press') this.actions.click(gesture.hit);
     else if (gesture.kind === 'pan') this.controls.endPan();
-    else if (gesture.kind === 'drag' && !cancelled)
+    else if (gesture.kind === 'drag')
       this.actions.dragEnd?.(this.pointer(event.clientX, event.clientY), {
         x: event.clientX,
         y: event.clientY,

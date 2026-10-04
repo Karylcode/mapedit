@@ -135,6 +135,7 @@ export function start(root: HTMLElement = document.body): void {
     dragStart: (hit, pointer, client) => edits.beginDrag(hit, pointer, client),
     dragMove: (pointer, client) => edits.dragMove(pointer, client),
     dragEnd: (pointer, client) => edits.dragEnd(pointer, client),
+    dragCancel: () => edits.cancelDrag(),
     key(event) {
       const shortcut = shortcutFor(event, edits.dragging);
       if (!shortcut) return false;
