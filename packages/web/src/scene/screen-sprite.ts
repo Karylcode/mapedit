@@ -34,15 +34,16 @@ export function fitScreenSprites(
   const projectionY = camera.projectionMatrix.elements[5]!;
   const unit = 2 / (Math.max(1, viewportHeight) * projectionY);
   const perspective = (camera as { isPerspectiveCamera?: boolean }).isPerspectiveCamera === true;
+  // An orthographic view shrinks sprites as if seen from as far as it is tall.
+  const orthographicSpan = 2 / projectionY;
   camera.getWorldPosition(eye);
   for (const sprite of sprites) {
     const size = sprite.userData.screenSize as ScreenSize | undefined;
     if (!size) continue;
-    let factor = 1;
-    if (perspective) {
-      const distance = sprite.getWorldPosition(position).distanceTo(eye);
-      factor = Math.max(size.min, Math.min(1, size.near / Math.max(distance, 1)));
-    }
+    const distance = perspective
+      ? sprite.getWorldPosition(position).distanceTo(eye)
+      : orthographicSpan;
+    const factor = Math.max(size.min, Math.min(1, size.near / Math.max(distance, 1)));
     sprite.scale.set(size.width * unit * factor, size.height * unit * factor, 1);
   }
 }

@@ -90,7 +90,11 @@ describe('violation text', () => {
 
   it('translates every kind of mock violation from its params in both languages', () => {
     const text = (kind: string, lang: Lang) =>
-      violationText(mockScene().violations.find((v) => v.kind === kind)!, index, tr(lang));
+      violationText(
+        mockScene().violations.find((v) => v.kind === kind)!,
+        index,
+        tr(lang),
+      );
     expect(text('off_grid', 'zh-TW')).toMatchObject({
       message: '結構位置 (60.25, 10) 不在 0.5 公尺的格子上',
       suggestion: '改成 (60.5, 10)',
@@ -108,14 +112,20 @@ describe('violation text', () => {
       suggestion: 'Move it 1 m west to fit inside the map',
     });
     expect(text('missing_reference', 'zh-TW').message).toBe('找不到模組 missing_block');
-    expect(text('incompatible_socket', 'zh-TW').message).toBe('插槽類型 roof 和 stair 不能接在一起');
+    expect(text('incompatible_socket', 'zh-TW').message).toBe(
+      '插槽類型 roof 和 stair 不能接在一起',
+    );
     expect(text('unsupported', 'en').message).toBe(
       'Nothing holds it up all the way down to the ground',
     );
   });
 
   it('falls back to the backend text when params do not match the protocol', () => {
-    const odd = { ...mockScene().violations[0]!, kind: 'off_grid' as const, params: { values: 'x' } };
+    const odd = {
+      ...mockScene().violations[0]!,
+      kind: 'off_grid' as const,
+      params: { values: 'x' },
+    };
     expect(violationText(odd, index, tr('zh-TW')).message).toBe(odd.message);
   });
 

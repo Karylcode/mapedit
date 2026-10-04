@@ -56,9 +56,7 @@ const socketName = (socket: string) => socket.replace(/^module:[^/]+\//, '');
 
 /** Params that match protocol section 3, narrowed by kind; otherwise undefined. */
 function typed(violation: ViolationView): TypedViolationView | undefined {
-  return violationParamsProblems(violation).length
-    ? undefined
-    : (violation as TypedViolationView);
+  return violationParamsProblems(violation).length ? undefined : (violation as TypedViolationView);
 }
 
 /** What is wrong, in the interface language, from the violation's params. */

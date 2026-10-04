@@ -284,7 +284,8 @@ export const en: Record<MessageKey, Message> = {
   'violation.missing.unknown_marker_type': 'Marker type {reference} does not exist',
   'violation.missing.unresolved_attachment': 'Cannot attach to {reference}: no such socket',
   'violation.missing.attachment_cycle': 'Attachments form a loop through {reference}',
-  'violation.missing.unknown_object': 'This object no longer exists; the Agent may have just changed it',
+  'violation.missing.unknown_object':
+    'This object no longer exists; the Agent may have just changed it',
   'violation.missing.immovable_object': 'Only a whole structure can be moved',
   'violation.socket.types': 'Socket types {typeA} and {typeB} cannot connect',
   'violation.socket.occupied': '{socketA} or {socketB} is already taken',
