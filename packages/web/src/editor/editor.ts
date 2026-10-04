@@ -13,6 +13,7 @@ import { chooseMap, initialState, type EditorState } from './state.js';
 import { Viewport } from './viewport.js';
 import { OverviewInput } from './input.js';
 import { clickSelection, keepSelection } from './selection.js';
+import { shortcutFor } from './keys.js';
 import { EditController } from './editing.js';
 import { FileErrorFilter, noticeToast } from './notices.js';
 import { wholeObjects } from './describe.js';
@@ -131,44 +132,38 @@ export function start(root: HTMLElement = document.body): void {
       } else if (previous?.ref !== hit || previous.x !== x || previous.y !== y)
         store.set({ hover: { ref: hit, x, y } });
     },
-    focus,
-    escape() {
-      if (store.state.focusedViolation) store.set({ focusedViolation: undefined });
-      else store.set({ selection: undefined });
-    },
     dragStart: (hit, pointer, client) => edits.beginDrag(hit, pointer, client),
     dragMove: (pointer, client) => edits.dragMove(pointer, client),
     dragEnd: (pointer, client) => edits.dragEnd(pointer, client),
     key(event) {
-      const command = event.ctrlKey || event.metaKey;
-      if (event.code === 'Escape' && edits.dragging) {
-        edits.cancelDrag();
-        input.cancelGesture();
-        return true;
+      const shortcut = shortcutFor(event, edits.dragging);
+      if (!shortcut) return false;
+      switch (shortcut.action) {
+        case 'undo':
+          edits.undo();
+          break;
+        case 'redo':
+          edits.redo();
+          break;
+        case 'rotate':
+          edits.rotate(shortcut.direction);
+          break;
+        case 'delete':
+          edits.deleteSelection();
+          break;
+        case 'focus':
+          focus();
+          break;
+        case 'escape':
+          // Escape steps back one thing: the drag, then the picked violation, then the selection.
+          if (edits.dragging) {
+            edits.cancelDrag();
+            input.cancelGesture();
+          } else if (store.state.focusedViolation) store.set({ focusedViolation: undefined });
+          else store.set({ selection: undefined });
+          break;
       }
-      // Undo and redo act on the whole project, Agent edits included: a held key
-      // must not repeat them.
-      if (command && event.code === 'KeyZ') {
-        if (event.repeat) return true;
-        if (event.shiftKey) edits.redo();
-        else edits.undo();
-        return true;
-      }
-      if (command && event.code === 'KeyY') {
-        if (!event.repeat) edits.redo();
-        return true;
-      }
-      if (command || event.altKey) return false;
-      if (event.code === 'KeyR') {
-        // Holding R turns a dragged preview continuously, but never re-applies edits.
-        if (!event.repeat || edits.dragging) edits.rotate(event.shiftKey ? -1 : 1);
-        return true;
-      }
-      if (event.code === 'Delete' || event.code === 'Backspace') {
-        if (!event.repeat) edits.deleteSelection();
-        return true;
-      }
-      return false;
+      return true;
     },
   });
 

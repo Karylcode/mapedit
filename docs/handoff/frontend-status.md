@@ -184,6 +184,11 @@ is not modified here.
 - **FE6 完成**：Ctrl+Z、Ctrl+Y（和 Ctrl+Shift+Z）忽略按住不放時的重複按鍵，只作用一次；這樣 W3 寫的
   「按住鍵不放不會重複套用」才是真的。測試：`test/keys-browser.test.ts` 在瀏覽器裡送出重複的按鍵事件，
   只送出一個 `undo`（修正前是三個）。
+- **FE7 完成**：快捷鍵集中到 `editor/keys.ts` 的 `shortcutFor`：Z、Y、R、F 這些字母指令看 `event.key`（不分大小寫），
+  Delete、Backspace、Escape 也看 `event.key`；WASD 和方向鍵是方向，照舊看 `event.code`。Escape 依序取消拖動、
+  取消點選的違規、取消選取。測試：`test/keys.test.ts` 測各種鍵盤配置和組合鍵；`test/keys-browser.test.ts` 在瀏覽器裡
+  送出德文（QWERTZ）和法文（AZERTY）鍵盤的事件：印著 Z 的鍵加 Ctrl 會復原、印著 Y 的鍵會重做
+  （修正前德文鍵盤的 Ctrl+Z 會重做）。
 
 ## 自行決定的事
 

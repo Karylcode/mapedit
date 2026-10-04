@@ -23,8 +23,6 @@ export interface InputActions {
   /** A click (not a drag) on an object or on empty ground. */
   click(hit: ObjectRef | undefined): void;
   hover(hit: ObjectRef | undefined, x: number, y: number): void;
-  focus(): void;
-  escape(): void;
   /**
    * A left-button drag that started on an object: `drag` moves it, `pan`
    * moves the map instead, `blocked` does neither until the button is released.
@@ -32,8 +30,8 @@ export interface InputActions {
   dragStart?(hit: ObjectRef, pointer: Vector2, client: ClientPoint): 'drag' | 'pan' | 'blocked';
   dragMove?(pointer: Vector2, client: ClientPoint): void;
   dragEnd?(pointer: Vector2, client: ClientPoint): void;
-  /** Any other key; return true when handled. */
-  key?(event: KeyboardEvent): boolean;
+  /** A key press that is not camera movement; return true when handled. */
+  key(event: KeyboardEvent): boolean;
 }
 
 /** A page position, in CSS pixels. */
@@ -210,20 +208,15 @@ export class OverviewInput {
 
   private keyDown(event: KeyboardEvent): void {
     if (typingInto(event.target)) return;
-    if (this.actions.key?.(event)) {
+    if (this.actions.key(event)) {
       event.preventDefault();
       return;
     }
     if (event.ctrlKey || event.metaKey || event.altKey) return;
+    // WASD and arrows are directions, so they follow key positions on any layout.
     if (event.code in PAN_KEYS) {
       this.keys.add(event.code);
       this.viewport.invalidate();
-      event.preventDefault();
-    } else if (event.code === 'KeyF') {
-      this.actions.focus();
-      event.preventDefault();
-    } else if (event.code === 'Escape') {
-      this.actions.escape();
       event.preventDefault();
     }
   }

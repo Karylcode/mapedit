@@ -56,4 +56,15 @@ describe.skipIf(!executable)('editor keyboard shortcuts in a real browser', () =
     const redo = { key: 'y', code: 'KeyY', ctrlKey: true };
     expect(await press([redo, { ...redo, repeat: true }])).toEqual(['redo']);
   });
+
+  it('follows the letter printed on the key, not its position (FE7)', async () => {
+    // German QWERTZ: the key printed Z sits where QWERTY has Y, and the other way round.
+    expect(await press([{ key: 'z', code: 'KeyY', ctrlKey: true }])).toEqual(['undo']);
+    expect(await press([{ key: 'y', code: 'KeyZ', ctrlKey: true }])).toEqual(['redo']);
+    // French AZERTY: the key printed Z is where QWERTY has W.
+    expect(await press([{ key: 'z', code: 'KeyW', ctrlKey: true }])).toEqual(['undo']);
+    expect(await press([{ key: 'Z', code: 'KeyW', ctrlKey: true, shiftKey: true }])).toEqual([
+      'redo',
+    ]);
+  });
 });
