@@ -17,8 +17,10 @@ export interface StateStore {
   cursor: number;
   flush(): Promise<void>;
   openMap(id: string): Promise<void>;
-  preview(edit: Edit, requestId: number): Promise<Preview>;
-  apply(edit: Edit, baseRevision: number): Promise<string | undefined>;
+  getScene?(id?: string): Promise<SceneSnapshot>;
+  asset?(path: string): Uint8Array | undefined;
+  preview(edit: Edit, requestId: number, mapId?: string): Promise<Preview>;
+  apply(edit: Edit, baseRevision: number, mapId?: string): Promise<string | undefined>;
   travel(direction: -1 | 1): Promise<string | undefined>;
   on(event: 'message', listener: (message: ServerMessage) => void): this;
   close(): Promise<void>;

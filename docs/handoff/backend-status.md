@@ -2,8 +2,8 @@
 
 ## 目前進度
 
-M0–M3 complete on `backend`. M4/M5 acceptance has passed and is being documented.
-Next: commit the real server and MCP integration, then Unity/export and templates.
+M0–M4 complete on `backend`. M5 acceptance has passed and is being documented.
+Next: commit MCP integration, then Unity/export and templates.
 
 ## 每個里程碑完成了什麼、怎麼驗證
 
@@ -38,7 +38,15 @@ Next: commit the real server and MCP integration, then Unity/export and template
   real-file build tests cover missing/oversized model repair, terrain contact and
   cache isolation. Warm previews of a 30-structure village pass the 30 ms bound.
   Typecheck, lint and all 67 tests currently present passed before this commit.
-- M4–M7: pending milestone documentation/commits.
+- M4: real local server, authoring-file watcher, current-file flush barriers,
+  immutable GLB asset URLs, all WebSocket flows and map-scoped scene broadcasts.
+  Human moves snap/auto-height, validate exact geometry and preserve YAML comments;
+  deletion stays allowed. Project-wide human/Agent source checkpoints support
+  undo/redo including PNG/model changes. Concurrent edit notices compare actual
+  affected objects and distinguish maps even when IDs match. Host, Origin, static
+  path traversal and symlink checks are enforced. Acceptance covers all protocol
+  flows plus actual 24-module village previews under 30 ms median roundtrip.
+- M5–M7: pending milestone documentation/commits.
 
 ## 自行決定的事
 

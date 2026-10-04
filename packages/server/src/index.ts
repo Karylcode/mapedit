@@ -3,15 +3,21 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, realpath } from 'node:fs/promises';
 import { resolve, sep, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMessage, Edit, ServerMessage } from '@mapedit/protocol';
 import { boxGlb } from './mock.js';
 import { MemoryState, type StateStore } from './state.js';
+import { DiskState } from './disk-state.js';
+import { buildProject, buildFromParsed } from './build-project.js';
 export { MemoryState } from './state.js';
 export { mockScene } from './mock.js';
 export type { StateStore } from './state.js';
+export { readProject, readProjectTexts, projectPath } from './project-files.js';
+export { buildProject, buildFromParsed } from './build-project.js';
+export { DiskState } from './disk-state.js';
 
 export interface ServerOptions {
   port?: number;
@@ -70,7 +76,27 @@ function json(response: ServerResponse, status: number, value: unknown): void {
 }
 
 export async function createServer(options: ServerOptions = {}): Promise<MapeditServer> {
-  const state = options.state ?? new MemoryState();
+  const root = resolve(options.root ?? process.cwd());
+  const state: StateStore =
+    options.state ??
+    (options.mock
+      ? new MemoryState()
+      : await DiskState.create(root, {
+          build: (id, revision) => buildProject(root, id, revision),
+          preview: buildFromParsed,
+        }));
+  const defaultWebRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
+  const webRoot =
+    options.webRoot ??
+    (await stat(defaultWebRoot).then(
+      (value) => (value.isDirectory() ? defaultWebRoot : undefined),
+      () => undefined,
+    ));
+  const sceneFor = async (id?: string) => {
+    if (state.getScene) return state.getScene(id);
+    if (id) await state.openMap(id);
+    return state.scene;
+  };
   let port = 0;
   const validRequest = (request: IncomingMessage): boolean => {
     const host = request.headers.host;
@@ -82,13 +108,13 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       if (!validRequest(request))
         return json(response, 403, { error: 'Host or Origin is not allowed.' });
       const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
+      if (url.pathname === '/mcp') return json(response,501,{error:'MCP will be available in milestone M5.'});
       if (request.method !== 'GET') return json(response, 405, { error: 'Method not allowed.' });
-      await state.flush();
+      if (url.pathname.startsWith('/api/')) await state.flush();
       if (url.pathname === '/api/project') return json(response, 200, state.project);
       if (url.pathname === '/api/scene') {
         const id = url.searchParams.get('map');
-        if (id) await state.openMap(id);
-        return json(response, 200, state.scene);
+        return json(response, 200, await sceneFor(id ?? undefined));
       }
       if (url.pathname.startsWith('/assets/mock/')) {
         if (
@@ -102,19 +128,32 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
         );
         return;
       }
-      if (url.pathname === '/mcp')
-        return json(response, 501, { error: 'MCP will be available in milestone M5.' });
+      if (url.pathname.startsWith('/assets/')) {
+        const data = state.asset?.(url.pathname);
+        if (data) {
+          response.writeHead(200, {
+            'Content-Type': 'model/gltf-binary',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+          });
+          response.end(data);
+          return;
+        }
+      }
       if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/assets/'))
         return json(response, 404, { error: 'Not found.' });
-      if (options.webRoot) {
-        const root = resolve(options.webRoot);
+      if (webRoot) {
+        const root = resolve(webRoot);
         const target = resolve(root, `.${decodeURIComponent(url.pathname)}`);
         if (target !== root && !target.startsWith(root + sep))
           return json(response, 403, { error: 'Path is outside the web directory.' });
         const file = await stat(target)
           .then((s) => (s.isFile() ? target : resolve(root, 'index.html')))
           .catch(() => resolve(root, 'index.html'));
-        const data = await readFile(file);
+        const actualRoot = await realpath(root),
+          actualFile = await realpath(file);
+        if (!actualFile.startsWith(actualRoot + sep))
+          return json(response, 403, { error: 'Path is outside the web directory.' });
+        const data = await readFile(actualFile);
         const types: Record<string, string> = {
           '.html': 'text/html; charset=utf-8',
           '.js': 'text/javascript',
@@ -144,12 +183,13 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
     }
     sockets.handleUpgrade(request, socket, head, (client) => sockets.emit('connection', client));
   });
-  const opened = new Set<WebSocket>();
+  const opened = new Map<WebSocket, string>();
   const send = (client: WebSocket, message: ServerMessage): void => {
     if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(message));
   };
   const broadcast = (message: ServerMessage): void => {
-    for (const client of opened) send(client, message);
+    for (const [client, mapId] of opened)
+      if (message.type !== 'scene' || message.scene.map.id === mapId) send(client, message);
   };
   state.on('message', broadcast);
   let queue = Promise.resolve();
@@ -176,9 +216,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
           }
           await state.flush();
           if (message.type === 'openMap') {
-            await state.openMap(message.mapId);
-            opened.add(client);
-            send(client, { type: 'scene', scene: state.scene });
+            const scene = await sceneFor(message.mapId);
+            opened.set(client, message.mapId);
+            send(client, { type: 'scene', scene });
             send(client, { type: 'history', entries: state.entries, cursor: state.cursor });
             return;
           }
@@ -187,12 +227,12 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
             return;
           }
           if (message.type === 'previewEdit') {
-            send(client, await state.preview(message.edit, message.requestId));
+            send(client, await state.preview(message.edit, message.requestId, opened.get(client)));
             return;
           }
           const reason =
             message.type === 'applyEdit'
-              ? await state.apply(message.edit, message.baseRevision)
+              ? await state.apply(message.edit, message.baseRevision, opened.get(client))
               : await state.travel(message.type === 'undo' ? -1 : 1);
           send(client, {
             type: 'editResult',
@@ -201,7 +241,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
             ...(reason ? { reason } : {}),
           });
           if (!reason) {
-            broadcast({ type: 'scene', scene: state.scene });
+            for (const mapId of new Set(opened.values()))
+              broadcast({ type: 'scene', scene: await sceneFor(mapId) });
             broadcast({ type: 'history', entries: state.entries, cursor: state.cursor });
           }
         })
@@ -221,6 +262,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       server.off('error', reject);
       resolveListening();
     });
+  }).catch(async (error) => {
+    await state.close();
+    throw error;
   });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Unable to bind local server.');
@@ -240,7 +284,3 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
     },
   };
 }
-
-export { readProject, readProjectTexts, projectPath } from './project-files.js';
-
-export { buildProject, buildFromParsed } from './build-project.js';
