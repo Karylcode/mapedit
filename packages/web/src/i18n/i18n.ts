@@ -49,7 +49,9 @@ export function initialLang(): Lang {
 }
 
 export function translate(lang: Lang, key: MessageKey, params: Params = {}): string {
-  const message = dictionaries[lang][key];
+  const message = dictionaries[lang][key] as Message | undefined;
+  // Keys can come from server data (kinds, codes); an unknown one shows itself.
+  if (message === undefined) return key;
   if (typeof message === 'function') return message(params);
   return message.replace(/\{(\w+)\}/g, (match, name: string) =>
     name in params ? String(params[name]) : match,

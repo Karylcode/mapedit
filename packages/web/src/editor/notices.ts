@@ -51,6 +51,18 @@ export function noticeToast(notice: Notice, index: SnapshotIndex | undefined): T
         text: (t) => t('notice.file_error'),
         detail: notice.message,
       };
+    case 'unknown_map':
+      return {
+        level: 'error',
+        key: `unknown_map:${notice.message}`,
+        text: (t) => t('notice.unknown_map'),
+        detail: notice.message,
+      };
+    default: {
+      // A code newer than this interface: the server's English message says what happened.
+      const { level, code, message } = notice as Notice;
+      return { level, key: `notice:${code}:${message}`, text: message };
+    }
   }
 }
 

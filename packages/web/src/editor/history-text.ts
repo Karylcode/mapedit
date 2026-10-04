@@ -1,5 +1,5 @@
 import { parseObjectRef, type HistoryEntry } from '@mapedit/protocol';
-import type { Translator } from '../i18n/i18n.js';
+import { hasMessage, type Translator } from '../i18n/i18n.js';
 import type { SnapshotIndex } from '../scene/snapshot-index.js';
 import { objectName } from './describe.js';
 
@@ -27,6 +27,12 @@ export function describeEntry(
     });
   }
   return entry.summary;
+}
+
+/** Who made an entry; an author newer than this interface is shown as recorded. */
+export function authorName(author: string, t: Translator): string {
+  const key = `history.${author}`;
+  return hasMessage(key) ? t(key) : author;
 }
 
 /** Local wall-clock time of an entry, hours to seconds. */

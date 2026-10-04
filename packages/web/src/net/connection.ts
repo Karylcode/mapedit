@@ -61,6 +61,10 @@ export class Connection {
   private welcomed = false;
   /** The map last opened on the current socket. */
   private openedMap?: string;
+  /** Maps opened on the current socket and not answered yet, oldest first. */
+  private opening: string[] = [];
+  /** The map whose scene the current socket last received: the one the server has open. */
+  private shownMap?: string;
   private failures = 0;
   private nextRequestId = 1;
   private timer?: unknown;
@@ -101,7 +105,27 @@ export class Connection {
   /** Each connection opens a map once: the server answers every openMap with a full snapshot. */
   private sendOpenMap(): void {
     if (this.mapId === undefined || this.mapId === this.openedMap) return;
-    if (this.send({ type: 'openMap', mapId: this.mapId })) this.openedMap = this.mapId;
+    if (!this.send({ type: 'openMap', mapId: this.mapId })) return;
+    this.openedMap = this.mapId;
+    this.opening.push(this.mapId);
+  }
+
+  private mapShown(mapId: string): void {
+    if (this.opening[0] === mapId) this.opening.shift();
+    this.shownMap = mapId;
+  }
+
+  /**
+   * The server answers each openMap in order, and refuses a map that is not in
+   * the project by keeping the one it had open. When the refused map is still
+   * the one wanted, go back to the open map and ask for a fresh snapshot of it.
+   */
+  private mapRefused(): void {
+    const refused = this.opening.shift();
+    if (refused === undefined || refused !== this.mapId || this.opening.length) return;
+    this.mapId = this.shownMap;
+    this.openedMap = undefined;
+    this.sendOpenMap();
   }
 
   get currentMap(): string | undefined {
@@ -123,7 +147,13 @@ export class Connection {
   }
 
   private emit<K extends keyof Events>(event: K, value: Events[K]): void {
-    for (const listener of [...this.listeners[event]]) listener(value);
+    // One failing listener must not keep the message from the others.
+    for (const listener of [...this.listeners[event]])
+      try {
+        listener(value);
+      } catch (error) {
+        console.error(`mapedit: a ${event} listener failed`, error);
+      }
   }
 
   private setStatus(status: ConnectionStatus): void {
@@ -145,6 +175,8 @@ export class Connection {
     this.socket = socket;
     this.welcomed = false;
     this.openedMap = undefined;
+    this.opening = [];
+    this.shownMap = undefined;
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.send({ type: 'hello', protocolVersion: 1, client: this.options.client });
@@ -178,7 +210,8 @@ export class Connection {
       // Reopen the current map before listeners run, so one choosing the same map adds nothing.
       this.sendOpenMap();
       this.emit('welcome', message.project);
-    }
+    } else if (message.type === 'scene') this.mapShown(message.scene.map.id);
+    else if (message.type === 'notice' && message.code === 'unknown_map') this.mapRefused();
     this.emit('message', message);
   }
 

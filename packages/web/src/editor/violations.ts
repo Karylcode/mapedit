@@ -1,23 +1,14 @@
 import {
+  VIOLATION_KINDS,
   violationParamsProblems,
   type MapEdge,
   type TypedViolationView,
   type ViolationKind,
   type ViolationView,
 } from '@mapedit/protocol';
-import type { MessageKey, Translator } from '../i18n/i18n.js';
+import { hasMessage, type MessageKey, type Translator } from '../i18n/i18n.js';
 import type { SnapshotIndex } from '../scene/snapshot-index.js';
 import { objectNames } from './describe.js';
-
-export const VIOLATION_KINDS: readonly ViolationKind[] = [
-  'overlap',
-  'incompatible_socket',
-  'unsupported',
-  'off_grid',
-  'bad_rotation',
-  'out_of_bounds',
-  'missing_reference',
-];
 
 const OPPOSITE: Record<MapEdge, MapEdge> = {
   north: 'south',
@@ -38,10 +29,17 @@ const WRITTEN_POSITIONS = new Set([
 ]);
 const WRITTEN_ROTATIONS = new Set(['structure', 'module', 'socket', 'marker']);
 
-/** The interface-language name of a violation kind, such as 穿模 for overlap. */
+/**
+ * The interface-language name of a violation kind, such as 穿模 for overlap.
+ * A kind newer than this interface is shown as the backend names it.
+ */
 export function violationKindName(kind: ViolationKind, t: Translator): string {
-  return t(`violation.${kind}` as MessageKey);
+  const key = `violation.${kind}`;
+  return hasMessage(key) ? t(key) : kind;
 }
+
+const isKnownKind = (kind: string): kind is ViolationKind =>
+  (VIOLATION_KINDS as readonly string[]).includes(kind);
 
 /** A short title for one violation in the interface language. */
 export function violationTitle(violation: ViolationView, t: Translator): string {
@@ -56,7 +54,8 @@ const socketName = (socket: string) => socket.replace(/^module:[^/]+\//, '');
 
 /** Params that match protocol section 3, narrowed by kind; otherwise undefined. */
 function typed(violation: ViolationView): TypedViolationView | undefined {
-  return violationParamsProblems(violation).length ? undefined : (violation as TypedViolationView);
+  if (!isKnownKind(violation.kind) || violationParamsProblems(violation).length) return undefined;
+  return violation as TypedViolationView;
 }
 
 /** What is wrong, in the interface language, from the violation's params. */

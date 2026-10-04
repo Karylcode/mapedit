@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { mockScene } from '@mapedit/server';
-import type { NoticeCode, SceneSnapshot } from '@mapedit/protocol';
+import {
+  NOTICE_CODES,
+  VIOLATION_KINDS,
+  type NoticeCode,
+  type SceneSnapshot,
+} from '@mapedit/protocol';
 import { SnapshotIndex } from '../src/scene/snapshot-index.js';
 import { FileErrorFilter, noticeToast, type Notice } from '../src/editor/notices.js';
-import { violationText, VIOLATION_KINDS } from '../src/editor/violations.js';
+import { violationText } from '../src/editor/violations.js';
 import { objectNames, wholeObjects } from '../src/editor/describe.js';
 import { translate, type Translator, type Lang } from '../src/i18n/i18n.js';
 import type { Localized } from '../src/editor/hud/toasts.js';
@@ -25,19 +30,12 @@ const notice = (code: NoticeCode, refs?: string[], message = 'English text'): No
 
 describe('notice toasts', () => {
   it('translates every notice code in both languages', () => {
-    const codes: NoticeCode[] = [
-      'agent_changed',
-      'overwritten_by_agent',
-      'agent_change_overridden',
-      'edit_rejected',
-      'file_error',
-    ];
     for (const lang of ['zh-TW', 'en'] as const)
-      for (const code of codes) {
+      for (const code of NOTICE_CODES) {
         const toast = noticeToast(notice(code, ['structure:house']), index);
         const text = resolve(toast.text, tr(lang))!;
-        expect(text, `${lang} ${code}`).not.toMatch(/\{|notice\./);
-        if (code !== 'file_error') expect(text).toContain('House');
+        expect(text, `${lang} ${code}`).not.toMatch(/\{|notice\.|English text/);
+        if (code !== 'file_error' && code !== 'unknown_map') expect(text).toContain('House');
       }
     expect(
       resolve(noticeToast(notice('agent_changed', ['structure:house']), index).text, tr('zh-TW')),
@@ -72,8 +70,10 @@ describe('violation text', () => {
   it('names every kind in both languages', () => {
     for (const kind of VIOLATION_KINDS) {
       const violation = { ...mockScene().violations[0]!, kind };
-      expect(violationText(violation, index, tr('zh-TW')).title).not.toMatch(/violation\./);
-      expect(violationText(violation, index, tr('en')).title).not.toMatch(/violation\./);
+      // A missing name would fall back to the kind itself, such as off_grid.
+      expect(violationText(violation, index, tr('zh-TW')).title).not.toMatch(/violation\.|_/);
+      expect(violationText(violation, index, tr('en')).title).not.toMatch(/violation\.|_/);
+      expect(violationText(violation, index, tr('en')).title).not.toBe(kind);
     }
   });
 

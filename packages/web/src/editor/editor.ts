@@ -51,6 +51,14 @@ export function start(root: HTMLElement = document.body): void {
    */
   const ready = (): boolean => store.state.scene?.map.id === store.state.mapId;
 
+  /** Keep the open map in the address, so a reload opens it again. */
+  const showMapInAddress = (mapId: string | undefined): void => {
+    const url = new URL(location.href);
+    if (mapId === undefined) url.searchParams.delete('map');
+    else url.searchParams.set('map', mapId);
+    history.replaceState(null, '', url);
+  };
+
   const openMap = (mapId: string): void => {
     if (store.state.mapId === mapId && connection.currentMap === mapId) return;
     edits.cancelDrag();
@@ -64,10 +72,22 @@ export function start(root: HTMLElement = document.body): void {
       hover: undefined,
       focusedViolation: undefined,
     });
-    const url = new URL(location.href);
-    url.searchParams.set('map', mapId);
-    history.replaceState(null, '', url);
+    showMapInAddress(mapId);
     connection.openMap(mapId);
+  };
+
+  /** The server refused the map asked for and kept its open one: show that one again. */
+  const returnToOpenMap = (): void => {
+    const mapId = connection.currentMap;
+    if (mapId === store.state.mapId) return;
+    const drawn = mapId !== undefined && map.scene?.map.id === mapId ? map.scene : undefined;
+    store.set({
+      mapId,
+      scene: drawn,
+      revision: drawn?.revision,
+      loadingMap: mapId !== undefined && !drawn,
+    });
+    showMapInAddress(mapId);
   };
   const setLang = (lang: Lang): void => {
     saveLang(lang);
@@ -241,6 +261,7 @@ export function start(root: HTMLElement = document.body): void {
     else if (message.type === 'notice') {
       if (message.code === 'file_error' && !fileErrors.admit(message.message)) return;
       toasts.show(noticeToast(message, map.index));
+      if (message.code === 'unknown_map') returnToOpenMap();
       if (message.code === 'agent_changed' && message.refs?.length) {
         // Briefly outline what the Agent touched, so a watching human can spot it.
         map.setOutlines('flash', wholeObjects(message.refs, map.index));

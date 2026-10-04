@@ -12,12 +12,24 @@ export class Store<State extends object> {
     const next = { ...previous, ...patch };
     if ((Object.keys(patch) as (keyof State)[]).every((key) => previous[key] === next[key])) return;
     this.current = next;
-    for (const listener of [...this.listeners]) listener(next, previous);
+    for (const listener of [...this.listeners]) notify(() => listener(next, previous));
   }
 
   subscribe(listener: (state: State, previous: State) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+}
+
+/**
+ * Run one listener; its failure is logged and does not stop the others, so one
+ * broken panel cannot freeze the rest of the page.
+ */
+export function notify(listener: () => void): void {
+  try {
+    listener();
+  } catch (error) {
+    console.error('mapedit: a listener failed', error);
   }
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createServer, type MapeditServer } from '@mapedit/server';
+import { createServer, mockScene, type MapeditServer } from '@mapedit/server';
 import type { ClientMessage, ServerMessage } from '@mapedit/protocol';
 import {
   Connection,
@@ -39,6 +39,10 @@ class FakeSocket implements SocketLike {
 }
 
 const project = { name: 'Demo', maps: [{ id: 'village', name: 'Village' }] };
+const sceneOf = (id: string): ServerMessage => {
+  const scene = mockScene();
+  return { type: 'scene', scene: { ...scene, map: { ...scene.map, id } } };
+};
 
 function fakeConnection() {
   FakeSocket.all = [];
@@ -113,6 +117,42 @@ describe('Connection', () => {
       'second',
       'village',
     ]);
+  });
+
+  it('goes back to the open map when the server refuses the one wanted (FE13)', () => {
+    const { connection } = fakeConnection();
+    const refusal: ServerMessage = {
+      type: 'notice',
+      level: 'error',
+      code: 'unknown_map',
+      message: 'Map "gone" does not exist.',
+    };
+    const openMaps = () => socket.sent.filter((m) => m.type === 'openMap').map((m) => m.mapId);
+    connection.openMap('village');
+    connection.start();
+    const socket = FakeSocket.all[0]!;
+    socket.open();
+    socket.receive({ type: 'welcome', protocolVersion: 1, project });
+    socket.receive(sceneOf('village'));
+
+    // A deleted map, then another one before the first answer: the refusal is for the first.
+    connection.openMap('gone');
+    connection.openMap('second');
+    socket.receive(refusal);
+    expect(connection.currentMap).toBe('second');
+    socket.receive(sceneOf('second'));
+
+    // Refused while still wanted: back to the map the server kept, with a fresh snapshot.
+    connection.openMap('gone');
+    socket.receive(refusal);
+    expect(connection.currentMap).toBe('second');
+    expect(openMaps()).toEqual(['village', 'gone', 'second', 'gone', 'second']);
+
+    // A refusal that answers no openMap changes nothing.
+    socket.receive(sceneOf('second'));
+    socket.receive(refusal);
+    expect(connection.currentMap).toBe('second');
+    expect(openMaps()).toHaveLength(5);
   });
 
   it('keeps retrying while the server is down, backing off', () => {

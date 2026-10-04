@@ -3,7 +3,7 @@ import { changed, type Store } from '../store.js';
 import type { EditorState } from '../state.js';
 import { translate, type Translator } from '../../i18n/i18n.js';
 import type { SnapshotIndex } from '../../scene/snapshot-index.js';
-import { describeEntry, entryTime } from '../history-text.js';
+import { authorName, describeEntry, entryTime } from '../history-text.js';
 
 const OPEN_KEY = 'mapedit.historyOpen';
 
@@ -90,7 +90,7 @@ export class HistoryPanel {
             'data-undone': String(undone),
             title: undone ? t('history.undone') : '',
           },
-          h('span', { class: 'history-author', text: t(`history.${entry.author}`) }),
+          h('span', { class: 'history-author', text: authorName(entry.author, t) }),
           h('time', { class: 'history-time', text: entryTime(entry, state.lang) }),
           h('span', { class: 'history-summary', text: describeEntry(entry, index, t) }),
         ),

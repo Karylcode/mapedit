@@ -209,6 +209,24 @@ is not modified here.
   用根結構的格子、只框它自己的模組，名稱顯示自己的 id。測試：`test/attached-structures.test.ts` 用「annex 接在 house
   上、違規只寫 `structure:annex`」的快照：被標紅、有範圍可以飛過去和框出來（修正前什麼都沒有）。另外用真的編譯器
   確認過這種快照的形狀：annex 的模組出現在 `structure:house` 裡、ref 是 `module:annex/base`。
+- **FE13 完成**：伺服器資料裡出現介面還不認得的東西時，畫面照常更新：
+  - 不認得的違規種類，標題顯示種類名稱，說明和建議用後端的英文。
+  - 不認得的提示代碼，提示框顯示後端的英文訊息，等級照後端給的。
+  - 不認得的修改紀錄作者，照原樣顯示。
+  - `translate` 遇到沒有的 key 回傳 key 本身，不丟錯誤。
+  - `Store` 和 `Connection` 的每個監聽器各自 try/catch，錯誤記到 console，不影響其他監聽器。
+  - `VIOLATION_KINDS` 改用 `@mapedit/protocol` 匯出的清單，`NOTICE_CODES` 也是。
+  - 同時接上後端 F30 新增的 `unknown_map`：
+    - 提示「專案裡已經沒有這張地圖，可能剛被刪除」，後端的英文說明附在下面。
+    - 畫面回到這條連線原本開著的地圖。
+    - `Connection` 依序記錄送出的 `openMap`。被拒絕的是目前想開的地圖時，才退回伺服器開著的那張，並重新要一份快照。
+      在回覆前又換了別張地圖的話，不會退回。
+
+  測試：
+  - `test/unknown-data.test.ts`：不認得的種類、代碼、作者，和兩種丟錯誤的監聽器。修正前前五項失敗。
+  - `test/notices.test.ts`：改用協定的清單，並確認每個種類和代碼都有翻譯。
+  - `test/connection.test.ts`：`openMap` 的回覆順序。修正前停在被拒絕的地圖。
+  - `test/maps-browser.test.ts`：真專案刪掉一張還沒開過的地圖，再從選單選它。結果是出現提示，選單、網址和畫面都回到原本的地圖，而且仍然可以點選。拿掉退回的步驟後，這個測試失敗。
 
 ## 自行決定的事
 

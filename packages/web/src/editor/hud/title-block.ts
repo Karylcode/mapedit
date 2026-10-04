@@ -72,7 +72,7 @@ export class TitleBlock {
       ...maps.map((map) => h('option', { text: map.name || map.id, 'data-id': map.id })),
     );
     for (const option of this.mapSelect.options) option.value = option.dataset.id ?? '';
-    if (state.mapId) this.mapSelect.value = state.mapId;
+    this.mapSelect.value = state.mapId ?? '';
     this.mapSelect.disabled = maps.length < 2;
   }
 }
