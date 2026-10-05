@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
-import { writeFile, mkdir, rm, realpath } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { readFile, writeFile, mkdir, rename, rm, realpath } from 'node:fs/promises';
 import { resolve, dirname, posix } from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
 import {
@@ -46,6 +47,21 @@ export interface DiskStateBuilder {
 interface Checkpoint {
   files: Map<string, Buffer>;
 }
+/** The file operations a state store writes with; tests replace them to simulate failures. */
+export interface ProjectFileOperations {
+  readFile(path: string): Promise<Buffer>;
+  writeFile(path: string, data: Buffer): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  rm(path: string, options: { force: boolean }): Promise<void>;
+  mkdir(path: string, options: { recursive: true }): Promise<unknown>;
+}
+const nodeFiles: ProjectFileOperations = {
+  readFile: (path) => readFile(path),
+  writeFile: (path, data) => writeFile(path, data),
+  rename: (from, to) => rename(from, to),
+  rm: (path, options) => rm(path, options),
+  mkdir: (path, options) => mkdir(path, options),
+};
 
 /** A listed map, or the directory of a map.yaml that cannot be read, whose scene shows why. */
 function projectHasMap(parsed: ParsedProject, mapId: string): boolean {
@@ -96,11 +112,16 @@ export class DiskState extends EventEmitter implements StateStore {
   private constructor(
     readonly root: string,
     private readonly builder: DiskStateBuilder,
+    private readonly files: ProjectFileOperations,
   ) {
     super();
   }
-  static async create(root: string, builder: DiskStateBuilder): Promise<DiskState> {
-    const state = new DiskState(await realpath(root), builder);
+  static async create(
+    root: string,
+    builder: DiskStateBuilder,
+    files: ProjectFileOperations = nodeFiles,
+  ): Promise<DiskState> {
+    const state = new DiskState(await realpath(root), builder, files);
     state.baseline = await state.readInputs();
     state.history = new ProjectHistory({ files: new Map(state.baseline) });
     const build = await builder.build(undefined, 0);
@@ -413,7 +434,56 @@ export class DiskState extends EventEmitter implements StateStore {
       ? `Fix the project file errors before moving objects. ${first.file}:${first.line ?? 1}: ${first.message}`
       : 'Fix the project file errors before moving objects.';
   }
-  private async safeWrite(file: string, data: Buffer | undefined): Promise<void> {
+  /**
+   * Write several project files as one change. New contents go to temporary files beside
+   * their targets first, and only when all are written are the files replaced one by one.
+   * If a replacement fails, the files already replaced get their previous contents back, so
+   * a failed edit leaves the project as it was (protocol section 4, flow 10).
+   */
+  private async writeAll(changes: Iterable<readonly [string, Buffer | undefined]>): Promise<void> {
+    const steps: { target: string; previous?: Buffer; staged?: string }[] = [];
+    const discard = () =>
+      Promise.all(
+        steps.map((step) => step.staged && this.files.rm(step.staged, { force: true })),
+      ).catch(() => undefined);
+    try {
+      for (const [file, data] of changes) {
+        const step: (typeof steps)[number] = { target: await this.writableTarget(file) };
+        steps.push(step);
+        step.previous = await this.files.readFile(step.target).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+          throw error;
+        });
+        if (!data) continue;
+        await this.files.mkdir(dirname(step.target), { recursive: true });
+        step.staged = `${step.target}.mapedit-${randomUUID()}.tmp`;
+        await this.files.writeFile(step.staged, data);
+      }
+    } catch (error) {
+      await discard();
+      throw error;
+    }
+    const replaced: typeof steps = [];
+    try {
+      for (const step of steps) {
+        if (step.staged) await this.files.rename(step.staged, step.target);
+        else await this.files.rm(step.target, { force: true });
+        step.staged = undefined;
+        replaced.push(step);
+      }
+    } catch (error) {
+      for (const step of replaced.reverse())
+        await (
+          step.previous
+            ? this.files.writeFile(step.target, step.previous)
+            : this.files.rm(step.target, { force: true })
+        ).catch(() => undefined);
+      await discard();
+      throw error;
+    }
+  }
+  /** The absolute path of a project file to write, refusing links out of the project. */
+  private async writableTarget(file: string): Promise<string> {
     const target = resolve(this.root, file);
     if (!containsPath(this.root, target)) throw new Error('Cannot write outside the project.');
     const existing = await realpath(target).catch((error) => {
@@ -436,10 +506,7 @@ export class DiskState extends EventEmitter implements StateStore {
         parent = dirname(parent);
       }
     }
-    if (data) {
-      await mkdir(dirname(target), { recursive: true });
-      await writeFile(target, data);
-    } else await rm(target, { force: true });
+    return target;
   }
   async apply(
     edit: Edit,
@@ -468,8 +535,9 @@ export class DiskState extends EventEmitter implements StateStore {
         this.notice('edit_rejected', error.message, [edit.ref], mapId);
         return { reason: error.message, failure: error.failure };
       }
-      for (const [file, content] of Object.entries(changed))
-        await this.safeWrite(file, Buffer.from(content));
+      await this.writeAll(
+        Object.entries(changed).map(([file, content]) => [file, Buffer.from(content)] as const),
+      );
       this.baseline = await this.readInputs();
       this.revision++;
       await this.rebuild();
@@ -498,8 +566,9 @@ export class DiskState extends EventEmitter implements StateStore {
       await this.refresh();
       // The cursor moves once the checkpoint's files are on disk.
       const reason = await this.history.travel(direction, async ({ files }) => {
-        for (const file of this.changed(this.baseline, files))
-          await this.safeWrite(file, files.get(file));
+        await this.writeAll(
+          this.changed(this.baseline, files).map((file) => [file, files.get(file)] as const),
+        );
         this.baseline = new Map(files);
       });
       if (reason) return reason;
@@ -516,11 +585,15 @@ export class DiskState extends EventEmitter implements StateStore {
     await this.serial(async () => {
       await this.refresh();
       const files = await update();
-      for (const [file, content] of Object.entries(files))
-        await this.safeWrite(
-          file,
-          typeof content === 'string' ? Buffer.from(content) : Buffer.from(content),
-        );
+      await this.writeAll(
+        Object.entries(files).map(
+          ([file, content]) =>
+            [
+              file,
+              typeof content === 'string' ? Buffer.from(content) : Buffer.from(content),
+            ] as const,
+        ),
+      );
       await this.refresh();
     });
   }

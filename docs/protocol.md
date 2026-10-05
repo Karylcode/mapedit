@@ -299,7 +299,7 @@ type EditFailure =
    - 兩種回覆的 `failure` 都是 `unknown_object`；想移動結構裡的模組或已接合的結構時是 `immovable_object`，`violations` 那一筆的 `params.reason` 也一樣。
 8. **斷線**：只有訊息本身的結構不合法時，後端才以 1008 關閉連線，例如不是 JSON、`type` 不認得、欄位型別不對（`ref` 不是字串、`position` 不是三個有限數字、`requestId` 不是整數），或是在 `hello` 之前送其他訊息、在 `openMap` 之前送修改。
 9. **檔案錯誤**：專案裡只要有檔案無法讀取（`scene.fileErrors` 不是空的，包括其他地圖、模組定義或 model.ts 的錯誤），移動的預覽和套用都不能進行（刪除不受影響）：`previewResult { ok: false, failure: 'file_errors', violations: [] }`、`editResult { ok: false, failure: 'file_errors', reason }`。前端顯示「有檔案無法讀取，修好之前不能移動」，錯誤內容看快照的 `fileErrors`。
-10. **一定有回覆**：帶 `requestId` 的訊息（`previewEdit`、`applyEdit`、`undo`、`redo`）一定會收到同一個 `requestId` 的回覆，而且只有一個。處理時發生其他錯誤（例如 Agent 正在寫檔，讀檔失敗）時，`previewEdit` 回 `previewResult { ok: false, failure: 'internal_error', violations: [] }`，其餘回 `editResult { ok: false, failure: 'internal_error', reason }`，`reason` 是英文說明。前端可以稍後重試。
+10. **一定有回覆**：帶 `requestId` 的訊息（`previewEdit`、`applyEdit`、`undo`、`redo`）一定會收到同一個 `requestId` 的回覆，而且只有一個。處理時發生其他錯誤（例如 Agent 正在寫檔，讀檔失敗）時，`previewEdit` 回 `previewResult { ok: false, failure: 'internal_error', violations: [] }`，其餘回 `editResult { ok: false, failure: 'internal_error', reason }`，`reason` 是英文說明。前端可以稍後重試：這種失敗不會留下只改了一半的檔案，檔案和修改紀錄都維持送出前的樣子（新增）。
 
 ## 5. 前端的責任範圍（給後端參考）
 

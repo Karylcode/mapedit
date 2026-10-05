@@ -1092,3 +1092,28 @@ F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` br
     the limit includes the launch.
 
   Deviation: none.
+- **F42 complete:** `DiskState.writeAll` writes one change (an apply, an undo or
+  redo, or an Agent tool's file update) in two phases:
+  1. Each new content goes to a temporary file
+     `<target>.mapedit-<uuid>.tmp` beside its target, after the existing
+     containment checks (`writableTarget`). The `.tmp` name is never read as
+     a project input.
+  2. Only when every temporary file is written are the targets replaced by
+     rename, or removed, one by one.
+
+  A failure while staging removes the temporary files and leaves the project
+  untouched. A failure while replacing writes the previous contents back to
+  the files already replaced, then removes the rest. Either way, the baseline,
+  the history and its cursor stay as they were, so the next refresh records
+  nothing and redo is kept. `DiskState.create` takes the file operations as an
+  optional argument (`ProjectFileOperations`) so tests can make a step fail.
+  protocol.md flow 10 now states that such a failure leaves files and history
+  unchanged, so retrying is valid.
+  - Tests in `server/test/atomic-writes.test.ts`; both failed before:
+    - undoing an Agent change of two files, while the second replacement
+      fails with EBUSY, leaves both files, the cursor and the history
+      unchanged and no `.tmp` file;
+    - an apply whose staging fails changes nothing, and the same edit then
+      succeeds.
+
+  Deviation: none.
