@@ -1117,3 +1117,11 @@ F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` br
       succeeds.
 
   Deviation: none.
+- **F44 complete (added by the user's decision):** `.github/workflows/ci.yml`
+  triggers on `push` to `main` only, with `pull_request` unchanged, so a push
+  to `backend` no longer runs the same matrix twice on PR #1. The
+  Windows/Ubuntu × Node 22/24 matrix stays as the user asked. The item is
+  appended to `backend-fixes-4.md`. Test: `cli/test/package-assets.test.ts`
+  "F44" parses the workflow. Its push branches are only `main`; before, they
+  were `main` and `backend`. `pull_request` and the 2 × 2 matrix are kept.
+  Deviation: none.

@@ -109,3 +109,23 @@ it('F37 finds packages whose sources changed after their last build', async () =
   await write('packages/unbuilt/src/index.ts', 1_000);
   expect(await staleBuilds(root, ['fresh', 'stale', 'unbuilt'])).toEqual(['stale', 'unbuilt']);
 });
+
+it('F44 runs CI once per change: pushes to main, and pull requests', async () => {
+  const { createRequire } = await import('node:module');
+  const { parse } = createRequire(new URL('../../core/package.json', import.meta.url))(
+    'yaml',
+  ) as typeof import('yaml');
+  const workflow = parse(
+    await readFile(new URL('../../../.github/workflows/ci.yml', import.meta.url), 'utf8'),
+  ) as {
+    on: { push: { branches: string[] }; pull_request: unknown };
+    jobs: { verify: { strategy: { matrix: { os: string[]; node: number[] } } } };
+  };
+  expect(workflow.on.push.branches).toEqual(['main']);
+  expect(workflow.on).toHaveProperty('pull_request');
+  // The user keeps the full Windows/Ubuntu x Node 22/24 matrix.
+  expect(workflow.jobs.verify.strategy.matrix).toEqual({
+    os: ['ubuntu-latest', 'windows-latest'],
+    node: [22, 24],
+  });
+});
