@@ -5,16 +5,21 @@
 is not modified here.
 
 **檢查入口：**
-- W0–W6、[第一輪修正](#第一輪修正)（FE1–FE23）全部完成；[第二輪修正](#第二輪修正)完成 FE24–FE29，FE30 因使用者決定收尾而取消。
-- 分支 `frontend`，從 `backend` 開出，已合併 `backend` 到 0c95048 為止的所有修正，含後端第三輪的 F27–F37。第二輪沒有合併 `backend`。
-- 這台 Windows 上，整個 repo 的 `pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test` 全部通過，沒有略過：
-  86 個檔案、546 個測試，其中前端 26 個檔案、184 個測試，含 8 個用 headless Edge 實際操作的瀏覽器測試檔。
+- W0–W6、[第一輪修正](#第一輪修正)（FE1–FE23）、[第二輪修正](#第二輪修正)（FE24–FE30）全部完成。
+  FE30 曾因收尾取消，使用者在收尾後決定補做。
+- PR #1–#3 已合併進 `main`（25c730e），`frontend` 是經由 PR #2 合併的。`main` 已含後端的 F38–F42、F44 和 F40 的
+  Windows 修正。
+- FE30 和配合後端 F40 的處理在分支 `fe30`，從 `main` 開出。
+- 這台 Windows 上，`fe30` 的 `pnpm install --frozen-lockfile`、`pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test`
+  全部通過，沒有略過：89 個檔案、569 個測試，其中前端 26 個檔案、189 個測試，含 8 個用 headless Edge 實際操作的
+  瀏覽器測試檔。
 
 程式從 `packages/web/src/main.ts` 開始：`editor/` 是編輯器（`editor.ts` 把連線、場景、輸入、編輯和介面接在一起），
 `render/` 是截圖頁，`scene/` 是兩者共用的 three.js 畫面（`map-view.ts` 管地形和整體，模組、標記、違規標示
 各有一個類別），`net/connection.ts` 是 WebSocket 客戶端，`i18n/` 是兩種語言的文字。
 W6 時 [PR #2](https://github.com/Karylcode/mapedit/pull/2) 的 CI（[run 37237237682](https://github.com/Karylcode/mapedit/actions/runs/37237237682)）
-在 Windows／Ubuntu × Node 22／24 四個組合全部通過；最新的 CI 結果看 PR #2。
+在 Windows／Ubuntu × Node 22／24 四個組合全部通過；PR #2 合併前最後一次 CI
+（[run 37260342720](https://github.com/Karylcode/mapedit/actions/runs/37260342720)，757aa46）也是四個組合全部通過。
 CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一定會實際執行。
 
 ## 目前進度
@@ -399,13 +404,12 @@ CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一�
 
 依 [frontend-fixes-2.md](frontend-fixes-2.md)（FE24–FE30）逐項修正，一項一個 commit；程式錯誤先寫會失敗的測試。
 
-**結果：FE24–FE29 完成，FE30 取消。** 取消的原因是使用者決定收尾合併，這一輪到此為止。
-- FE29 在收到收尾通知之前已經做完、測過並提交，所以保留。
-- 這次不合併 `backend`。後端的 F38–F40 還沒推上 GitHub，不能經由這個分支帶上去。FE30 需要 F39 的欄位，所以一起拿掉。
-- 已經做好的這幾樣都留在本機分支 `frontend-round2-backend-merge`（63877a0），沒有推送，之後要用可以直接拿回來：
-  - 合併 backend（F38–F40）；
-  - FE30；
-  - 配合後端 F40 的處理：畫面上的地圖被 Agent 刪掉時，提示改開其他地圖，並讓那張地圖不能再操作。
+**結果：FE24–FE30 全部完成。**
+- 使用者原本決定收尾合併，FE30 因此取消；FE29 在收到收尾通知之前已經做完、測過並提交，所以保留。
+- 收尾時沒有合併 `backend`：後端的 F38–F40 還沒推上 GitHub，而 FE30 需要 F39 的欄位。
+- PR #1–#3 合併進 `main` 之後，使用者決定補做 FE30。FE30 和配合後端 F40 的處理原本留在本機分支
+  `frontend-round2-backend-merge`，現在從 `main` 開出分支 `fe30`，用 cherry-pick 放上去。
+  那個本機分支裡合併 `backend` 的 commit 沒有拿，因為後端的 commit 已經在 `main` 上。
 
 - **FE24 完成**（FE9 的後續）：放下之後、回覆之前按的 Ctrl+Z／Ctrl+Y，改成存在那一次拖動上，等於綁定那次放下的
   request id。
@@ -475,15 +479,18 @@ CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一�
   - `mapedit dev` 測試不再取代 `packages/web/dist`。CLI 只會在 `packages/web/dist` 找網頁建置，所以測試在暫存資料夾
     排出同樣的套件結構：
     - 複製編譯好的 server 和 CLI；
-    - 用 junction 接上它們原本的依賴；
+    - 每個依賴各自用 junction 連到真實位置，和 pnpm 的排法一樣；
     - 把這次的建置放在暫存的 `packages/web/dist`。
 
     這樣本機和 CI 都會實際執行，不再略過。確認過的事：
     - 真正的 `packages/web/dist` 修改時間沒變，把它暫時移走時測試照樣通過。
     - 刪掉暫存資料夾只會移除 junction 本身，不會動到它指向的資料夾。
+    - 原本是把整個 `node_modules` 用一個 junction 接上，在 GitHub 的 Windows runner 上 Node 找不到裡面的套件，
+      本機重現不出來。757aa46 改成每個依賴各自連結，PR #2 合併前的 CI 四個組合都通過。
   - FE1 的測試缺口：新增「18 種模型還在載入時，Agent 又把它們全部換掉」。每個模型到達最多重畫一次，最後畫的都是新模型。
     這是測試缺口，不是程式錯誤，所以在修正前就會通過。測試：`test/map-view-loading.test.ts`。
-- **FE30 完成**（後端 F39 合併之後）：修改紀錄涵蓋專案裡所有地圖，現在依 `mapId` 和 `maps` 分開：
+- **FE30 完成**（使用者在收尾後決定補做，在分支 `fe30`；需要後端 F39，已在 `main` 上）：修改紀錄涵蓋專案裡
+  所有地圖，現在依 `mapId` 和 `maps` 分開：
   - 人的移動、刪除：`mapId` 不是畫面上的地圖時，寫成「移動「Second Map」上的 house」。用 id 和那張地圖的名稱，
     不會用畫面上同 id 物件的名稱。
   - Agent 的修改：照舊列出檔案。`maps` 裡有其他地圖的物件時，在後面註明地圖名稱：
@@ -495,6 +502,18 @@ CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一�
   - `test/history-text.test.ts`：修正前失敗。
   - `test/maps-browser.test.ts`（真專案）：Agent 一次改兩張地圖，移動村莊的房子，同時在 Second Map 新增一棟只有那裡才有的
     barn。新的修改紀錄註明 Second Map。頁面裡記錄每一次藍框，村莊的房子被標出，barn 從來沒有被標過。
+- **配合後端 F40**（不在清單上，和 FE30 一起在分支 `fe30`）：Agent 刪掉一張開著的地圖時，後端送出帶那張地圖
+  `mapId` 的 `unknown_map`，之後不再送它的快照，對它的修改也會失敗。回覆 openMap 的 `unknown_map` 沒有 `mapId`，
+  兩者靠這點分開：
+  - 連線：不再認為有開著的地圖，選另一張之前不會再要求開地圖。
+  - 編輯器：提示「「地圖名稱」已經被刪除，請從選單改開其他地圖」，顯示 30 秒；選單拿掉那張地圖；畫面留著那張地圖，
+    但不能再選取或修改。
+
+  測試：
+  - `test/connection.test.ts`：刪掉別張地圖不影響目前的地圖；刪掉目前的地圖之後不能送修改，也不會再要求開它；
+    之後選另一張照常開。
+  - `test/maps-browser.test.ts`（真專案）：開著 Second Map 時刪掉 `maps/second` 資料夾，出現提示，選單裡沒有那張地圖，
+    點畫面上的房子選不到，之後照常開村莊。
 
 ## 自行決定的事
 
