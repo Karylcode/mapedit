@@ -1,6 +1,24 @@
 # Backend implementation status
 
-**Third review round (start here):** F27–F37 from `docs/handoff/backend-fixes-3.md`
+**Fourth review round (start here):** the user decided to wrap up this round
+before merging.
+- **Done:** F38–F42 from `docs/handoff/backend-fixes-4.md` and the added F44,
+  one numbered commit each.
+- **Cancelled:** F43, by the user's decision. Its unfinished performance test
+  is kept only in the local stash, not pushed.
+
+The 第四輪修正 section at the end lists each change, its tests and the
+cancellation. Every protocol.md change is an addition or a requested
+correction, and `protocolVersion` stays 1:
+- the `estimated` wording (F38);
+- `HistoryEntry.mapId` and `maps` (F39);
+- `unknown_map` for an open map that was deleted (F40);
+- flow 10's promise that a failed edit leaves files and history unchanged
+  (F42).
+
+The 編輯器前端 session was notified.
+
+**Third review round:** F27–F37 from `docs/handoff/backend-fixes-3.md`
 are fixed on the `backend` branch, one numbered commit each, with follow-ups for
 F30 (a map whose map.yaml is broken still opens) and F33 (lint ignores the copied
 editor build), plus the frontend requests FE13/FE22 and a copy of the frontend's
@@ -45,6 +63,14 @@ two-agent/Unity Play experience remain the planned joint acceptance after the
 frontend exists. GitHub publication and CI status are recorded below.
 
 ## 目前進度
+
+Fourth round: F38–F42 and F44 are complete on `backend`, one numbered commit per
+item, each with a test that failed before the change. F43 was cancelled when the
+user decided to wrap up. On this Windows machine `pnpm build`, `pnpm lint`,
+`pnpm typecheck` and `pnpm e2e` pass. `pnpm test` passes all 378 tests in 63
+files; one earlier run hit the known Node 24 worker abort and passed when rerun.
+The fresh no-AI village still has zero violations and file errors and exports a
+5,062,564-byte GLB.
 
 Third round: F27–F37 are complete on `backend`, one numbered commit per item, and
 every bug fix has a test that failed before the change. The exception is the F36
@@ -1125,3 +1151,19 @@ F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` br
   "F44" parses the workflow. Its push branches are only `main`; before, they
   were `main` and `backend`. `pull_request` and the 2 × 2 matrix are kept.
   Deviation: none.
+- **F43 cancelled (the user decided to wrap up this round):**
+  - **The problem:** touching Modules of a turned Structure still need one
+    Boolean per pair, because the oriented-box pre-check skips only boxes that
+    are at least 1e-7 m apart.
+  - **Measured before stopping, on this machine:** 2,000 touching one-metre
+    Modules in one Structure turned 30° took
+    - 0.95 s for boxes;
+    - 1.6 s for boxes with a door;
+    - 1.9 s for 32-sided cylinders;
+    - 4.0 s for 64-sided cylinders.
+  - **The planned fix, not started:** count a pair as touching, without a
+    Boolean, when the oriented boxes overlap by at most 1e-6 m along some
+    axis, for both the overlap test and the rest probe.
+  - **The unfinished test:** it is kept only in the local stash
+    (`F43 (canceled): touching turned Modules performance test, not
+    implemented`), not committed and not pushed.
