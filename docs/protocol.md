@@ -52,6 +52,7 @@ interface SceneSnapshot {
   protocolVersion: 1;
   revision: number;              // 地圖每變動一次就加 1
   map: MapInfo;
+  style?: 'standard' | 'toon';   // project.yaml 的 style；沒有就是 standard。toon 是卡通分階明暗
   terrain: TerrainView;
   moduleTypes: ModuleTypeView[];
   structures: StructureView[];

@@ -36,7 +36,8 @@ export class ModuleBatches {
   readonly group = new Group();
   private readonly batches = new Map<string, ModuleBatch>();
 
-  constructor() {
+  /** `look` gives the material a model part is drawn with, such as its cel-shaded twin. */
+  constructor(private readonly look: (material: Material) => Material = (material) => material) {
     this.group.name = 'modules';
   }
 
@@ -126,7 +127,7 @@ export class ModuleBatches {
         : Math.max(count, existing ? existing.capacity * 2 : 0, 1);
     const batch: ModuleBatch = { asset, meshes: [], capacity, refs: [] };
     const parts = asset
-      ? asset.parts.map((part) => ({ geometry: part.geometry, material: part.material }))
+      ? asset.parts.map((part) => ({ geometry: part.geometry, material: this.look(part.material) }))
       : [placeholderPart(size)];
     for (const part of parts) {
       const mesh = new InstancedMesh(part.geometry, part.material, capacity);

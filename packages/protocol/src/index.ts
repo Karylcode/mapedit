@@ -4,10 +4,15 @@ export * from './violation-params.js';
 export type Vec3 = [number, number, number];
 export type Mat4 = number[];
 export type ObjectRef = string;
+/** How surfaces are shaded: 'standard' is smooth lighting, 'toon' is banded cel shading. */
+export type RenderStyle = 'standard' | 'toon';
+export const RENDER_STYLES = ['standard', 'toon'] as const satisfies readonly RenderStyle[];
 export interface SceneSnapshot {
   protocolVersion: 1;
   revision: number;
   map: MapInfo;
+  /** The project's render style; absent means 'standard'. */
+  style?: RenderStyle;
   terrain: TerrainView;
   moduleTypes: ModuleTypeView[];
   structures: StructureView[];

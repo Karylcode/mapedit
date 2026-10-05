@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { InstancedMesh, Mesh, Raycaster, Vector3 } from 'three';
+import { InstancedMesh, Mesh, MeshToonMaterial, Raycaster, Vector3 } from 'three';
 import { createServer, mockScene, type MapeditServer } from '@mapedit/server';
 import type { SceneSnapshot } from '@mapedit/protocol';
 import { AssetCache } from '../src/scene/assets.js';
@@ -115,6 +115,30 @@ describe('MapView with the mock snapshot', () => {
     expect(bounds.max.toArray()).toEqual([12, 2, 12]);
     expect(view.boundsOf('marker:zone')!.getSize(new Vector3()).toArray()).toEqual([4, 2, 4]);
     expect(view.boxesFor('structure:nowhere')).toEqual([]);
+  });
+
+  it('switches every loaded model to cel shading and back without refetching', async () => {
+    const view = new MapView(new AssetCache(fetcher));
+    view.apply(mockScene());
+    await view.settled();
+    const toon = () => {
+      const { instanced, plain } = meshes(view);
+      const models = [
+        ...instanced.filter((m) => m.name && !m.userData.placeholder),
+        ...plain.filter((m) => m.parent?.name === 'terrain' || m.parent?.name === 'generated'),
+      ];
+      return models.map((m) => m.material instanceof MeshToonMaterial);
+    };
+    expect(toon().length).toBeGreaterThan(2);
+    expect(toon().every((t) => !t)).toBe(true);
+    fetched.length = 0;
+    view.apply({ ...mockScene(), revision: 1, style: 'toon' });
+    expect(fetched).toEqual([]);
+    expect(toon().every((t) => t)).toBe(true);
+    const placeholder = meshes(view).instanced.find((m) => m.userData.placeholder)!;
+    expect(placeholder.material).not.toBeInstanceOf(MeshToonMaterial);
+    view.apply({ ...mockScene(), revision: 2 });
+    expect(toon().every((t) => !t)).toBe(true);
   });
 
   it('clears the previous map when a different map arrives', async () => {

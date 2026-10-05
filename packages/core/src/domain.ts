@@ -5,6 +5,7 @@ import type {
   MarkerView,
   Mat4,
   ProjectInfo,
+  RenderStyle,
   SceneSnapshot,
   Vec3,
 } from '@mapedit/protocol';
@@ -74,6 +75,7 @@ export interface MapDefinition extends MapInfo {
 }
 export interface Project {
   name: string;
+  style: RenderStyle;
   socketTypes: Record<string, SocketType>;
   markerTypes: Record<string, { shape: 'point' | 'box' }>;
   materials: string[];

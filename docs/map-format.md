@@ -13,6 +13,7 @@ Ids start with a letter and contain letters, digits, `_` or `-`. Choose meaningf
 ```yaml
 version: 1
 name: My game
+style: toon
 socketTypes:
   gate:
     compatibleWith: [gate, wall]
@@ -21,7 +22,9 @@ markerTypes:
     shape: point
 ```
 
-`version` defaults to 1. Built-in socket types are `foundation`, `floor`, `wall`, `roof`, and `stair`. Their initial connections are foundation↔foundation/wall/floor/stair; floor↔floor/wall/stair; wall↔wall/roof; roof↔roof; stair↔stair. Compatibility is symmetric: either side's `compatibleWith` list permits a connection. A project entry replaces the built-in definition of the same name. Unknown types in compatibility lists are violations.
+`version` defaults to 1. `style` is how the editor and screenshots shade surfaces: `standard` (default, smooth lighting) or `toon` (cel shading in hard light bands, keeping textures). It does not change exported files.
+
+Built-in socket types are `foundation`, `floor`, `wall`, `roof`, and `stair`. Their initial connections are foundation↔foundation/wall/floor/stair; floor↔floor/wall/stair; wall↔wall/roof; roof↔roof; stair↔stair. Compatibility is symmetric: either side's `compatibleWith` list permits a connection. A project entry replaces the built-in definition of the same name. Unknown types in compatibility lists are violations.
 
 Built-in marker types are `spawn` (point) and `trigger` (box). Project marker types specify one of those shapes. Version 1 only supports built-in materials and rejects a project `materials` field. Built-in material ids are `wood_planks`, `dark_wood`, `stone_brick`, `plaster`, `roof_tiles`, `thatch`, `grass`, `dirt`, `gravel`, `metal`, `white`, `red`, and `blue`.
 
