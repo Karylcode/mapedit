@@ -4,11 +4,17 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { readFile, stat, realpath } from 'node:fs/promises';
-import { resolve, extname } from 'node:path';
+import { basename, join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { ClientMessage, Edit, SceneSnapshot, ServerMessage } from '@mapedit/protocol';
+import type {
+  ClientMessage,
+  Edit,
+  ProjectInfo,
+  SceneSnapshot,
+  ServerMessage,
+} from '@mapedit/protocol';
 import { MemoryState, canTriggerMockNotices, type StateStore } from './state.js';
 import { DiskState } from './disk-state.js';
 import { buildProject, buildFromParsed } from './build-project.js';
@@ -18,6 +24,7 @@ import { parseMockNotice } from './mock-services.js';
 import { projectIdentity } from './project-identity.js';
 import { containsPath, findWebRoot, projectRelativePaths, rootSpellings } from './paths.js';
 import { UnknownMapError, noticeMessage } from './notice.js';
+import { listProjects } from './projects.js';
 export { projectIdentity } from './project-identity.js';
 export { MemoryState } from './state.js';
 export { mockScene } from './mock.js';
@@ -29,6 +36,7 @@ export { connectStdio } from './mcp.js';
 export { DiskState } from './disk-state.js';
 export { findBrowser, SCREENSHOT_BROWSER_ARGS } from './screenshot.js';
 export { findWebRoot } from './paths.js';
+export { listProjects } from './projects.js';
 /** The editor build beside the server package: packages/web/dist, or an installed @mapedit/web. */
 export const SERVER_WEB_ROOT = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
@@ -47,11 +55,24 @@ export interface ServerOptions {
   /** The time limit for one whole screenshot; 50 seconds unless a test shortens it. */
   screenshotTimeoutMs?: number;
   services?: AgentServices;
+  /**
+   * Serve `root` as one of the projects in a folder, and let the editor switch between
+   * them (protocol section 4, flow 11). Without it the server serves `root` only.
+   */
+  projects?: {
+    /** The folder holding one project per subfolder; `root` is one of them. */
+    directory: string;
+    /** Called once a project is served, the first one included; returns its clean-up. */
+    opened?(root: string, url: string): Promise<(() => Promise<void>) | void>;
+  };
 }
 export interface MapeditServer {
   url: string;
   port: number;
-  state: StateStore;
+  /** The open project's state; another object after the editor switches projects. */
+  readonly state: StateStore;
+  /** The open project's folder. */
+  readonly root: string;
   close(): Promise<void>;
 }
 
@@ -81,6 +102,8 @@ function validMessage(value: unknown): value is ClientMessage {
       return message.protocolVersion === 1 && ['editor', 'render'].includes(String(message.client));
     case 'openMap':
       return typeof message.mapId === 'string';
+    case 'openProject':
+      return typeof message.projectId === 'string';
     case 'previewEdit':
       return Number.isSafeInteger(message.requestId) && validEdit(message.edit);
     case 'applyEdit':
@@ -127,18 +150,17 @@ function readMockTrigger(request: IncomingMessage): Promise<unknown> {
 }
 
 export async function createServer(options: ServerOptions = {}): Promise<MapeditServer> {
-  const root = resolve(options.root ?? process.cwd());
-  const canonicalRoot = await realpath(root);
-  const projectId = projectIdentity(canonicalRoot);
+  let root = resolve(options.root ?? process.cwd());
+  let projectId = projectIdentity(await realpath(root));
   const instanceIdentity = randomUUID();
-  const state: StateStore =
-    options.state ??
-    (options.mock
+  const createState = async (folder: string): Promise<StateStore> =>
+    options.mock
       ? new MemoryState()
-      : await DiskState.create(root, {
-          build: (id, revision) => buildProject(root, id, revision),
+      : DiskState.create(folder, {
+          build: (id, revision) => buildProject(folder, id, revision),
           preview: buildFromParsed,
-        }));
+        });
+  let state: StateStore = options.state ?? (await createState(root));
   const webRoots =
     options.webRoot === null
       ? []
@@ -148,7 +170,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
   /** Looked up on each use, so an editor built after the server started is found. */
   const currentWebRoot = () => findWebRoot(...webRoots);
   /** Every spelling of the root an error may use, such as a short 8.3 name on Windows. */
-  const spellings = rootSpellings(root);
+  let spellings = rootSpellings(root);
   /** An error's text, with paths in the project written relative to it as elsewhere. */
   const projectMessage = (error: unknown): string =>
     projectRelativePaths(error instanceof Error ? error.message : String(error), spellings);
@@ -158,6 +180,20 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       if (error instanceof UnknownMapError) return error;
       throw error;
     });
+  /** The project with the list of projects to switch to, when there is one. */
+  const projectInfo = async (): Promise<ProjectInfo> =>
+    options.projects
+      ? {
+          ...state.project,
+          id: basename(root),
+          projects: await listProjects(options.projects.directory),
+        }
+      : state.project;
+  /**
+   * Settles once a project switch has the new project in place. HTTP requests wait
+   * for it; the switch's own registration then reaches the new project.
+   */
+  let ready: Promise<void> = Promise.resolve();
   let port = 0;
   const validRequest = (request: IncomingMessage): boolean => {
     const host = request.headers.host;
@@ -166,6 +202,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
   };
   const server = createHttpServer((request, response) => {
     void (async () => {
+      await ready;
       if (!validRequest(request))
         return json(response, 403, { error: 'Host or Origin is not allowed.' });
       response.setHeader('X-Mapedit-Instance', instanceIdentity);
@@ -199,7 +236,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       }
       if (request.method !== 'GET') return json(response, 405, { error: 'Method not allowed.' });
       if (url.pathname.startsWith('/api/')) await state.flush();
-      if (url.pathname === '/api/project') return json(response, 200, state.project);
+      if (url.pathname === '/api/project') return json(response, 200, await projectInfo());
       if (url.pathname === '/api/scene') {
         const scene = await sceneOrUnknown(url.searchParams.get('map') ?? undefined);
         return scene instanceof UnknownMapError
@@ -279,7 +316,13 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       )
         send(client, message);
   };
-  state.on('message', broadcast);
+  /** Only the open project's state reaches the editors. */
+  const listen = (store: StateStore): void => {
+    store.on('message', (message) => {
+      if (store === state) broadcast(message);
+    });
+  };
+  listen(state);
   let queue = Promise.resolve();
   sockets.on('connection', (client) => {
     let welcomed = false;
@@ -304,11 +347,24 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
           if ('requestId' in message) pending = message;
           if (message.type === 'hello') {
             welcomed = true;
-            send(client, { type: 'welcome', protocolVersion: 1, project: state.project });
+            send(client, { type: 'welcome', protocolVersion: 1, project: await projectInfo() });
             return;
           }
           if (!welcomed) {
             client.close(1008, 'Send hello first.');
+            return;
+          }
+          if (message.type === 'openProject') {
+            const catalog = options.projects;
+            if (!catalog || message.projectId === basename(root)) return;
+            const known = await listProjects(catalog.directory);
+            if (!known.some((project) => project.id === message.projectId)) return;
+            // After this message: every later message waits for the switch.
+            queue = queue
+              .then(() => switchProject(message.projectId))
+              .catch((error: unknown) => {
+                process.stderr.write(`Could not switch projects: ${projectMessage(error)}\n`);
+              });
             return;
           }
           // Drag frames use the latest compiled snapshot. The watcher refreshes it in the
@@ -405,19 +461,66 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
     ...(options.screenshotTimeoutMs ? { timeoutMs: options.screenshotTimeoutMs } : {}),
     editorBuilt: async () => (await currentWebRoot()) !== undefined,
   });
-  const mcp = createMcpHttpHandler(
+  let mcp = createMcpHttpHandler(
     options.services ?? state.createAgentServices(screenshots),
     screenshots,
   );
+  const url = `http://127.0.0.1:${port}`;
+  let cleanup = await options.projects?.opened?.(root, url);
+
+  /** Serve another project of the folder: the editors reconnect and reload. */
+  const useProject = async (folder: string): Promise<void> => {
+    const next = await createState(folder);
+    root = folder;
+    projectId = projectIdentity(await realpath(folder));
+    spellings = rootSpellings(folder);
+    state = next;
+    listen(next);
+    mcp = createMcpHttpHandler(next.createAgentServices(screenshots), screenshots);
+  };
+  const switchProject = async (id: string): Promise<void> => {
+    let done!: () => void;
+    ready = new Promise((resolveReady) => (done = resolveReady));
+    const previous = root;
+    try {
+      await cleanup?.();
+      cleanup = undefined;
+      await mcp.close();
+      await state.close();
+      for (const client of sockets.clients) client.terminate();
+      opened.clear();
+      try {
+        await useProject(join(options.projects!.directory, id));
+      } catch (error) {
+        process.stderr.write(`Could not open project ${id}: ${projectMessage(error)}\n`);
+        await useProject(previous);
+      }
+    } finally {
+      done();
+    }
+    // Registration only helps tools find the server: a failure leaves the project open.
+    cleanup = await options.projects?.opened?.(root, url).catch((error: unknown) => {
+      process.stderr.write(
+        `Could not register project ${basename(root)}: ${projectMessage(error)}\n`,
+      );
+      return undefined;
+    });
+  };
   return {
-    url: `http://127.0.0.1:${port}`,
+    url,
     port,
-    state,
+    get state() {
+      return state;
+    },
+    get root() {
+      return root;
+    },
     async close() {
       await queue;
       await mcp?.close();
       await screenshots?.close();
       await state.close();
+      await cleanup?.();
       for (const client of sockets.clients) client.terminate();
       await new Promise<void>((resolveClose) => sockets.close(() => resolveClose()));
       await new Promise<void>((resolveClose, reject) =>

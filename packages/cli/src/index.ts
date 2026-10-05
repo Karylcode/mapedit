@@ -4,10 +4,13 @@ import {
   buildProjects,
   exportProject,
   connectStdio,
+  listProjects,
   SERVER_WEB_ROOT,
 } from '@mapedit/server';
 import { listFloatingInstances, sceneHasProblems } from '@mapedit/core';
 import { spawn } from 'node:child_process';
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initProject } from './init.js';
 import { discoverServer, registerServer } from './discovery.js';
@@ -19,6 +22,37 @@ const PACKED_WEB_ROOT = fileURLToPath(new URL('../web/', import.meta.url));
  * developed; the server looks the candidates up again on every request and screenshot.
  */
 const EDITOR_WEB_ROOTS = [SERVER_WEB_ROOT, PACKED_WEB_ROOT];
+/** In a folder of projects, the project the editor had open last. */
+const LAST_PROJECT = '.last-project';
+
+/**
+ * The project of a folder of projects to open first: the one asked for, else the
+ * one open last time, else the first by folder name.
+ */
+async function firstProject(directory: string, requested?: string): Promise<string> {
+  const known = await listProjects(directory);
+  if (requested !== undefined) {
+    if (!known.some((project) => project.id === requested))
+      throw new Error(`${requested} is not a project folder in ${directory}.`);
+    return requested;
+  }
+  const last = (await readFile(join(directory, LAST_PROJECT), 'utf8').catch(() => '')).trim();
+  const id = known.some((project) => project.id === last) ? last : known[0]?.id;
+  if (id === undefined)
+    throw new Error(
+      `${directory} has no projects. Create one with: mapedit init ${join(directory, 'my-maps')}`,
+    );
+  return id;
+}
+
+/** The value after a flag, or undefined when the flag is absent. */
+function flagValue(flags: string[], name: string): string | undefined {
+  const index = flags.indexOf(name);
+  if (index < 0) return undefined;
+  const value = flags[index + 1];
+  if (!value || value.startsWith('--')) throw new Error(`${name} requires a value.`);
+  return value;
+}
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
   const [command, ...flags] = args;
@@ -132,13 +166,30 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     if (!Number.isInteger(port) || port < 0 || port > 65535) {
       throw new Error('--port must be an integer between 0 and 65535.');
     }
+    const projects = flagValue(flags, '--projects');
+    const directory = projects === undefined ? undefined : resolve(projects);
+    const root = directory
+      ? join(directory, await firstProject(directory, flagValue(flags, '--project')))
+      : process.cwd();
     const server = await createServer({
       port,
       mock: flags.includes('--mock'),
-      root: process.cwd(),
+      root,
       webRoot: EDITOR_WEB_ROOTS,
+      // In a folder of projects every project opened registers itself and is remembered.
+      ...(directory && {
+        projects: {
+          directory,
+          async opened(folder: string, url: string) {
+            await writeFile(join(directory, LAST_PROJECT), `${basename(folder)}\n`).catch(
+              () => undefined,
+            );
+            return registerServer(folder, url);
+          },
+        },
+      }),
     });
-    const unregister = await registerServer(process.cwd(), server.url);
+    const unregister = directory ? async () => {} : await registerServer(root, server.url);
     process.stderr.write(`mapedit listening at ${server.url}\n`);
     if (flags.includes('--open')) {
       const platform = process.platform;
@@ -168,7 +219,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   }
   if (command === '--help' || command === undefined) {
     process.stdout.write(
-      'mapedit init [directory]\nmapedit dev [--port <port>] [--mock] [--open]\nmapedit check [--map <id>] [--json]\nmapedit export [--map <id>] --out <directory>\nmapedit mcp\n',
+      'mapedit init [directory]\nmapedit dev [--port <port>] [--mock] [--open] [--projects <folder> [--project <name>]]\nmapedit check [--map <id>] [--json]\nmapedit export [--map <id>] --out <directory>\nmapedit mcp\n',
     );
     return;
   }

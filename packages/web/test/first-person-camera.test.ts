@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { PerspectiveCamera, Vector3 } from 'three';
-import { FirstPersonCamera, FLY_SPEED, SPEED_RANGE } from '../src/scene/first-person-camera.js';
+import {
+  FIRST_PERSON_FOV,
+  FirstPersonCamera,
+  FLY_SPEED,
+  SPEED_RANGE,
+} from '../src/scene/first-person-camera.js';
 import { OverviewCamera } from '../src/scene/overview-camera.js';
 import { hintsFor } from '../src/editor/hud/action-bar.js';
 
@@ -27,6 +32,10 @@ describe('FirstPersonCamera', () => {
       camera.position.distanceTo(overview.target.clone().addScaledVector(overview.offset(), 30)),
     ).toBeLessThan(1e-9);
     expect(camera.getWorldDirection(new Vector3()).angleTo(before)).toBeLessThan(1e-6);
+    // First person looks around with a wider view; the overview keeps its own.
+    expect(camera.fov).toBe(FIRST_PERSON_FOV);
+    overview.apply(camera);
+    expect(camera.fov).toBe(40);
   });
 
   it('flies level with the ground whatever the pitch, like Minecraft', () => {

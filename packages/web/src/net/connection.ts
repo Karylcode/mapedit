@@ -142,6 +142,14 @@ export class Connection {
     this.sendOpenMap();
   }
 
+  /**
+   * Ask the server to switch to another project of `ProjectInfo.projects`. It drops
+   * every connection; the next welcome names the new project. False while offline.
+   */
+  openProject(projectId: string): boolean {
+    return this.welcomed && this.send({ type: 'openProject', projectId });
+  }
+
   get currentMap(): string | undefined {
     return this.mapId;
   }
@@ -221,10 +229,12 @@ export class Connection {
       }
       this.welcomed = true;
       this.failures = 0;
+      // The server switched projects while away: the page reloads, so open nothing here.
+      const switched = this.project?.id !== undefined && message.project.id !== this.project.id;
       this.project = message.project;
       this.setStatus('open');
       // Reopen the current map before listeners run, so one choosing the same map adds nothing.
-      this.sendOpenMap();
+      if (!switched) this.sendOpenMap();
       this.emit('welcome', message.project);
     } else if (message.type === 'scene') this.mapShown(message.scene.map.id);
     else if (message.type === 'notice' && message.code === 'unknown_map') {

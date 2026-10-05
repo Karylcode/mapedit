@@ -1,6 +1,6 @@
 import './styles.css';
 import { Box3, Vector3 } from 'three';
-import type { ObjectRef, SceneSnapshot } from '@mapedit/protocol';
+import type { ObjectRef, ProjectInfo, SceneSnapshot } from '@mapedit/protocol';
 import { Connection, socketUrl } from '../net/connection.js';
 import { initialLang, liveTranslator, saveLang, translator, type Lang } from '../i18n/i18n.js';
 import { AssetCache } from '../scene/assets.js';
@@ -112,6 +112,34 @@ export function start(root: HTMLElement = document.body): void {
     });
     showMapInAddress(undefined);
   };
+  /** Switch the server to another project; its welcome then reloads the page. */
+  const openProject = (projectId: string): void => {
+    const current = store.state.project;
+    if (current?.id === undefined || projectId === current.id) return;
+    if (!connection.openProject(projectId)) return;
+    edits.cancelDrag();
+    input.cancelGesture();
+    input.leaveFirstPerson();
+    store.set({ switchingProject: projectId, selection: undefined, hover: undefined });
+    // A server that kept its project (it could not open the other) never reloads the page.
+    window.setTimeout(() => {
+      if (store.state.switchingProject === projectId && store.state.status === 'open')
+        store.set({ switchingProject: undefined });
+    }, 30_000);
+  };
+
+  /** Read the projects folder again, so new projects appear in the menu. */
+  const refreshProjects = (): void => {
+    void fetch('/api/project', { cache: 'no-store' })
+      .then((response) => (response.ok ? (response.json() as Promise<ProjectInfo>) : undefined))
+      .then((info) => {
+        const current = store.state.project;
+        if (info?.projects && current?.id !== undefined && info.id === current.id)
+          store.set({ project: { ...current, projects: info.projects } });
+      })
+      .catch(() => undefined);
+  };
+
   const setLang = (lang: Lang): void => {
     saveLang(lang);
     store.set({ lang });
@@ -119,7 +147,8 @@ export function start(root: HTMLElement = document.body): void {
 
   /** Fly so a box fills the view. */
   const flyToBox = (bounds: Box3, minRadius = 2): void => {
-    const { fov, aspect } = viewport.camera;
+    const { fov } = viewport.overview;
+    const { aspect } = viewport.camera;
     const radius = Math.max(bounds.getSize(new Vector3()).length() / 2, minRadius);
     controls.flyTo(
       bounds.getCenter(new Vector3()),
@@ -134,7 +163,8 @@ export function start(root: HTMLElement = document.body): void {
     const ref = store.state.selection;
     const bounds = ref ? map.boundsOf(ref) : undefined;
     if (bounds) return flyToBox(bounds);
-    const { fov, aspect } = viewport.camera;
+    const { fov } = viewport.overview;
+    const { aspect } = viewport.camera;
     const framing = viewport.overview.mapFraming(fov, aspect);
     framing.target.y = map.heightAt(framing.target.x, framing.target.z) ?? 0;
     controls.flyTo(framing.target, framing.distance, reducedMotion() ? 0 : 0.35);
@@ -266,7 +296,7 @@ export function start(root: HTMLElement = document.body): void {
     if (first || previous.map.size.x !== x || previous.map.size.z !== z)
       viewport.overview.setMap(scene.map.size);
     if (first) {
-      viewport.overview.frameMap(viewport.camera.fov, viewport.camera.aspect);
+      viewport.overview.frameMap(viewport.overview.fov, viewport.camera.aspect);
       viewport.invalidate();
       void map.settled().then(() => {
         if (store.state.scene?.map.id !== scene.map.id) return;
@@ -290,7 +320,16 @@ export function start(root: HTMLElement = document.body): void {
   let flash: number | undefined;
   connection.on('status', (status) => store.set({ status }));
   connection.on('welcome', (project) => {
-    store.set({ project });
+    // The server now serves another project, asked for here or in another tab:
+    // start over with it, from its first map.
+    const previous = store.state.project;
+    if (previous?.id !== undefined && project.id !== previous.id) {
+      connection.stop();
+      location.replace(location.pathname);
+      return;
+    }
+    // Still the same project after asking for another: the switch failed, so stop waiting.
+    store.set({ project, switchingProject: undefined });
     const requested = store.state.mapId ?? new URL(location.href).searchParams.get('map');
     const mapId = chooseMap(project, requested);
     if (mapId) openMap(mapId);
@@ -323,7 +362,7 @@ export function start(root: HTMLElement = document.body): void {
     h(
       'div',
       { class: 'hud-column hud-left' },
-      new TitleBlock(store, { openMap, setLang }).element,
+      new TitleBlock(store, { openMap, setLang, openProject, refreshProjects }).element,
       new IssuesPanel(store, index, { focusViolation }).element,
     ),
     h(

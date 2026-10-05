@@ -7,6 +7,8 @@ const LOOK_SPEED = 0.15;
 export const FLY_SPEED = 11;
 /** The slowest and fastest flying speeds the mouse wheel can set. */
 export const SPEED_RANGE = { min: 2, max: 120 } as const;
+/** Vertical field of view in degrees: wider than the overview's, for looking around. */
+export const FIRST_PERSON_FOV = 90;
 /** The eye never sinks closer to the ground than this, in meters. */
 const MIN_CLEARANCE = 0.3;
 
@@ -21,6 +23,8 @@ export class FirstPersonCamera {
   pitch = 0;
   /** Meters per second; the mouse wheel changes it. */
   speed = FLY_SPEED;
+  /** Vertical field of view in degrees. */
+  fov = FIRST_PERSON_FOV;
   /** How far the eye may leave the map, in meters. */
   margin = 50;
   private size: MapSize = { x: 100, z: 100 };
@@ -102,6 +106,7 @@ export class FirstPersonCamera {
     camera.position.copy(this.position);
     camera.up.set(0, 1, 0);
     camera.lookAt(this.direction().add(this.position));
+    camera.fov = this.fov;
     camera.near = 0.1;
     camera.far = Math.hypot(this.size.x, this.size.z) * 3 + 1000;
     camera.updateProjectionMatrix();

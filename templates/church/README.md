@@ -12,11 +12,10 @@ main door and hooded knight statues line the aisle walls. Press V in the editor 
 inside in first person. Every module is an untextured grey-white model, and the project
 uses `style: toon`, so the editor draws it with cel shading and ink outlines.
 
-Open it from the repository root after `pnpm install` and `pnpm build`:
+The editor launcher copies this folder to `projects/church` the first time it runs; choose
+**Grey Church** in the project menu at the top left. To open it by hand after `pnpm install`
+and `pnpm build`, from the repository root:
 
 ```sh
-cd examples/church
-node ../../packages/cli/dist/index.js dev
+node packages/cli/dist/index.js dev --projects projects --project church
 ```
-
-On Windows you can also drag the `examples/church` folder onto `啟動地圖編輯器.bat`.

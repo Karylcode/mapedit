@@ -202,12 +202,35 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
         position: e.viewport.firstPerson.position.toArray() as number[],
         heading: e.viewport.firstPerson.heading as number,
         hints: document.querySelector('.action-hints')!.textContent,
+        fov: e.viewport.camera.fov as number,
       }));
     await page.mouse.move(640, 400);
     await page.keyboard.press('KeyV');
     const entered = await eye();
     expect(entered).toMatchObject({ mode: 'firstPerson', firstPerson: true, crosshair: 'block' });
     expect(entered.hints).toMatch(/Esc/);
+    await poll(async () => (await eye()).fov).toBe(90);
+
+    // A locked pointer ignores the huge one-off jumps Chrome sometimes reports.
+    const locked = () =>
+      page.evaluate(
+        () =>
+          document.pointerLockElement ===
+          (globalThis as unknown as { mapeditEditor: EditorHandle }).mapeditEditor.viewport.renderer
+            .domElement,
+      );
+    await poll(locked).toBe(true);
+    const turned = await editorState(page, (e) => {
+      const canvas = e.viewport.renderer.domElement as HTMLCanvasElement;
+      const heading = () => e.viewport.firstPerson.heading as number;
+      const start = heading();
+      canvas.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, movementX: 4000 }));
+      const afterGlitch = heading();
+      canvas.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, movementX: 20 }));
+      return { start, afterGlitch, after: heading() };
+    });
+    expect(turned.afterGlitch).toBe(turned.start);
+    expect(turned.after).toBeCloseTo((turned.start + 3) % 360);
 
     // With the pointer locked the mouse turns the view; without it, dragging does.
     await page.mouse.down();
@@ -234,6 +257,7 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
       if (e.input.firstPerson) e.input.leaveFirstPerson();
     });
     expect(await eye()).toMatchObject({ mode: 'overview', firstPerson: false, crosshair: 'none' });
+    await poll(async () => (await eye()).fov).toBe(40);
   });
 
   it('stops reconnecting when the server cannot read hello (FE15)', async () => {
