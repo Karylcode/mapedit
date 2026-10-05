@@ -145,6 +145,45 @@ describe('EditController before the backend answers', () => {
     expect(sent.filter((m) => m.type === 'undo')).toHaveLength(1);
   });
 
+  it('drops a queued Ctrl+Z when the backend refuses the drop, and says so (FE24)', () => {
+    const { edits, sent, applied, emit, toasts } = setup();
+    edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });
+    edits.dragEnd(new Vector2(0.1, 0.05), { x: 700, y: 380 });
+    edits.undo();
+    emit({
+      type: 'editResult',
+      requestId: applied().at(-1)!.requestId,
+      ok: false,
+      failure: 'violations',
+      reason: 'Overlaps structure:overlap_a.',
+    });
+    // Undoing now would undo the change before the drop, perhaps the Agent's.
+    expect(sent.filter((m) => m.type === 'undo')).toHaveLength(0);
+    expect(toasts.show).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'edit.queuedDropped' }),
+    );
+  });
+
+  it('forgets a queued Ctrl+Z when its drag is cancelled, as on switching maps (FE24)', () => {
+    const { edits, sent, applied, emit } = setup();
+    edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });
+    edits.dragEnd(new Vector2(0.1, 0.05), { x: 700, y: 380 });
+    const first = applied().at(-1)!.requestId;
+    edits.undo();
+    // Switching maps cancels the drag; the first drop's answer comes in afterwards.
+    edits.cancelDrag();
+    emit({ type: 'editResult', requestId: first, ok: true });
+    // The next drop's answer must not release the undo pressed for the first one.
+    expect(edits.beginDrag('module:socket_a/base', new Vector2(0, 0), { x: 640, y: 400 })).toBe(
+      'drag',
+    );
+    edits.dragEnd(new Vector2(0.2, 0.1), { x: 720, y: 360 });
+    const second = applied().at(-1)!.requestId;
+    expect(second).not.toBe(first);
+    emit({ type: 'editResult', requestId: second, ok: true });
+    expect(sent.filter((m) => m.type === 'undo')).toHaveLength(0);
+  });
+
   it('says the outcome is unknown when the connection drops after a drop (FE9)', () => {
     const { edits, toasts, setStatus } = setup();
     edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });

@@ -46,6 +46,12 @@ interface Drag {
   applied?: boolean;
   /** Removes the preview if the snapshot showing the drop does not come. */
   timeout?: ReturnType<typeof setTimeout>;
+  /**
+   * Undo and redo pressed after this drop, before its answer: sent if the drop is
+   * applied, dropped if it is refused or the drag is cancelled. Undoing after a
+   * refused drop would undo the change before it, perhaps the Agent's.
+   */
+  afterDrop: ('undo' | 'redo')[];
 }
 
 type Pending =
@@ -94,8 +100,6 @@ export class EditController {
    * repeated presses build on what was already sent instead of the old snapshot.
    */
   private readonly inFlight = new Map<ObjectRef, InFlight>();
-  /** Undo and redo pressed after a drop, sent once the drop is answered. */
-  private readonly afterDrop: ('undo' | 'redo')[] = [];
 
   constructor(
     private readonly connection: Connection,
@@ -165,6 +169,7 @@ export class EditController {
       pointer: pointer.clone(),
       client,
       ghost,
+      afterDrop: [],
     };
     this.store.set({ selection: ref, hover: undefined });
     this.viewport.invalidate();
@@ -278,7 +283,7 @@ export class EditController {
    */
   private travel(kind: 'undo' | 'redo'): void {
     if (this.dragging) return;
-    if (this.drag && !this.drag.applied) this.afterDrop.push(kind);
+    if (this.drag && !this.drag.applied) this.drag.afterDrop.push(kind);
     else this.send({ type: kind }, { kind });
   }
 
@@ -367,14 +372,18 @@ export class EditController {
       }
     const drag = this.drag;
     if (drag && drag.applyId === result.requestId) {
+      const queued = drag.afterDrop.splice(0);
       if (result.ok) {
         drag.applied = true;
         // The snapshot showing the drop normally follows at once; never wait forever.
         drag.timeout = setTimeout(() => {
           if (this.drag === drag) this.cancelDrag();
         }, SNAPSHOT_WAIT_MS);
-      } else this.cancelDrag();
-      for (const kind of this.afterDrop.splice(0)) this.send({ type: kind }, { kind });
+        for (const kind of queued) this.send({ type: kind }, { kind });
+      } else {
+        this.cancelDrag();
+        if (queued.length) this.say('warning', 'edit.queuedDropped');
+      }
     }
     if (result.ok) return;
     // The failure code says what went wrong; the English reason is shown as written.
@@ -414,7 +423,6 @@ export class EditController {
     this.cancelDrag();
     this.pending.clear();
     this.inFlight.clear();
-    this.afterDrop.length = 0;
     this.throttle.reset();
     if (unanswered) this.say('warning', 'edit.uncertain');
   }

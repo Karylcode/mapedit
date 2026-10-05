@@ -66,6 +66,7 @@ export const zhTW = {
   'edit.busy': '上一個修改還在處理中，請稍等再拖',
   'edit.uncertain': '連線中斷，不確定剛才的修改有沒有套用；重新連線後以畫面為準',
   'edit.fileErrors': '有檔案無法讀取，修好之前不能移動',
+  'edit.queuedDropped': '這次放下沒有套用，所以之後按的復原或重做也沒有送出',
   'edit.internalError': '伺服器暫時無法處理，請稍後再試',
 
   'history.title': '修改紀錄',
@@ -221,6 +222,8 @@ export const en: Record<MessageKey, Message> = {
   'edit.uncertain':
     'Connection lost; the last change may or may not have been applied. The map shows the truth once reconnected',
   'edit.fileErrors': 'A file could not be read; fix it before moving anything',
+  'edit.queuedDropped':
+    'The drop was not applied, so the undo or redo pressed after it was not sent',
   'edit.internalError': "The server couldn't handle that just now; try again in a moment",
 
   'history.title': 'Change log',
