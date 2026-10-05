@@ -457,3 +457,61 @@ describe('F38 estimates start after 200 Boolean overlaps and never give Support'
     expect(unsupported).not.toContain('module:zz_top/base');
   });
 });
+
+describe('F43 touching Modules of a turned Structure need no Booleans', () => {
+  // One Structure turned 30 degrees holds 2000 one-metre Modules in a 50 x 40 grid, each
+  // touching its neighbours; there is no violation to find. `extra` adds Module lines.
+  const turnedGrid = (count = 2000, extra: string[] = []) =>
+    compileMap(
+      parseProject({
+        'project.yaml': 'name: Turned grid\n',
+        'modules/test/module.yaml': 'id: test\nsize: [1, 1, 1]\n',
+        'maps/test/map.yaml': 'name: Test\nsize: { x: 100, z: 100 }\n',
+        'maps/test/structures/grid.yaml': `structures:\n  - id: grid\n    position: [10, 30]\n    rotation: 30\n    modules:\n${[
+          ...Array.from(
+            { length: count },
+            (_, index) =>
+              `      - {id: m${index}, module: test, at: [${index % 50}, 0, ${Math.floor(index / 50)}]}`,
+          ),
+          ...extra,
+        ].join('\n')}\n`,
+      }),
+      'test',
+    );
+  const shapes = [
+    ['boxes', box([1, 1, 1])],
+    [
+      'boxes with a door',
+      difference(box([1, 1, 1]), translate(box([0.4, 0.8, 1.2]), [0.3, -0.1, -0.1])),
+    ],
+    ['32-sided cylinders', translate(cylinder(0.5, 1, 32), [0.5, 0, 0.5])],
+    ['64-sided cylinders', translate(cylinder(0.5, 1, 64), [0.5, 0, 0.5])],
+  ] as const;
+  for (const [label, shape] of shapes)
+    it(`checks 2000 touching ${label} turned 30 degrees within the two-second budget`, async () => {
+      const models = new Map([['test', await buildModel(shape)]]);
+      const start = performance.now();
+      const compiled = turnedGrid();
+      const { violations } = await checkGeometry(compiled, models);
+      const elapsed = performance.now() - start;
+      expect(compiled.instances).toHaveLength(2000);
+      expect(violations).toEqual([]);
+      expect(elapsed).toBeLessThan(2000);
+    });
+
+  it('still reports each real overlap among them, and only those', async () => {
+    // A Module halfway between m1 and m2 overlaps both and touches the row behind.
+    for (const [label, shape] of shapes) {
+      const models = new Map([['test', await buildModel(shape)]]);
+      const compiled = turnedGrid(100, ['      - {id: extra, module: test, at: [1.5, 0, 0]}']);
+      const { violations } = await checkGeometry(compiled, models);
+      expect(
+        violations.map((item) => `${item.kind} ${[...item.refs].sort().join(' ')}`).sort(),
+        label,
+      ).toEqual([
+        'overlap module:grid/extra module:grid/m1',
+        'overlap module:grid/extra module:grid/m2',
+      ]);
+    }
+  });
+});

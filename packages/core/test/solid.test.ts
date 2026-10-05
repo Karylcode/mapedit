@@ -1,19 +1,21 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Manifold } from 'manifold-3d';
 import type { Vec3 } from '@mapedit/protocol';
-import { box, difference, translate } from '../src/model-api.js';
+import { box, cylinder, difference, translate } from '../src/model-api.js';
 import { buildModel, geometryMesh, getManifold } from '../src/model.js';
-import { transformMatrix } from '../src/math.js';
+import { transformMatrix, transformPoint } from '../src/math.js';
 import type { CompiledInstance } from '../src/domain.js';
 import {
   fillsBounds,
   intersectsBounds,
+  intersectVolume,
   manifoldOverlap,
   moveSolid,
   orientedBox,
   orientedBoxesOverlap,
   overlapLocation,
   restsOn,
+  sharedVolumeBound,
   type PlacedSolid,
 } from '../src/solid.js';
 
@@ -152,5 +154,91 @@ describe('F20 exact box arithmetic', () => {
     const tilted = moveSolid(a, transformMatrix([0, 0, 0], 30));
     handles.push(shifted.solid, turned.solid, tilted.solid);
     expect([shifted.box, turned.box, tilted.box]).toEqual([true, true, false]);
+  });
+});
+
+describe('F43 turned solids that only touch need no Boolean, with the same results', () => {
+  const shapes = {
+    box: box([1, 1, 1]),
+    'door box': difference(box([1, 1, 1]), translate(box([0.4, 0.8, 1.2]), [0.3, -0.1, -0.1])),
+    cylinder: translate(cylinder(0.5, 1, 64), [0.5, 0, 0.5]),
+  };
+  /** A solid placed `at` in a Structure at (10, 0, 30) turned by `rotation`, as the compiler does. */
+  const inTurnedStructure = (
+    shape: Parameters<typeof buildModel>[0],
+    at: Vec3,
+    rotation: number,
+  ): Promise<PlacedSolid> =>
+    placed(shape, transformPoint(transformMatrix([10, 0, 30], rotation), at), rotation);
+  const exact = ({ oriented: _, ...entry }: PlacedSolid): PlacedSolid => entry;
+
+  it('skips the Boolean for neighbours that share a face or an edge', async () => {
+    for (const [label, shape] of Object.entries(shapes))
+      for (const rotation of [30, 17, 45]) {
+        const origin = await inTurnedStructure(shape, [0, 0, 0], rotation);
+        const neighbours: Vec3[] = [
+          [1, 0, 0],
+          [0, 0, 1],
+          [1, 0, 1],
+          [-1, 0, 1],
+          [0, 1, 0],
+        ];
+        for (const at of neighbours) {
+          const other = await inTurnedStructure(shape, at, rotation);
+          let booleans = 0;
+          const message = `${label} turned ${rotation} degrees, neighbour at ${at}`;
+          expect(
+            overlapLocation(origin, other, () => booleans++),
+            message,
+          ).toBeUndefined();
+          expect(booleans, message).toBe(0);
+        }
+      }
+  });
+
+  it('matches the Boolean result when turned neighbours sink into or stand off each other', async () => {
+    for (const [label, shape] of Object.entries(shapes))
+      for (const rotation of [30, 17]) {
+        const origin = await inTurnedStructure(shape, [0, 0, 0], rotation);
+        // Beside it and on top of it, from sunk 1 mm into it to standing 1 µm off.
+        for (const shift of [-1e-3, -1e-6, -1e-8, -1e-9, 0, 1e-9, 1e-6]) {
+          const places: Vec3[] = [
+            [1 + shift, 0, 0],
+            [0, 1 + shift, 0],
+          ];
+          for (const at of places) {
+            const other = await inTurnedStructure(shape, at, rotation);
+            const message = `${label} turned ${rotation} degrees, neighbour at ${at}`;
+            expect(overlapLocation(origin, other) === undefined, message).toBe(
+              overlapLocation(exact(origin), exact(other)) === undefined,
+            );
+            for (const [upper, lower] of [
+              [origin, other],
+              [other, origin],
+            ] as const)
+              expect(restsOn(upper, lower), message).toBe(restsOn(exact(upper), exact(lower)));
+          }
+        }
+      }
+  });
+
+  it('never bounds the shared volume below what the Boolean finds', async () => {
+    // Pairs of shapes at random turns and positions, most of them overlapping.
+    let seed = 43;
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const list = Object.values(shapes);
+    const somewhere = () =>
+      placed(
+        list[Math.floor(random() * list.length)]!,
+        [10 + random() * 1.5, random() * 0.5, 10 + random() * 1.5],
+        random() * 360,
+      );
+    for (let trial = 0; trial < 120; trial++) {
+      const a = await somewhere();
+      const b = await somewhere();
+      expect(sharedVolumeBound(a.oriented!, b.oriented!), `trial ${trial}`).toBeGreaterThanOrEqual(
+        intersectVolume(a.solid, b.solid) - 1e-12,
+      );
+    }
   });
 });

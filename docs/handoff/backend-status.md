@@ -1,14 +1,13 @@
 # Backend implementation status
 
-**Fourth review round (start here):** the user decided to wrap up this round
-before merging.
-- **Done:** F38–F42 from `docs/handoff/backend-fixes-4.md` and the added F44,
-  one numbered commit each.
-- **Cancelled:** F43, by the user's decision. Its unfinished performance test
-  is kept only in the local stash, not pushed.
+**Fourth review round (start here):** F38–F44 from
+`docs/handoff/backend-fixes-4.md` are complete, one numbered commit each.
+- F38–F42 and the added F44 were merged into main with PR #1.
+- F43 was cancelled when the user wrapped up the round. After the merge, the
+  user decided to finish it too; it is on the `f43` branch from main.
 
-The 第四輪修正 section at the end lists each change, its tests and the
-cancellation. Every protocol.md change is an addition or a requested
+The 第四輪修正 section at the end lists each change and its tests. Every
+protocol.md change is an addition or a requested
 correction, and `protocolVersion` stays 1:
 - the `estimated` wording (F38);
 - `HistoryEntry.mapId` and `maps` (F39);
@@ -64,15 +63,16 @@ frontend exists. GitHub publication and CI status are recorded below.
 
 ## 目前進度
 
-Fourth round: F38–F42 and F44 are complete on `backend`, one numbered commit per
-item, each with a test that failed before the change. F43 was cancelled when the
-user decided to wrap up. On this Windows machine `pnpm build`, `pnpm lint`,
-`pnpm typecheck` and `pnpm e2e` pass. `pnpm test` passes all 380 tests in 63
-files; one earlier run hit the known Node 24 worker abort and passed when rerun.
-PR #1's first Windows CI run failed because the runner's temp folder has a short
-8.3 name; the F40 entry below describes the fix.
-The fresh no-AI village still has zero violations and file errors and exports a
-5,062,564-byte GLB.
+Fourth round: F38–F44 are complete, one numbered commit per item, each with a
+test that failed before the change. F38–F42 and F44 were merged into main with
+PR #1. PR #1's first Windows CI run failed because the runner's temp folder has a
+short 8.3 name; the F40 entry below describes the fix. F43 was cancelled at the
+wrap-up and finished after the merge, by the user's decision, on the `f43`
+branch. There, on this Windows machine, `pnpm build`, `pnpm lint`,
+`pnpm typecheck` and `pnpm e2e` pass. `pnpm test` passes all 572 tests in 89
+files, which now include the merged frontend. The first two runs each hit the
+known Node 24 worker abort; the next four passed in full. The fresh no-AI village
+still has zero violations and file errors and exports a 5,062,564-byte GLB.
 
 Third round: F27–F37 are complete on `backend`, one numbered commit per item, and
 every bug fix has a test that failed before the change. The exception is the F36
@@ -817,7 +817,8 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
     `overlapLocation` and `restsOn` skip the Boolean for them. This changes no
     result: a test compares both functions with and without the boxes for
     turned walls that are apart, touching, sunk 0.00005 m into each other,
-    crossing and stacked.
+    crossing and stacked. F43 later replaced the 1e-7 m gap with a bound on the
+    shared volume.
   - After `EXACT_OVERLAP_LIMIT` (200) exact overlaps in one check, the
     remaining non-box pairs are estimated from the oriented boxes (box pairs
     stay exact). `docs/protocol.md` section 3 adds the optional overlap param
@@ -1017,7 +1018,8 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
 
 ## 第四輪修正
 
-F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` branch.
+F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend`
+branch, except F43, which was finished later on the `f43` branch.
 
 - **F38 complete:**
   - **What counts toward the limit:** `EXACT_OVERLAP_LIMIT` (200) now counts
@@ -1161,19 +1163,55 @@ F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` br
   "F44" parses the workflow. Its push branches are only `main`; before, they
   were `main` and `backend`. `pull_request` and the 2 × 2 matrix are kept.
   Deviation: none.
-- **F43 cancelled (the user decided to wrap up this round):**
-  - **The problem:** touching Modules of a turned Structure still need one
-    Boolean per pair, because the oriented-box pre-check skips only boxes that
-    are at least 1e-7 m apart.
-  - **Measured before stopping, on this machine:** 2,000 touching one-metre
-    Modules in one Structure turned 30° took
-    - 0.95 s for boxes;
-    - 1.6 s for boxes with a door;
-    - 1.9 s for 32-sided cylinders;
-    - 4.0 s for 64-sided cylinders.
-  - **The planned fix, not started:** count a pair as touching, without a
-    Boolean, when the oriented boxes overlap by at most 1e-6 m along some
-    axis, for both the overlap test and the rest probe.
-  - **The unfinished test:** it is kept only in the local stash
-    (`F43 (canceled): touching turned Modules performance test, not
-    implemented`), not committed and not pushed.
+- **F43 complete (finished after the wrap-up, by the user's decision):** it was
+  cancelled when the user wrapped up the round, then finished on the `f43`
+  branch from main after PR #1 was merged.
+  - **The problem:** touching Modules of a turned Structure each needed one
+    Boolean per pair, plus up to two Boolean rest probes. The oriented-box
+    pre-check skipped only boxes at least 1e-7 m apart (`SKIP_GAP`).
+  - **The fix:** `sharedVolumeBound` (`core/src/solid.ts`) bounds how much
+    volume two solids inside their oriented boxes can share.
+    - Along each separating axis, the shared part lies where the boxes'
+      projections overlap, so it holds at most that depth times the smaller
+      shadow the boxes cast across the axis. The least such product is the
+      bound.
+    - The boxes first grow by 64 units in the last place of their coordinates.
+      That covers rounding between a box and its solid, which are placed by the
+      same matrix.
+    - When the bound is at most half of `MIN_VOLUME`, the Boolean cannot find
+      an overlap, so `overlapLocation` and `restsOn` skip it. The other half
+      covers rounding in the Boolean itself.
+    - Every other pair still gets its Boolean, so no result changes. The bound
+      replaces `SKIP_GAP`.
+  - **Why touching pairs qualify:** the compiler rounds placements to 1e-10 m,
+    so neighbours in a turned Structure sink at most about that far into each
+    other. Touching pairs whose bound still exceeds the half keep their Boolean,
+    as before. On this machine, touching cubes of 1 to 4 m in Structures turned
+    17°, 30°, 45° and 73° were all checked within 70 ms, with no overlap
+    reported.
+  - **Measured on this machine:** 2,000 touching one-metre Modules in one
+    Structure turned 30° now take
+    - 0.17 s for boxes (0.95 s before);
+    - 0.16 s for boxes with a door (1.6 s before);
+    - 0.18 s for 32-sided cylinders (1.9 s before);
+    - 0.20 s for 64-sided cylinders (4.0 s before).
+  - Tests:
+    - `core/test/geometry.test.ts` "F43": the four 2,000-Module cases each
+      finish within 2 s with no violation. The 64-sided cylinders failed before
+      (3.99 s). In a turned row, for every shape, a Module placed halfway
+      between two others is reported as overlapping exactly those two.
+    - `core/test/solid.test.ts` "F43", on turned boxes, door boxes and
+      cylinders:
+      - neighbours sharing a face or an edge, beside or on top, need no
+        Boolean; this failed before;
+      - the overlap and rest results match the Boolean-only check when a
+        neighbour is sunk 1 mm to 1 nm into the solid, touches it, or stands
+        up to 1 µm off, beside or on top;
+      - for 120 random pairs, the bound is never below the volume the Boolean
+        finds.
+
+  Deviation: the plan noted at the cancellation (skip boxes that overlap by at
+  most 1e-6 m) was not used. A fixed depth would also skip overlaps that the
+  Boolean reports: 1e-7 m across a 4 m² face is 4e-7 m³, above `MIN_VOLUME`.
+  The volume bound skips only pairs that the Boolean would also find
+  non-overlapping.
