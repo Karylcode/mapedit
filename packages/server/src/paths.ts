@@ -7,6 +7,23 @@ export function containsPath(root: string, target: string): boolean {
   return inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside);
 }
 
+/** `text` with every absolute path inside `root` written relative to it, with forward slashes. */
+export function projectRelativePaths(text: string, root: string): string {
+  let result = text;
+  for (const variant of new Set([root, root.replaceAll('\\', '/')])) {
+    const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // The root ends at a separator, a quote, a space or the end, never inside a longer name.
+    result = result.replace(
+      new RegExp(
+        `${escaped}(?:[\\\\/]([^'"\\n]*)|(?=['"\\s]|$))`,
+        process.platform === 'win32' ? 'gi' : 'g',
+      ),
+      (_match, rest?: string) => (rest ? rest.replaceAll('\\', '/') : '.'),
+    );
+  }
+  return result;
+}
+
 /** The first directory that holds a built editor (an index.html), if any. */
 export async function findWebRoot(...candidates: string[]): Promise<string | undefined> {
   for (const candidate of candidates)

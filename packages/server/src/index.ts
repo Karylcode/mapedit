@@ -16,7 +16,7 @@ import { ScreenshotService } from './screenshot.js';
 import { createMcpHttpHandler, type AgentServices } from './mcp.js';
 import { parseMockNotice } from './mock-services.js';
 import { projectIdentity } from './project-identity.js';
-import { containsPath, findWebRoot } from './paths.js';
+import { containsPath, findWebRoot, projectRelativePaths } from './paths.js';
 import { UnknownMapError, noticeMessage } from './notice.js';
 export { projectIdentity } from './project-identity.js';
 export { MemoryState } from './state.js';
@@ -36,8 +36,12 @@ export interface ServerOptions {
   port?: number;
   mock?: boolean;
   root?: string;
-  /** The editor build to serve; null serves none. Defaults to SERVER_WEB_ROOT when it is built. */
-  webRoot?: string | null;
+  /**
+   * The editor build to serve: a directory, or candidates of which the first one holding an
+   * index.html is used, looked up again on every request and screenshot. null serves none;
+   * the default is SERVER_WEB_ROOT.
+   */
+  webRoot?: string | readonly string[] | null;
   state?: StateStore;
   browserPath?: string;
   /** How long a screenshot waits for the render page; 60 seconds unless a test shortens it. */
@@ -135,10 +139,17 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
           build: (id, revision) => buildProject(root, id, revision),
           preview: buildFromParsed,
         }));
-  const webRoot =
+  const webRoots =
     options.webRoot === null
-      ? undefined
-      : (options.webRoot ?? (await findWebRoot(SERVER_WEB_ROOT)));
+      ? []
+      : typeof options.webRoot === 'string'
+        ? [options.webRoot]
+        : [...(options.webRoot ?? [SERVER_WEB_ROOT])];
+  /** Looked up on each use, so an editor built after the server started is found. */
+  const currentWebRoot = () => findWebRoot(...webRoots);
+  /** An error's text, with paths in the project written relative to it as elsewhere. */
+  const projectMessage = (error: unknown): string =>
+    projectRelativePaths(error instanceof Error ? error.message : String(error), canonicalRoot);
   /** A map's scene, or the error for an id that is not a project map (protocol section 4, flow 2). */
   const sceneOrUnknown = (mapId?: string): Promise<SceneSnapshot | UnknownMapError> =>
     state.getScene(mapId).catch((error: unknown) => {
@@ -206,6 +217,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
       }
       if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/assets/'))
         return json(response, 404, { error: 'Not found.' });
+      const webRoot = await currentWebRoot();
       if (webRoot) {
         const root = resolve(webRoot);
         const target = resolve(root, `.${decodeURIComponent(url.pathname)}`);
@@ -252,9 +264,18 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
   const send = (client: WebSocket, message: ServerMessage): void => {
     if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(message));
   };
+  /** Scenes go to the editors of their map, and so does the notice that it was deleted. */
   const broadcast = (message: ServerMessage): void => {
     for (const [client, mapId] of opened)
-      if (message.type !== 'scene' || message.scene.map.id === mapId) send(client, message);
+      if (
+        message.type === 'scene'
+          ? message.scene.map.id === mapId
+          : message.type !== 'notice' ||
+            message.code !== 'unknown_map' ||
+            message.mapId === undefined ||
+            message.mapId === mapId
+      )
+        send(client, message);
   };
   state.on('message', broadcast);
   let queue = Promise.resolve();
@@ -328,16 +349,23 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
             ...(refusal ? { reason: refusal.reason, failure: refusal.failure } : {}),
           });
           if (!refusal) {
-            // A module preview a render page still has open may already be gone.
             for (const mapId of new Set(opened.values())) {
-              const scene = await sceneOrUnknown(mapId);
-              if (!(scene instanceof UnknownMapError)) broadcast({ type: 'scene', scene });
+              // A map that fails to rebuild tells its editors why, without holding back the
+              // other scenes or the history. A module preview a render page still has open
+              // may already be gone.
+              const scene = await sceneOrUnknown(mapId).catch((error: unknown) => {
+                for (const [other, open] of opened)
+                  if (open === mapId)
+                    send(other, noticeMessage('file_error', projectMessage(error)));
+                return undefined;
+              });
+              if (scene && !(scene instanceof UnknownMapError)) broadcast({ type: 'scene', scene });
             }
             broadcast({ type: 'history', entries: state.entries, cursor: state.cursor });
           }
         })
         .catch((error: unknown) => {
-          const reason = error instanceof Error ? error.message : String(error);
+          const reason = projectMessage(error);
           if (pending?.type === 'previewEdit')
             send(client, {
               type: 'previewResult',
@@ -373,7 +401,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
   port = address.port;
   const screenshots = new ScreenshotService(`http://127.0.0.1:${port}`, options.browserPath, {
     ...(options.screenshotTimeoutMs ? { renderTimeoutMs: options.screenshotTimeoutMs } : {}),
-    webRoot: webRoot ?? null,
+    editorBuilt: async () => (await currentWebRoot()) !== undefined,
   });
   const mcp = createMcpHttpHandler(
     options.services ?? state.createAgentServices(screenshots),

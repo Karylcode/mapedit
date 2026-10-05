@@ -26,7 +26,7 @@ import { markerPosition, parseObjectRef } from '@mapedit/protocol';
 import type { Preview, StateStore } from './state.js';
 import type { BuiltProject } from './build-project.js';
 import { readProjectInputs } from './project-files.js';
-import { containsPath } from './paths.js';
+import { containsPath, projectRelativePaths } from './paths.js';
 import { ProjectHistory, type EditRefusal, type RecordedChange } from './history.js';
 import { UnknownMapError, noticeMessage } from './notice.js';
 import { createAgentServices } from './services.js';
@@ -45,6 +45,17 @@ export interface DiskStateBuilder {
 }
 interface Checkpoint {
   files: Map<string, Buffer>;
+}
+
+/** A listed map, or the directory of a map.yaml that cannot be read, whose scene shows why. */
+function projectHasMap(parsed: ParsedProject, mapId: string): boolean {
+  if (Object.hasOwn(parsed.maps, mapId)) return true;
+  const files = [`maps/${mapId}/map.yaml`, `maps/${mapId}/map.yml`].filter((file) =>
+    Object.hasOwn(parsed.files, file),
+  );
+  return (
+    files.length > 0 && !Object.values(parsed.maps).some((map) => files.includes(map.source.file))
+  );
 }
 
 /** Refs keyed by `<mapId>\0<ref>`, grouped by map in first-seen order. */
@@ -105,10 +116,10 @@ export class DiskState extends EventEmitter implements StateStore {
     state.watcher.on('all', () => {
       if (state.timer) clearTimeout(state.timer);
       state.timer = setTimeout(() => {
-        void state.flush().catch((error) => state.notice('file_error', String(error)));
+        void state.flush().catch((error) => state.notice('file_error', state.message(error)));
       }, 75);
     });
-    state.watcher.on('error', (error) => state.notice('file_error', String(error)));
+    state.watcher.on('error', (error) => state.notice('file_error', state.message(error)));
     return state;
   }
   private install(build: BuiltProject): void {
@@ -162,6 +173,10 @@ export class DiskState extends EventEmitter implements StateStore {
         result.set(`${build.scene.map.id}\0${marker.ref}`, JSON.stringify(marker));
     }
     return result;
+  }
+  /** An error's text, with paths in the project written relative to it. */
+  private message(error: unknown): string {
+    return projectRelativePaths(error instanceof Error ? error.message : String(error), this.root);
   }
   private notice(
     code: Extract<ServerMessage, { type: 'notice' }>['code'],
@@ -220,7 +235,7 @@ export class DiskState extends EventEmitter implements StateStore {
     const before = this.objectSignatures();
     this.baseline = current;
     this.revision++;
-    await this.rebuild();
+    const removed = await this.rebuild();
     const after = this.objectSignatures();
     const refs = new Map(
       [...candidates].filter(
@@ -250,16 +265,42 @@ export class DiskState extends EventEmitter implements StateStore {
         overwritten,
       );
     this.noticeFileErrors();
+    this.noticeRemovedMaps(removed);
   }
-  private async rebuild(): Promise<void> {
-    const ids = [...this.builds.keys()];
+  /**
+   * Rebuild every cached map. A map that no longer exists leaves the cache instead of being
+   * rebuilt as a missing map (protocol section 4, flow 2); its id is returned.
+   */
+  private async rebuild(): Promise<string[]> {
     const selected = this.scene.map.id;
-    for (const id of ids) {
-      const build = await this.builder.build(id, this.revision);
-      this.builds.set(id, build);
+    // The selected map's build parses the whole project, which tells which maps exist.
+    const first = await this.builder.build(selected, this.revision);
+    const removed: string[] = [];
+    for (const id of [...this.builds.keys()]) {
+      if (id === selected) continue;
+      if (projectHasMap(first.parsed, id))
+        this.builds.set(id, await this.builder.build(id, this.revision));
+      else {
+        this.builds.delete(id);
+        removed.push(id);
+      }
     }
-    const build = this.builds.get(selected) ?? (await this.builder.build(undefined, this.revision));
-    this.install(build);
+    let installed = first;
+    if (!projectHasMap(first.parsed, selected)) {
+      // Select the first remaining map, or the empty project's placeholder.
+      installed = await this.builder.build(undefined, this.revision);
+      if (installed.scene.map.id !== selected) {
+        this.builds.delete(selected);
+        removed.push(selected);
+      }
+    }
+    this.install(installed);
+    return removed;
+  }
+  /** Tell the editors of deleted maps that their map is gone. */
+  private noticeRemovedMaps(removed: readonly string[]): void {
+    for (const mapId of removed)
+      this.notice('unknown_map', new UnknownMapError(mapId).message, undefined, mapId);
   }
   async getScene(id?: string): Promise<SceneSnapshot> {
     const mapId = id ?? this.scene.map.id;
@@ -276,15 +317,8 @@ export class DiskState extends EventEmitter implements StateStore {
   }
   /** A listed map, or the directory of a map.yaml that cannot be read, whose scene shows why. */
   private isProjectMap(mapId: string): boolean {
-    if (this.project.maps.some((map) => map.id === mapId)) return true;
     const parsed = this.builds.get(this.scene.map.id)?.parsed;
-    if (!parsed) return false;
-    const files = [`maps/${mapId}/map.yaml`, `maps/${mapId}/map.yml`].filter((file) =>
-      Object.hasOwn(parsed.files, file),
-    );
-    return (
-      files.length > 0 && !Object.values(parsed.maps).some((map) => files.includes(map.source.file))
-    );
+    return parsed !== undefined && projectHasMap(parsed, mapId);
   }
   async getBuild(id?: string): Promise<BuiltProject> {
     await this.getScene(id);
@@ -470,7 +504,7 @@ export class DiskState extends EventEmitter implements StateStore {
       });
       if (reason) return reason;
       this.revision++;
-      await this.rebuild();
+      this.noticeRemovedMaps(await this.rebuild());
       this.noticeFileErrors();
       return undefined;
     });

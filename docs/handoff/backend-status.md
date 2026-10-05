@@ -1036,3 +1036,37 @@ F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` br
   `structure:house`, and one Agent change moves both. The entry's `maps`
   separates them, and a human move on `town` carries `mapId: 'town'`; mock
   mode too. Both failed before. Deviation: none.
+- **F40 complete:**
+  - **Deleted maps:** `DiskState.rebuild` builds the selected map first and
+    uses its parsed project to tell which cached maps still exist
+    (`projectHasMap`: a listed map, or a `map.yaml` that cannot be read). A
+    deleted map leaves the cache instead of being rebuilt as a missing map;
+    if it was the selected map, the first remaining map is selected. Editors
+    that have it open get `notice { level: 'error', code: 'unknown_map',
+    mapId }`; `broadcast` routes such a notice only to them. A later `openMap`
+    answers `unknown_map`. protocol.md flow 2 says so, replacing the sentence
+    about a scene with a "does not exist" file error.
+  - **One failed rebuild:** after a successful apply, undo or redo, an open
+    map whose scene fails to rebuild sends its editors a `file_error`. The
+    other scenes and `history` are still broadcast.
+  - **Paths:** `internal_error` reasons, request `file_error` notices and the
+    watcher's error notices pass through `projectRelativePaths`, which writes
+    paths inside the project relative to it with `/`. It stops at a separator,
+    quote, space or the end, so `C:\proj2` is not taken for `C:\proj`.
+  - **Editor build:** `ServerOptions.webRoot` also accepts a list of
+    candidates. The server looks them up on every request and screenshot
+    (`ScreenshotService` asks through `editorBuilt`). The CLI passes
+    `[SERVER_WEB_ROOT, <cli>/web]`, so an editor built after `mapedit dev`
+    started is served and rendered without a restart.
+  - Tests: `server/test/edge-cases.test.ts` "F40" checks each point; all of
+    them failed before:
+    - a deleted open map leaves the cache and notifies only its editor;
+      `openMap` then answers `unknown_map`, and later changes do not rebuild
+      it;
+    - `history` and the village scene still arrive when the town scene throws;
+    - an EBUSY error with an absolute path is answered with
+      `maps/village/structures/a.yaml`;
+    - a build made after start is served and no longer reported missing;
+    - `projectRelativePaths` cases, including a sibling directory.
+
+  Deviation: none.
