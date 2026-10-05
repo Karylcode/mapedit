@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { access, cp, mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readdir, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +28,21 @@ const exists = (path: string) =>
   );
 
 /**
+ * Links each package of a node_modules folder to its real folder, as pnpm
+ * does, so Node finds every package as a link in a real folder. On the Windows
+ * runners on GitHub, Node does not see a package link inside a linked
+ * node_modules folder as a folder, and cannot find the package.
+ */
+async function linkPackages(from: string, to: string): Promise<void> {
+  await mkdir(to, { recursive: true });
+  for (const name of await readdir(from)) {
+    if (name.startsWith('.')) continue;
+    if (name.startsWith('@')) await linkPackages(join(from, name), join(to, name));
+    else await symlink(await realpath(join(from, name)), join(to, name), 'junction');
+  }
+}
+
+/**
  * The CLI and server as `pnpm build` compiles them, copied into a temporary
  * repository layout whose packages/web/dist is this build: `mapedit dev` serves
  * the build it finds there, and the real packages/web/dist is never touched.
@@ -42,10 +57,9 @@ async function layoutWith(site: string): Promise<{ root: string; cli: string }> 
     await cp(compiled, join(packages, name, 'dist'), { recursive: true });
     await cp(join(repo, 'packages', name, 'package.json'), join(packages, name, 'package.json'));
   }
-  await symlink(
+  await linkPackages(
     join(repo, 'packages/server/node_modules'),
     join(packages, 'server/node_modules'),
-    'junction',
   );
   // The CLI finds the copied server, and the repository's core.
   await mkdir(join(packages, 'cli/node_modules/@mapedit'), { recursive: true });
