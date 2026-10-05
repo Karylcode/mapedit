@@ -1,0 +1,4 @@
+id: nave_floor
+name: Nave Floor Bay
+size: [6, 0.5, 10]
+material: white

@@ -32,9 +32,9 @@ const slabXY = (outline: Point[], depth: number) =>
 const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
-// One bay of the tall nave wall: an arcade arch opening into the aisle below, and a
-// clerestory window above the aisle roof.
-const arcade = translate(slabXY(arch(4, 5), 3), [1, 0, -1]);
+// One bay of the tall nave wall: an arcade arch opening into the aisle below (its sill is
+// the 0.5 m floor), and a clerestory window above the aisle roof.
+const arcade = translate(slabXY(arch(4, 4.5), 3), [1, 0.5, -1]);
 const clerestory = translate(slabXY(arch(2.4, 3.3), 3), [1.8, 12.5, -1]);
 const recess = (z: number) => translate(slabXY(arch(3, 3.3), 0.4), [1.5, 12.3, z]);
 export default material(

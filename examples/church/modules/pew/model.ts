@@ -1,4 +1,4 @@
-import { box, difference, extrude, material, rotate, translate, union } from '@mapedit/model';
+import { box, extrude, material, rotate, translate, union } from '@mapedit/model';
 
 type Point = [number, number];
 
@@ -32,11 +32,25 @@ const slabXY = (outline: Point[], depth: number) =>
 const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
-// A stone altar with three blind lancet arches carved into each long face.
-const body = translate(box([2.6, 0.8, 1.1]), [0.2, 0, 0.2]);
-const blind = (x: number, z: number) => translate(slabXY(arch(0.5, 0.25, 6), 0.16), [x, 0.12, z]);
-const arches = [0.55, 1.25, 1.95].flatMap((x) => [blind(x, 0.12), blind(x, 1.22)]);
+// A pew facing east (+X): carved ends, a seat, a back on the west side and a kneeler in front.
+const end: Point[] = [
+  [0, 0],
+  [0.75, 0],
+  [0.75, 0.55],
+  [0.6, 0.62],
+  [0.14, 0.62],
+  [0.14, 0.95],
+  [0.07, 1],
+  [0, 1],
+];
 export default material(
   'white',
-  union(difference(body, ...arches), translate(box([3, 0.2, 1.5]), [0, 0.8, 0])),
+  union(
+    slabXY(end, 0.08),
+    translate(slabXY(end, 0.08), [0, 0, 2.92]),
+    translate(box([0.62, 0.06, 2.84]), [0.1, 0.44, 0.08]),
+    translate(box([0.08, 0.45, 2.84]), [0.03, 0.52, 0.08]),
+    translate(box([0.05, 0.38, 2.84]), [0.03, 0.04, 0.08]),
+    translate(box([0.15, 0.12, 2.84]), [0.82, 0.08, 0.08]),
+  ),
 );

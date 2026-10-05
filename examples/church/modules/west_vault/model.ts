@@ -1,4 +1,4 @@
-import { box, difference, extrude, material, rotate, translate, union } from '@mapedit/model';
+import { box, difference, extrude, material, rotate, translate } from '@mapedit/model';
 
 type Point = [number, number];
 
@@ -32,11 +32,26 @@ const slabXY = (outline: Point[], depth: number) =>
 const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
-// A stone altar with three blind lancet arches carved into each long face.
-const body = translate(box([2.6, 0.8, 1.1]), [0.2, 0, 0.2]);
-const blind = (x: number, z: number) => translate(slabXY(arch(0.5, 0.25, 6), 0.16), [x, 0.12, z]);
-const arches = [0.55, 1.25, 1.95].flatMap((x) => [blind(x, 0.12), blind(x, 1.22)]);
-export default material(
-  'white',
-  union(difference(body, ...arches), translate(box([3, 0.2, 1.5]), [0, 0.8, 0])),
-);
+/** A pointed arch `width` wide whose crown is `rise` above its springing, from y = −1. */
+const pointed = (width: number, rise: number, steps = 12): Point[] => {
+  const half = width / 2;
+  const radius = (rise * rise + half * half) / (2 * half);
+  const top = Math.acos((half - radius) / radius);
+  const left: Point[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = Math.PI - ((Math.PI - top) * i) / steps;
+    left.push([radius + radius * Math.cos(a), radius * Math.sin(a)]);
+  }
+  const right = left
+    .map(([x, y]): Point => [width - x, y])
+    .reverse()
+    .slice(1);
+  return [[0, -1], ...left, ...right, [width, -1]];
+};
+
+// A groin vault under the nave roof: a pointed tunnel along the nave crossed by a
+// pointed tunnel from each clerestory window. It springs from the vaulting shafts, and
+// its west side opens toward the rose window.
+const along = translate(slabZY(pointed(9, 4.6), 9), [-1, 0, 0.5]);
+const across = translate(slabXY(pointed(6.5, 4.4), 12), [0, 0, -1]);
+export default material('white', difference(box([7, 5, 10]), along, across));

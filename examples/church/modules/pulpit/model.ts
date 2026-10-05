@@ -1,4 +1,13 @@
-import { box, difference, extrude, material, rotate, translate, union } from '@mapedit/model';
+import {
+  cylinder,
+  difference,
+  extrude,
+  material,
+  revolve,
+  rotate,
+  translate,
+  union,
+} from '@mapedit/model';
 
 type Point = [number, number];
 
@@ -32,11 +41,45 @@ const slabXY = (outline: Point[], depth: number) =>
 const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
-// A stone altar with three blind lancet arches carved into each long face.
-const body = translate(box([2.6, 0.8, 1.1]), [0.2, 0, 0.2]);
-const blind = (x: number, z: number) => translate(slabXY(arch(0.5, 0.25, 6), 0.16), [x, 0.12, z]);
-const arches = [0.55, 1.25, 1.95].flatMap((x) => [blind(x, 0.12), blind(x, 1.22)]);
+// An octagonal pulpit on a column, reached by steps from the west.
+const cup = difference(
+  revolve(
+    ccw([
+      [0, 1.9],
+      [0.5, 1.9],
+      [0.95, 2.35],
+      [0.95, 3.3],
+      [0, 3.3],
+    ]),
+    8,
+  ),
+  revolve(
+    ccw([
+      [0, 2.35],
+      [0.82, 2.35],
+      [0.82, 3.5],
+      [0, 3.5],
+    ]),
+    8,
+  ),
+);
+const stairs: Point[] = [
+  [0, 0],
+  [1.2, 0],
+  [1.2, 2.35],
+  [0.9, 2.35],
+  [0.9, 1.8],
+  [0.6, 1.8],
+  [0.6, 1.2],
+  [0.3, 1.2],
+  [0.3, 0.6],
+  [0, 0.6],
+];
 export default material(
   'white',
-  union(difference(body, ...arches), translate(box([3, 0.2, 1.5]), [0, 0.8, 0])),
+  union(
+    translate(cylinder(0.3, 2, 16), [2, 0, 1]),
+    translate(rotate(cup, [0, 22.5, 0]), [2, 0, 1]),
+    translate(slabXY(stairs, 0.8), [0, 0, 0.6]),
+  ),
 );
