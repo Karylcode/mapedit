@@ -211,6 +211,40 @@ describe('Connection', () => {
     expect(timers).toHaveLength(0);
   });
 
+  it('lets go of the open map when the Agent deletes it (F40)', () => {
+    const { connection } = fakeConnection();
+    connection.openMap('village');
+    connection.start();
+    const socket = FakeSocket.all[0]!;
+    socket.open();
+    socket.receive({ type: 'welcome', protocolVersion: 1, project });
+    socket.receive(sceneOf('village'));
+    const openMaps = () => socket.sent.filter((m) => m.type === 'openMap').map((m) => m.mapId);
+    // Another map's deletion is no news for this connection.
+    socket.receive({
+      type: 'notice',
+      level: 'error',
+      code: 'unknown_map',
+      message: 'Map "elsewhere" does not exist.',
+      mapId: 'elsewhere',
+    });
+    expect(connection.currentMap).toBe('village');
+    // Its own map: nothing is open on the server any more, and nothing is asked again.
+    socket.receive({
+      type: 'notice',
+      level: 'error',
+      code: 'unknown_map',
+      message: 'Map "village" does not exist.',
+      mapId: 'village',
+    });
+    expect(connection.currentMap).toBeUndefined();
+    expect(connection.request({ type: 'undo' })).toBeUndefined();
+    expect(openMaps()).toEqual(['village']);
+    // Choosing another map opens it as usual.
+    connection.openMap('second');
+    expect(openMaps()).toEqual(['village', 'second']);
+  });
+
   it('stops when the server refuses hello with 1008 (FE15)', () => {
     const { connection, timers, statuses } = fakeConnection();
     connection.start();

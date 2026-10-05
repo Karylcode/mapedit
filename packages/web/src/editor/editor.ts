@@ -89,6 +89,27 @@ export function start(root: HTMLElement = document.body): void {
     });
     showMapInAddress(mapId);
   };
+
+  /**
+   * The Agent deleted a map: it leaves the map list, and if it is the open one,
+   * it stays drawn but out of reach until another map is chosen.
+   */
+  const mapDeleted = (mapId: string): void => {
+    const project = store.state.project;
+    if (project)
+      store.set({ project: { ...project, maps: project.maps.filter((m) => m.id !== mapId) } });
+    if (store.state.mapId !== mapId) return;
+    edits.cancelDrag();
+    input.cancelGesture();
+    store.set({
+      mapId: undefined,
+      loadingMap: false,
+      selection: undefined,
+      hover: undefined,
+      focusedViolation: undefined,
+    });
+    showMapInAddress(undefined);
+  };
   const setLang = (lang: Lang): void => {
     saveLang(lang);
     store.set({ lang });
@@ -260,7 +281,9 @@ export function start(root: HTMLElement = document.body): void {
     else if (message.type === 'notice') {
       if (message.code === 'file_error' && !fileErrors.admit(message.message)) return;
       toasts.show(noticeToast(message, map.index, store.state.project));
-      if (message.code === 'unknown_map') returnToOpenMap();
+      if (message.code === 'unknown_map')
+        if (message.mapId === undefined) returnToOpenMap();
+        else mapDeleted(message.mapId);
       // The scene comes before the notice, so the refs are found in the new snapshot.
       if (
         message.code === 'agent_changed' &&

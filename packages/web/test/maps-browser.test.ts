@@ -247,6 +247,29 @@ describe.skipIf(!executable)('switching maps in a real two-map project', () => {
     expect(await flashes()).not.toContain('structure:barn');
   });
 
+  it('lets go of the open map when the Agent deletes it (F40)', async () => {
+    const select = page.locator('.tb-select');
+    if ((await select.inputValue()) !== 'second') await select.selectOption('second');
+    await poll(() => editorState(page, (e) => e.store.state.scene?.map.id)).toBe('second');
+    await rm(join(root, 'maps/second'), { recursive: true, force: true });
+    const toast = page.locator('.toast-text', { hasText: 'Second Map has been deleted' });
+    await poll(() => toast.count()).toBe(1);
+    // The list no longer offers it, and the map still drawn is out of reach.
+    expect(await select.locator('option').allInnerTexts()).not.toContain('Second Map');
+    expect(
+      await editorState(page, (e) => [
+        e.store.state.mapId ?? null,
+        e.connection.currentMap ?? null,
+      ]),
+    ).toEqual([null, null]);
+    const house = await pressPoint(page, 'module:house/roof');
+    await page.mouse.click(house.x, house.y);
+    expect(await editorState(page, (e) => e.store.state.selection ?? null)).toBeNull();
+    // Another map opens as usual.
+    await select.selectOption('village');
+    await poll(() => editorState(page, (e) => e.store.state.scene?.map.id)).toBe('village');
+  });
+
   it('reports no page or console errors', () => {
     expect(pageErrors(page)).toEqual([]);
   });

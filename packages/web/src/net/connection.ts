@@ -112,6 +112,18 @@ export class Connection {
     this.opening.push(this.mapId);
   }
 
+  /**
+   * The Agent deleted a map this socket had open: the server sends nothing more
+   * for it and takes no edits to it. If it is the map still wanted, none is
+   * open now, and none is asked for again until another is chosen.
+   */
+  private mapDeleted(mapId: string): void {
+    if (this.shownMap === mapId) this.shownMap = undefined;
+    if (this.mapId !== mapId) return;
+    this.mapId = undefined;
+    this.openedMap = undefined;
+  }
+
   private mapShown(mapId: string): void {
     if (this.opening[0] === mapId) this.opening.shift();
     this.shownMap = mapId;
@@ -215,7 +227,11 @@ export class Connection {
       this.sendOpenMap();
       this.emit('welcome', message.project);
     } else if (message.type === 'scene') this.mapShown(message.scene.map.id);
-    else if (message.type === 'notice' && message.code === 'unknown_map') this.mapRefused();
+    else if (message.type === 'notice' && message.code === 'unknown_map') {
+      // An answer to openMap names no map; news that an open map was deleted does.
+      if (message.mapId === undefined) this.mapRefused();
+      else this.mapDeleted(message.mapId);
+    }
     this.emit('message', message);
   }
 
