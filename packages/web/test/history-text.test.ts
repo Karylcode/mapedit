@@ -41,3 +41,50 @@ describe('history rows from structured fields (FE17)', () => {
     );
   });
 });
+
+describe('history rows on more than one map (FE30)', () => {
+  // The drawn map is the mock village; Second Map is another map of the project.
+  const project = {
+    name: 'Demo',
+    maps: [
+      { id: 'village', name: 'Mock village' },
+      { id: 'second', name: 'Second Map' },
+    ],
+  };
+
+  it('names an object moved on another map by its id and that map', () => {
+    const moved = entry({ action: 'move', refs: ['structure:house'], mapId: 'second' });
+    expect(describeEntry(moved, index, t, project)).toBe('Moved house on Second Map');
+    const deleted = entry({ action: 'delete', refs: ['module:house/base'], mapId: 'second' });
+    expect(describeEntry(deleted, index, t, project)).toBe('Deleted house · base on Second Map');
+    // On the drawn map, as before.
+    const here = entry({ action: 'move', refs: ['structure:house'], mapId: 'village' });
+    expect(describeEntry(here, index, t, project)).toBe('Moved House');
+  });
+
+  it('says which other maps an Agent change touched', () => {
+    const agent = (maps: { mapId: string; refs: string[] }[]) =>
+      entry({
+        author: 'agent',
+        action: 'agent_change',
+        refs: maps.flatMap((map) => map.refs),
+        maps,
+        files: maps.map((map) => `maps/${map.mapId}/structures/house.yaml`),
+      });
+    const both = agent([
+      { mapId: 'village', refs: ['structure:house'] },
+      { mapId: 'second', refs: ['structure:house'] },
+    ]);
+    expect(describeEntry(both, index, t, project)).toBe(
+      'Changed house.yaml, house.yaml (also on Second Map)',
+    );
+    const elsewhere = agent([{ mapId: 'second', refs: ['structure:house'] }]);
+    expect(describeEntry(elsewhere, index, t, project)).toBe('Changed house.yaml (on Second Map)');
+    const zh: Translator = (key, params) => translate('zh-TW', key, params);
+    expect(describeEntry(elsewhere, index, zh, project)).toBe(
+      '改了 house.yaml（在「Second Map」）',
+    );
+    const here = agent([{ mapId: 'village', refs: ['structure:house'] }]);
+    expect(describeEntry(here, index, t, project)).toBe('Changed house.yaml');
+  });
+});

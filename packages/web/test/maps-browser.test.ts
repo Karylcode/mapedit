@@ -192,6 +192,61 @@ describe.skipIf(!executable)('switching maps in a real two-map project', () => {
     await poll(flashed).toEqual(['structure:house']);
   });
 
+  it('marks only what the Agent changed on the drawn map and names the other map (FE30)', async () => {
+    const select = page.locator('.tb-select');
+    if ((await select.inputValue()) !== 'village') await select.selectOption('village');
+    await poll(() => editorState(page, (e) => e.store.state.scene?.map.id)).toBe('village');
+    // Every set of the flash outline, so a wrong one cannot hide behind a later right one.
+    await page.evaluate(() => {
+      const map = (
+        globalThis as unknown as {
+          mapeditEditor: { map: { setOutlines(layer: string, refs: string[]): void } };
+        }
+      ).mapeditEditor.map;
+      const flashes: string[][] = [];
+      (globalThis as unknown as { flashes: string[][] }).flashes = flashes;
+      const original = map.setOutlines.bind(map);
+      map.setOutlines = (layer, refs) => {
+        if (layer === 'flash') flashes.push([...refs]);
+        original(layer, refs);
+      };
+    });
+    // One Agent edit on each map: move the village's house, add a barn only Second Map has.
+    const before = await editorState(page, (e) => e.store.state.history.entries.length);
+    const house = join(root, 'maps/village/structures/house.yaml');
+    const barn = (await readFile(house, 'utf8'))
+      .replace('id: house', 'id: barn')
+      .replace(/name: [^\n]+/, 'name: Barn')
+      .replace(/position: \[[^\]]+\]/, 'position: [40, 40]');
+    await Promise.all([
+      writeFile(
+        house,
+        (await readFile(house, 'utf8')).replace(/position: \[[^\]]+\]/, 'position: [30, 30]'),
+      ),
+      writeFile(join(root, 'maps/second/structures/barn.yaml'), barn),
+    ]);
+    // The village's own change arrives: its house moved ...
+    await poll(() =>
+      editorState(page, (e) => {
+        const house = e.store.state.scene.structures.find(
+          (s: { ref: string }) => s.ref === 'structure:house',
+        );
+        return [house.transform[12], house.transform[14]];
+      }),
+    ).toEqual([30, 30]);
+    // ... and a new row of the change log says what happened on Second Map (newest rows first).
+    await poll(async () => {
+      const added = (await editorState(page, (e) => e.store.state.history.entries.length)) - before;
+      const rows = await page.locator('.history-summary').allInnerTexts();
+      return rows.slice(0, added).some((text) => /\((also )?on Second Map\)$/.test(text));
+    }).toBe(true);
+    // Only the drawn map's house was outlined, never the other map's barn.
+    const flashes = () =>
+      page.evaluate(() => (globalThis as unknown as { flashes: string[][] }).flashes.flat());
+    await poll(flashes).toContain('structure:house');
+    expect(await flashes()).not.toContain('structure:barn');
+  });
+
   it('reports no page or console errors', () => {
     expect(pageErrors(page)).toEqual([]);
   });

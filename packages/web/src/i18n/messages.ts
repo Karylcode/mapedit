@@ -80,6 +80,8 @@ export const zhTW = {
   'history.delete': '刪除 {name}',
   'history.files': '改了 {files}',
   'history.moreFiles': '{files} 等 {count} 個檔案',
+  'history.onMaps': '{change}（在「{maps}」）',
+  'history.alsoOnMaps': '{change}（也改了「{maps}」）',
   'list.separator': '、',
   'list.more': '{names} 等 {count} 個',
 
@@ -240,6 +242,8 @@ export const en: Record<MessageKey, Message> = {
   'history.files': 'Changed {files}',
   'history.moreFiles': (p) =>
     `${p.files} and ${p.more} more ${Number(p.more) === 1 ? 'file' : 'files'}`,
+  'history.onMaps': '{change} (on {maps})',
+  'history.alsoOnMaps': '{change} (also on {maps})',
   'list.separator': ', ',
   'list.more': (p) => `${p.names} and ${p.more} more`,
 
