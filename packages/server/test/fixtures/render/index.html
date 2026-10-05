@@ -13,7 +13,8 @@
         .then((response) => response.json())
         .then((value) => {
           scene = value;
-          window.mapeditRenderReady = true;
+          // Test mode: a page that loads but never becomes ready.
+          if (map !== 'never-ready') window.mapeditRenderReady = true;
         });
       window.mapeditRender = async (spec) => {
         // Test modes: a page error the backend must relay, an oversized error, a render that

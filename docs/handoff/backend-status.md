@@ -1070,3 +1070,25 @@ F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` br
     - `projectRelativePaths` cases, including a sibling directory.
 
   Deviation: none.
+- **F41 complete:** one whole screenshot shares a single time limit,
+  `SCREENSHOT_TIMEOUT_MS` = 50 s, below the 60 s after which MCP clients give
+  up by default. Waiting for the browser to start, `page.goto`, waiting for
+  `mapeditRenderReady` and `mapeditRender` each get only the time that is
+  left. Each stage has its own message:
+  - "The headless browser did not start within 50 seconds. Try again."
+  - "The render page did not become ready within 50 seconds and was closed…"
+  - "The render page did not finish within 50 seconds and was closed…"
+
+  `capture` reduces every failure to its first line and cuts it at 1,000
+  characters. The constructor option is now `timeoutMs` (the whole capture);
+  `ServerOptions.screenshotTimeoutMs` still sets it.
+  - Tests in `server/test/screenshot.test.ts`, "F41":
+    - the default stays below the MCP SDK's `DEFAULT_REQUEST_TIMEOUT_MSEC`;
+    - a fixture page that never becomes ready fails within the shortened
+      limit (before, it waited 30 s);
+    - a browser launch error with a 1,500-character path comes back as one
+      capped line.
+  - The F31 tests now start the browser before timing a hanging render, since
+    the limit includes the launch.
+
+  Deviation: none.

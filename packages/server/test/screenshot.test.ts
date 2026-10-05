@@ -8,7 +8,13 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { mockScene } from '../src/mock.js';
-import { SCREENSHOT_BROWSER_ARGS, ScreenshotService, findBrowser } from '../src/screenshot.js';
+import {
+  SCREENSHOT_BROWSER_ARGS,
+  SCREENSHOT_TIMEOUT_MS,
+  ScreenshotService,
+  findBrowser,
+} from '../src/screenshot.js';
+import { DEFAULT_REQUEST_TIMEOUT_MSEC } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import { createServer as createMapeditServer } from '../src/index.js';
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -72,19 +78,21 @@ describe.skipIf(!browserAvailable)('screenshot page errors and WebGL', () => {
 });
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-const timeoutMessage =
-  'The render page did not finish within 0.5 seconds and was closed. Try again, or ask for fewer views or a smaller tileSize.';
+const timeoutMessage = (seconds: number) =>
+  `The render page did not finish within ${seconds} seconds and was closed. Try again, or ask for fewer views or a smaller tileSize.`;
 describe.skipIf(!browserAvailable)('F31 screenshots never wait forever', () => {
   it('closes a render page that never finishes and keeps the browser usable', async () => {
     const server = await renderServer();
-    const screenshots = new ScreenshotService(server.url, undefined, { renderTimeoutMs: 500 });
+    // F41: the limit covers the whole capture, so the browser starts before it is measured.
+    const screenshots = new ScreenshotService(server.url, undefined, { timeoutMs: 3000 });
     cleanup.push(() => screenshots.close());
+    await screenshots.capture('warm', { views: ['top'], tileSize: 64 });
     const started = Date.now();
     const failure = await screenshots
       .capture('hang', { views: ['top'], tileSize: 64 })
       .then(() => undefined, message);
-    expect(failure).toBe(timeoutMessage);
-    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(failure).toBe(timeoutMessage(3));
+    expect(Date.now() - started).toBeLessThan(6_000);
     // The page's open request ends only when the page is gone.
     await expect.poll(() => server.held.closed).toBe(1);
     const png = await screenshots.capture('after', { views: ['top'], tileSize: 64 });
@@ -111,7 +119,7 @@ describe.skipIf(!browserAvailable)('F31 screenshots never wait forever', () => {
       root,
       port: 0,
       webRoot: fileURLToPath(new URL('./fixtures/render', import.meta.url)),
-      screenshotTimeoutMs: 500,
+      screenshotTimeoutMs: 8000,
     });
     cleanup.push(() => server.close());
     const client = new Client({ name: 'render-timeout-test', version: '1' });
@@ -122,7 +130,7 @@ describe.skipIf(!browserAvailable)('F31 screenshots never wait forever', () => {
       arguments: { map: 'hang', views: ['top'], tileSize: 64 },
     })) as CallToolResult;
     expect(result.isError).toBe(true);
-    expect((result.content[0] as { text: string }).text).toBe(timeoutMessage);
+    expect((result.content[0] as { text: string }).text).toBe(timeoutMessage(8));
   });
 });
 
@@ -130,4 +138,42 @@ it('exports the browser lookup and launch flags for the frontend browser tests',
   const server = await import('../src/index.js');
   expect(server.findBrowser).toBe(findBrowser);
   expect(server.SCREENSHOT_BROWSER_ARGS).toBe(SCREENSHOT_BROWSER_ARGS);
+});
+
+describe('F41 one time limit for the whole screenshot', () => {
+  it('stays below the default request timeout of MCP clients', () => {
+    expect(SCREENSHOT_TIMEOUT_MS).toBe(50_000);
+    expect(SCREENSHOT_TIMEOUT_MS).toBeLessThan(DEFAULT_REQUEST_TIMEOUT_MSEC);
+  });
+
+  it.skipIf(!browserAvailable)(
+    'fails a page that never becomes ready within the limit',
+    async () => {
+      const screenshots = new ScreenshotService((await renderServer()).url, undefined, {
+        timeoutMs: 3000,
+      });
+      cleanup.push(() => screenshots.close());
+      await screenshots.capture('warm', { views: ['top'], tileSize: 64 });
+      const started = Date.now();
+      const failure = await screenshots
+        .capture('never-ready', { views: ['top'], tileSize: 64 })
+        .then(() => undefined, message);
+      expect(failure).toBe(
+        'The render page did not become ready within 3 seconds and was closed. Check that the editor build loads, then try again.',
+      );
+      expect(Date.now() - started).toBeLessThan(6_000);
+    },
+  );
+
+  it('caps every error message, including browser launch errors', async () => {
+    const executable = join(tmpdir(), 'mapedit-missing-browser', 'x'.repeat(1500));
+    const screenshots = new ScreenshotService('http://127.0.0.1:9', executable);
+    cleanup.push(() => screenshots.close());
+    const failure = await screenshots
+      .capture('any', { views: ['top'], tileSize: 64 })
+      .then(() => undefined, message);
+    expect(failure).toMatch(/… \(\d+ more characters\)$/);
+    expect(failure!.length).toBeLessThan(1_100);
+    expect(failure).not.toContain('\n');
+  });
 });
