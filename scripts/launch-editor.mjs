@@ -1,7 +1,16 @@
 // Double-click launcher behind 啟動地圖編輯器.bat: builds when the checkout changed,
-// creates a map project on first use, then runs `mapedit dev --open`.
+// fills the projects folder on first use, then runs `mapedit dev --open --projects`.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +20,10 @@ const PORT = 4790;
 const URL = `http://127.0.0.1:${PORT}`;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cli = path.join(root, 'packages', 'cli', 'dist', 'index.js');
+/** Every map project lives in its own folder here; git and 更新.bat leave it alone. */
+const projects = path.join(root, 'projects');
+/** Example projects copied into the projects folder whenever they are missing there. */
+const SAMPLES = ['church'];
 
 process.title = '3D 地圖編輯器';
 
@@ -73,15 +86,6 @@ if (!built) {
   writeFileSync(stamp, `${commit}\n`);
 }
 
-let project = process.argv[2]
-  ? path.resolve(process.argv[2])
-  : path.resolve(root, '..', 'mapedit-maps');
-if (existsSync(project) && statSync(project).isFile()) project = path.dirname(project);
-if (!existsSync(path.join(project, 'project.yaml'))) {
-  console.log(`建立新的地圖專案：${project}\n`);
-  run(process.execPath, [cli, 'init', project]);
-}
-
 function portInUse() {
   return new Promise((resolve) => {
     const socket = net.connect(PORT, '127.0.0.1');
@@ -101,6 +105,66 @@ function openBrowser() {
   spawn(command, args, { detached: true, stdio: 'ignore' }).unref();
 }
 
+const isProject = (folder) => existsSync(path.join(folder, 'project.yaml'));
+
+/** A folder of the projects folder, or undefined for one elsewhere. */
+function projectsChild(folder) {
+  const relative = path.relative(projects, folder);
+  return relative && !relative.includes(path.sep) && !relative.startsWith('..')
+    ? relative
+    : undefined;
+}
+
+/**
+ * The projects folder: the example projects, the project the launcher used to keep
+ * next to the checkout, and a note on what goes here.
+ */
+function prepareProjects() {
+  mkdirSync(projects, { recursive: true });
+  for (const sample of SAMPLES) {
+    const target = path.join(projects, sample);
+    if (!existsSync(target)) {
+      cpSync(path.join(root, 'templates', sample), target, { recursive: true });
+      console.log(`加入範例專案：${target}`);
+    }
+  }
+  const old = path.resolve(root, '..', 'mapedit-maps');
+  const moved = path.join(projects, 'my-maps');
+  if (isProject(old) && !existsSync(moved)) {
+    try {
+      renameSync(old, moved);
+      console.log(`已經把舊的地圖專案 ${old} 搬到 ${moved}。`);
+    } catch (error) {
+      console.log(`沒辦法搬移舊的地圖專案 ${old}：${error.message}`);
+      console.log(`它還在原來的地方，可以自己把它搬進 ${projects}。`);
+    }
+  }
+  if (!readdirSync(projects).some((name) => isProject(path.join(projects, name)))) {
+    console.log(`建立新的地圖專案：${moved}\n`);
+    run(process.execPath, [cli, 'init', moved]);
+  }
+  const readme = path.join(projects, 'README.md');
+  if (!existsSync(readme))
+    writeFileSync(
+      readme,
+      [
+        '# 地圖專案',
+        '',
+        '這裡的每個資料夾是一個專案：裡面有 project.yaml、modules/（模組）和 maps/（地圖，一個專案可以有很多張）。',
+        '專案之間的模組和地圖互不相通。在編輯器左上角的「專案」可以切換。',
+        '',
+        '新增專案：在 mapedit-main 資料夾執行 `node packages/cli/dist/index.js init projects/<名稱>`，',
+        '或請 Agent 在這裡建立新的專案資料夾。',
+        '',
+        '這個資料夾不受 Git 管理，更新.bat 不會動到它。刪掉 church 後重新啟動，會拿到最新版的教堂範例。',
+        '',
+        'Each folder here is a map project (project.yaml, modules/, maps/). Create one with',
+        '`node packages/cli/dist/index.js init projects/<name>` from the repository root.',
+        '',
+      ].join('\n'),
+    );
+}
+
 if (await portInUse()) {
   console.log('編輯器已經在執行中，直接打開瀏覽器。');
   console.log('如果打開的不是你要的專案，請先關掉另一個編輯器視窗，再重新執行。');
@@ -109,13 +173,27 @@ if (await portInUse()) {
   process.exit(0);
 }
 
+prepareProjects();
+
+// A project folder dropped on the .bat opens that project: one in the projects folder
+// with the others beside it, one elsewhere on its own.
+const dropped = process.argv[2] ? path.resolve(process.argv[2]) : undefined;
+const folder =
+  dropped && existsSync(dropped) && statSync(dropped).isFile() ? path.dirname(dropped) : dropped;
+if (folder && !isProject(folder)) fail(`${folder} 不是地圖專案資料夾（裡面沒有 project.yaml）。`);
+const name = folder && projectsChild(folder);
+const devArgs = ['dev', '--open'];
+if (!folder || name) devArgs.push('--projects', projects, ...(name ? ['--project', name] : []));
+
 console.log(`
   編輯器網址：${URL}
-  地圖專案：${project}
-  要讓 Agent 連上，在這個專案資料夾開 Claude Code 或 Codex。
+  ${folder && !name ? `地圖專案：${folder}` : `專案資料夾：${projects}\n  在編輯器左上角的「專案」可以切換專案。`}
   關閉這個視窗，編輯器就會停止。
 `);
 // Ctrl+C reaches the editor too; wait for it to shut down cleanly.
 process.on('SIGINT', () => {});
-const editor = spawn(process.execPath, [cli, 'dev', '--open'], { cwd: project, stdio: 'inherit' });
+const editor = spawn(process.execPath, [cli, ...devArgs], {
+  cwd: folder && !name ? folder : projects,
+  stdio: 'inherit',
+});
 editor.on('exit', (code) => process.exit(code ?? 0));

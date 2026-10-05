@@ -27,9 +27,21 @@ node ../packages/cli/dist/index.js dev
 人在網頁上的修改會寫回 YAML 並保留註解。
 
 Windows 上雙擊 `啟動地圖編輯器.bat` 就會安裝、建置並打開編輯器；雙擊 `更新.bat` 會從 GitHub
-下載目前分支的最新版本（需要用 git clone 下載，並安裝 Git），下次啟動時自動重新建置。
+下載最新版本（需要安裝 Git；用 ZIP 下載的資料夾第一次會詢問是否接上 GitHub），下次啟動時自動重新建置。
 
-範例地圖：[`examples/church`](examples/church/) 是一座哥德式教堂的灰白模型，使用卡通渲染（`style: toon`）。
+### 地圖專案
+
+所有地圖專案都放在 `projects/` 裡，一個資料夾就是一個專案：有自己的 `project.yaml`、模組（`modules/`）
+和地圖（`maps/`，一個專案可以有很多張）。專案之間的模組和地圖互不相通；材質目前是編輯器內建的一套，
+所有專案共用。
+
+- 在編輯器左上角的「專案」選單可以切換專案，Agent 透過 MCP 操作的也是目前開著的專案。
+- 新增專案：`node packages/cli/dist/index.js init projects/<名稱>`，或請 Agent 在 `projects/` 裡建立資料夾；
+  游標移到「專案」選單上時會重新讀取清單。
+- `projects/` 不受 Git 管理，`更新.bat` 不會動到它。
+- 第一次啟動時，`templates/church`（哥德式教堂的灰白模型，使用卡通渲染 `style: toon`）會複製成
+  `projects/church`；刪掉後再啟動就會拿到最新版。舊版放在旁邊的 `mapedit-maps` 會自動搬成 `projects/my-maps`。
+- 指令列：`mapedit dev --projects <資料夾> [--project <名稱>]`；沒指定時打開上次開的專案。
 
 ### 編輯器操作
 
@@ -44,6 +56,7 @@ Windows 上雙擊 `啟動地圖編輯器.bat` 就會安裝、建置並打開編�
 | 旋轉       | R 轉 15 度（Shift+R 反方向），拖曳中也可以按                                                                           |
 | 刪除       | Delete 或 Backspace                                                                                                    |
 | 復原、重做 | Ctrl+Z；Ctrl+Y 或 Ctrl+Shift+Z                                                                                         |
+| 切換專案   | 左上角「專案」選單                                                                                                     |
 | 第一人稱   | V 進入：滑鼠看四周，WASD 飛行，空白鍵上升、Shift 下降，滾輪調飛行速度；Esc 或 V 回到俯瞰。可以穿過建築，只能看不能編輯 |
 
 左邊列出違規（編號和地圖上的旗子一致，點一下就飛過去）和檔案錯誤，右邊是修改紀錄；

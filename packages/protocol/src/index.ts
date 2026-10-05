@@ -104,6 +104,17 @@ export interface FileErrorView {
 export interface ProjectInfo {
   name: string;
   maps: { id: string; name: string }[];
+  /** The project's folder name, when the server can switch between the projects of a folder. */
+  id?: string;
+  /** Every project the editor can switch to, this one included; absent for a single project. */
+  projects?: ProjectEntry[];
+}
+/** A project folder the editor can switch to. */
+export interface ProjectEntry {
+  /** The folder name. */
+  id: string;
+  /** The name in its project.yaml. */
+  name: string;
 }
 export type Edit =
   | { kind: 'move'; ref: ObjectRef; position: Vec3; rotation: number }
@@ -111,6 +122,8 @@ export type Edit =
 export type ClientMessage =
   | { type: 'hello'; protocolVersion: 1; client: 'editor' | 'render' }
   | { type: 'openMap'; mapId: string }
+  /** Switch the whole server to another project of `ProjectInfo.projects`; the page then reloads. */
+  | { type: 'openProject'; projectId: string }
   | { type: 'previewEdit'; requestId: number; edit: Edit }
   | { type: 'applyEdit'; requestId: number; edit: Edit; baseRevision: number }
   | { type: 'undo'; requestId: number }

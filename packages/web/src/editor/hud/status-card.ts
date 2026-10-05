@@ -7,6 +7,10 @@ import { translator } from '../../i18n/i18n.js';
 export function statusMessage(state: EditorState): string | undefined {
   const t = translator(state.lang);
   if (state.status === 'incompatible') return t('status.incompatible');
+  if (state.switchingProject !== undefined) {
+    const project = state.project?.projects?.find((p) => p.id === state.switchingProject);
+    return t('loading.project', { name: project?.name || state.switchingProject });
+  }
   if (!state.project) return t('loading.server');
   if (state.project.maps.length === 0) return t('loading.noMaps');
   if (state.loadingMap) {

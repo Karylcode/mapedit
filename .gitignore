@@ -32,3 +32,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Map projects belong to whoever uses the editor; git and 更新.bat leave them alone.
+/projects/

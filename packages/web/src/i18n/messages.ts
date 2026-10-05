@@ -13,6 +13,7 @@ export const zhTW = {
   'title.revision': '版次',
   'title.link': '連線',
   'title.switchMap': '切換地圖',
+  'title.switchProject': '切換專案',
 
   'status.connecting': '連線中…',
   'status.open': '即時同步',
@@ -21,6 +22,7 @@ export const zhTW = {
 
   'loading.server': '正在連到編輯器伺服器…',
   'loading.map': '正在載入 {name}…',
+  'loading.project': '正在開啟專案 {name}…',
   'loading.models': (p) => `模型 ${p.loaded} / ${p.total}`,
   'loading.noMaps': '這個專案還沒有地圖。請 Agent 在 maps/ 裡建立一張。',
   'loading.failed': '地圖載入失敗：{reason}',
@@ -182,6 +184,7 @@ export const en: Record<MessageKey, Message> = {
   'title.revision': 'Rev',
   'title.link': 'Link',
   'title.switchMap': 'Switch map',
+  'title.switchProject': 'Switch project',
 
   'status.connecting': 'Connecting…',
   'status.open': 'Live',
@@ -190,6 +193,7 @@ export const en: Record<MessageKey, Message> = {
 
   'loading.server': 'Connecting to the editor server…',
   'loading.map': 'Loading {name}…',
+  'loading.project': 'Opening project {name}…',
   'loading.models': (p) => `Models ${p.loaded} / ${p.total}`,
   'loading.noMaps': 'This project has no maps yet. Ask the Agent to create one in maps/.',
   'loading.failed': 'The map failed to load: {reason}',

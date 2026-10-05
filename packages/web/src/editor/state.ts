@@ -30,6 +30,8 @@ export interface EditorState {
   focusedViolation?: string;
   /** True while flying around in first-person mode instead of the overview. */
   firstPerson: boolean;
+  /** The project asked for in the project menu, until the server has switched to it. */
+  switchingProject?: string;
 }
 
 export const initialState = (lang: Lang): EditorState => ({

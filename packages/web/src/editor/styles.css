@@ -192,7 +192,8 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-.tb-select {
+.tb-select,
+.tb-project-menu {
   appearance: none;
   min-width: 0;
   margin: 0 -4px;
@@ -206,13 +207,15 @@ select {
   cursor: pointer;
 }
 
-.tb-select:disabled {
+.tb-select:disabled,
+.tb-project-menu:disabled {
   background-image: none;
   cursor: default;
   opacity: 1;
 }
 
-.tb-select:hover:not(:disabled) {
+.tb-select:hover:not(:disabled),
+.tb-project-menu:hover:not(:disabled) {
   background-color: var(--chalkline-wash);
 }
 
@@ -963,4 +966,20 @@ kbd {
 
 .editor[data-mode='first-person'] .crosshair {
   display: block;
+}
+
+/* The project cell holds the name, or the project menu when there are projects to switch to. */
+.tb-stack {
+  display: flex;
+  min-width: 0;
+}
+
+.tb-stack > [hidden] {
+  display: none;
+}
+
+.tb-project-menu {
+  font-size: 17px;
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
