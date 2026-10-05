@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { access, cp, mkdtemp, readFile, rename, rm } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,8 +20,6 @@ import {
 
 const executable = await findBrowser();
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
-/** The CLI as `pnpm build` (or `pnpm typecheck`) compiles it. */
-const cli = join(repo, 'packages/cli/dist/index.js');
 
 const exists = (path: string) =>
   access(path).then(
@@ -29,35 +27,40 @@ const exists = (path: string) =>
     () => false,
   );
 
-/** Whether packages/web/dist holds this very build; Vite names its files by their content. */
-async function isPublished(site: string): Promise<boolean> {
-  const page = (folder: string) =>
-    readFile(join(folder, 'index.html'), 'utf8').catch(() => undefined);
-  const [published, fresh] = await Promise.all([page(SERVER_WEB_ROOT), page(site)]);
-  return published !== undefined && published === fresh;
-}
-
 /**
- * Put a build where `pnpm build` leaves it, packages/web/dist, swapping out
- * an older one in one step so a server reading it never finds it half written.
+ * The CLI and server as `pnpm build` compiles them, copied into a temporary
+ * repository layout whose packages/web/dist is this build: `mapedit dev` serves
+ * the build it finds there, and the real packages/web/dist is never touched.
+ * Their dependencies are the repository's own, linked in.
  */
-async function publishBuild(site: string): Promise<void> {
-  const next = `${SERVER_WEB_ROOT}.next-${process.pid}`;
-  const old = `${SERVER_WEB_ROOT}.old-${process.pid}`;
-  await rm(next, { recursive: true, force: true });
-  await cp(site, next, { recursive: true });
-  const had = await exists(SERVER_WEB_ROOT);
-  // Windows may briefly refuse to rename a folder another process is reading.
-  for (let attempt = 0; ; attempt++)
-    try {
-      if (had && (await exists(SERVER_WEB_ROOT))) await rename(SERVER_WEB_ROOT, old);
-      await rename(next, SERVER_WEB_ROOT);
-      break;
-    } catch (error) {
-      if (attempt >= 20) throw error;
-      await new Promise((done) => setTimeout(done, 100));
-    }
-  await rm(old, { recursive: true, force: true });
+async function layoutWith(site: string): Promise<{ root: string; cli: string }> {
+  const root = await mkdtemp(join(tmpdir(), 'mapedit-dev-layout-'));
+  const packages = join(root, 'packages');
+  for (const name of ['server', 'cli']) {
+    const compiled = join(repo, 'packages', name, 'dist');
+    expect(await exists(compiled), `${compiled} is missing; run pnpm build`).toBe(true);
+    await cp(compiled, join(packages, name, 'dist'), { recursive: true });
+    await cp(join(repo, 'packages', name, 'package.json'), join(packages, name, 'package.json'));
+  }
+  await symlink(
+    join(repo, 'packages/server/node_modules'),
+    join(packages, 'server/node_modules'),
+    'junction',
+  );
+  // The CLI finds the copied server, and the repository's core.
+  await mkdir(join(packages, 'cli/node_modules/@mapedit'), { recursive: true });
+  await symlink(
+    join(packages, 'server'),
+    join(packages, 'cli/node_modules/@mapedit/server'),
+    'junction',
+  );
+  await symlink(
+    join(repo, 'packages/core'),
+    join(packages, 'cli/node_modules/@mapedit/core'),
+    'junction',
+  );
+  await cp(site, join(packages, 'web/dist'), { recursive: true });
+  return { root, cli: join(packages, 'cli/dist/index.js') };
 }
 
 it('builds the editor into the folder mapedit dev serves', async () => {
@@ -69,28 +72,17 @@ it('builds the editor into the folder mapedit dev serves', async () => {
 });
 
 describe.skipIf(!executable)('mapedit dev after pnpm build', () => {
+  let layout: { root: string; cli: string } | undefined;
   let project: string | undefined;
   let dev: ChildProcess | undefined;
   let url: string;
   let browser: Browser | undefined;
-  /** Why this run cannot check the command, if it cannot. */
-  let unbuilt: string | undefined;
 
   beforeAll(async () => {
-    expect(await exists(cli), `${cli} is missing; run pnpm typecheck or pnpm build`).toBe(true);
-    const site = (await buildWeb()).dir;
-    if (!(await isPublished(site))) {
-      // Packing the CLI copies packages/web/dist, so replacing it could disturb the
-      // packed-CLI test running beside this one. CI runs test files one at a time.
-      if (!process.env.CI) {
-        unbuilt = 'packages/web/dist is missing or older than the sources; run pnpm build';
-        return;
-      }
-      await publishBuild(site);
-    }
+    layout = await layoutWith((await buildWeb()).dir);
     project = await mkdtemp(join(tmpdir(), 'mapedit-dev-command-'));
     await cp(join(repo, 'templates/project'), project, { recursive: true });
-    const child = spawn(process.execPath, [cli, 'dev', '--port', '0'], {
+    const child = spawn(process.execPath, [layout.cli, 'dev', '--port', '0'], {
       cwd: project,
       windowsHide: true,
       stdio: ['ignore', 'ignore', 'pipe'],
@@ -117,10 +109,11 @@ describe.skipIf(!executable)('mapedit dev after pnpm build', () => {
       await exited;
     }
     if (project) await rm(project, { recursive: true, force: true });
+    // Removes the links themselves, not the repository folders they point to.
+    if (layout) await rm(layout.root, { recursive: true, force: true });
   });
 
-  it('serves the editor at /', async ({ skip }) => {
-    if (unbuilt) skip(unbuilt);
+  it('serves the editor at /', async () => {
     const page = await openEditor(browser!, url);
     expect(await page.locator('.title-block').innerText()).toMatch(/My Mapedit Project/);
     expect(
@@ -137,8 +130,7 @@ describe.skipIf(!executable)('mapedit dev after pnpm build', () => {
     await page.close();
   });
 
-  it('serves a working /render', async ({ skip }) => {
-    if (unbuilt) skip(unbuilt);
+  it('serves a working /render', async () => {
     const page = await browser!.newPage();
     watchErrors(page);
     await page.goto(`${url}/render?map=village`);

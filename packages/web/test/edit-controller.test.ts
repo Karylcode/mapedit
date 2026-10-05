@@ -184,6 +184,16 @@ describe('EditController before the backend answers', () => {
     expect(sent.filter((m) => m.type === 'undo')).toHaveLength(0);
   });
 
+  it('asks the human to wait when Delete is pressed while a drop awaits its answer (FE29)', () => {
+    const { edits, applied, toasts } = setup();
+    edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });
+    edits.dragEnd(new Vector2(0.1, 0.05), { x: 700, y: 380 });
+    expect(applied()).toHaveLength(1);
+    edits.deleteSelection();
+    expect(applied()).toHaveLength(1);
+    expect(toasts.show).toHaveBeenCalledWith(expect.objectContaining({ key: 'edit.busy' }));
+  });
+
   it('says the outcome is unknown when the connection drops after a drop (FE9)', () => {
     const { edits, toasts, setStatus } = setup();
     edits.beginDrag('module:house/base', new Vector2(0, 0), { x: 640, y: 400 });

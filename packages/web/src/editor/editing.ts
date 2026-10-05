@@ -257,7 +257,12 @@ export class EditController {
   deleteSelection(): void {
     const baseRevision = this.baseRevision();
     const ref = this.store.state.selection;
-    if (baseRevision === undefined || !ref || this.drag) return;
+    if (this.drag) {
+      // A drag, or a drop still waiting for its answer: wait, as when dragging again.
+      this.say('info', 'edit.busy');
+      return;
+    }
+    if (baseRevision === undefined || !ref) return;
     if (this.inFlight.get(ref)?.edit.kind === 'delete') return;
     this.send(
       {

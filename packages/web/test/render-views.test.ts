@@ -3,7 +3,7 @@ import { Box3, Vector3 } from 'three';
 import { mockScene } from '@mapedit/server';
 import type { SceneSnapshot } from '@mapedit/protocol';
 import { montageLayout, regionOf, viewCamera } from '../src/render/views.js';
-import { legendLines } from '../src/render/montage.js';
+import { legendLines, needsGroundPlane } from '../src/render/montage.js';
 
 const region = { center: new Vector3(50, 0, 50), radius: 20 };
 /** Normalized screen position of a map point (x right, y up, −1…1). */
@@ -90,5 +90,12 @@ describe('render legend (FE17)', () => {
     ]);
     const map = bare({ id: '__module_like', kind: 'map' });
     expect(legendLines(map, 0.5)[1]!.text).toMatch(/^map __module_like · revision /);
+  });
+
+  it('puts a ground grid under any scene without terrain (FE29)', () => {
+    expect(needsGroundPlane(bare({ kind: 'module_preview' }))).toBe(true);
+    // A map whose map.yaml could not be read has no terrain either.
+    expect(needsGroundPlane(bare({ kind: 'map' }))).toBe(true);
+    expect(needsGroundPlane(mockScene())).toBe(false);
   });
 });

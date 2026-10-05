@@ -455,6 +455,24 @@ CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一�
   - `test/notices.test.ts`：兩種提示的 `standing`。
   - `test/editor-browser.test.ts`：用獨立的 mock 伺服器，真的先觸發 `overwritten_by_agent`，再觸發四次 `file_error`。
     畫面上的 4 則提示裡，那則警告還在。修正前它被檔案錯誤擠掉。
+- **FE29 完成**（四個小問題）：
+  - 放下後等回覆時按 Delete：和拖曳一樣提示「上一個修改還在處理中，請稍後再試」。原本寫「請稍等再拖」，
+    改成兩種情況都適用。測試：`test/edit-controller.test.ts`，修正前失敗。
+  - `/render`：
+    - 沒有地形切塊的場景一律畫地面格線（`needsGroundPlane`）。所以 `map.yaml` 讀不到的一般地圖，也不會畫在一片天空上。
+    - 取景和圖例照舊看 `map.kind`。
+    - 測試：`test/render-views.test.ts`，修正前失敗。
+  - `mapedit dev` 測試不再取代 `packages/web/dist`。CLI 只會在 `packages/web/dist` 找網頁建置，所以測試在暫存資料夾
+    排出同樣的套件結構：
+    - 複製編譯好的 server 和 CLI；
+    - 用 junction 接上它們原本的依賴；
+    - 把這次的建置放在暫存的 `packages/web/dist`。
+
+    這樣本機和 CI 都會實際執行，不再略過。確認過的事：
+    - 真正的 `packages/web/dist` 修改時間沒變，把它暫時移走時測試照樣通過。
+    - 刪掉暫存資料夾只會移除 junction 本身，不會動到它指向的資料夾。
+  - FE1 的測試缺口：新增「18 種模型還在載入時，Agent 又把它們全部換掉」。每個模型到達最多重畫一次，最後畫的都是新模型。
+    這是測試缺口，不是程式錯誤，所以在修正前就會通過。測試：`test/map-view-loading.test.ts`。
 
 ## 自行決定的事
 

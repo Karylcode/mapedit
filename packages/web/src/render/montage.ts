@@ -66,6 +66,14 @@ export interface LegendLine {
 export const isModulePreview = (scene: SceneSnapshot): boolean =>
   scene.map.kind === 'module_preview';
 
+/**
+ * Whether the scene needs a ground plane with a grid: a module preview, or a
+ * map without terrain, such as one whose map.yaml could not be read. Without
+ * one, its modules would float in the sky.
+ */
+export const needsGroundPlane = (scene: SceneSnapshot): boolean =>
+  isModulePreview(scene) || !scene.terrain.chunks.length;
+
 /** What the legend says: a map's facts, or a module preview's grid spacing. */
 export function legendLines(scene: SceneSnapshot, gridStep: number): LegendLine[] {
   const name = scene.map.name || scene.map.id;

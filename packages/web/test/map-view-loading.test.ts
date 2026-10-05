@@ -115,6 +115,35 @@ describe('MapView while module models load', () => {
     expect(meshes[0]!.instanceMatrix.count).toBe(capacity);
   });
 
+  it('redraws once per arrival when the Agent replaces every model while they load (FE29)', async () => {
+    // Eighteen module types, all replaced by new models before the first ones arrive.
+    const first = Array.from({ length: 18 }, (_, i) => `/assets/fe29/v1/type${i}.glb`);
+    const second = first.map((url) => url.replace('/v1/', '/v2/'));
+    const network = controlledFetcher();
+    const view = new MapView(new AssetCache(network.fetcher));
+    let redraws = 0;
+    for (const method of ['refresh', 'updateModules'] as const) {
+      const target = view as unknown as Record<typeof method, () => void>;
+      const original = target[method].bind(view);
+      vi.spyOn(target, method).mockImplementation(() => {
+        if (++redraws <= 500) original();
+      });
+    }
+    view.apply(snapshot(first));
+    view.apply(snapshot(second, 1, 1));
+    redraws = 0;
+    for (let i = 0; i < first.length; i++) {
+      await network.release(first[i]!);
+      await network.release(second[i]!);
+    }
+    await view.settled();
+    expect(redraws).toBeLessThanOrEqual(first.length + second.length);
+    const drawn = batches(view).map(
+      (mesh) => (mesh.userData.batch as { asset?: { url: string } }).asset?.url,
+    );
+    expect(drawn.sort()).toEqual([...second].sort());
+  });
+
   it('retries a model that failed to load when the next snapshot arrives (FE20)', async () => {
     const network = controlledFetcher();
     const view = new MapView(new AssetCache(network.fetcher));

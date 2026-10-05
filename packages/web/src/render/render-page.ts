@@ -24,6 +24,7 @@ import {
   drawViewLabel,
   isModulePreview,
   legendLines,
+  needsGroundPlane,
 } from './montage.js';
 
 const VIEWS: readonly ViewName[] = ['top', 'ne', 'nw', 'se', 'sw'];
@@ -200,8 +201,8 @@ class RenderPage {
   }
 
   /**
-   * Module previews have no terrain: they get a ground plane with a grid, so
-   * sizes and shadows can be read.
+   * Scenes without terrain, module previews and maps whose terrain did not
+   * load, get a ground plane with a grid, so sizes and shadows can be read.
    */
   private placeGroundPlane(snapshot: SceneSnapshot, region: Region): void {
     for (const child of [...this.groundPlane.children]) {
@@ -210,7 +211,7 @@ class RenderPage {
       mesh.geometry?.dispose();
       (mesh.material as Material | undefined)?.dispose();
     }
-    if (!isModulePreview(snapshot)) return;
+    if (!needsGroundPlane(snapshot)) return;
     const size = Math.max(4, Math.ceil(region.radius * 4));
     const step = (this.gridStep = size <= 100 ? 0.5 : size <= 400 ? 1 : 5);
     const span = Math.ceil(size / step) * step;
