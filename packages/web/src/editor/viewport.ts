@@ -26,7 +26,6 @@ export class Viewport {
   readonly overview = new OverviewCamera();
   readonly size = new Vector2(1, 1);
   private readonly tasks = new Set<FrameTask>();
-  private readonly resizeListeners = new Set<(width: number, height: number) => void>();
   private frame?: number;
   private last = 0;
 
@@ -74,10 +73,6 @@ export class Viewport {
     return () => this.tasks.delete(task);
   }
 
-  onResize(listener: (width: number, height: number) => void): void {
-    this.resizeListeners.add(listener);
-  }
-
   invalidate(): void {
     if (this.frame !== undefined) return;
     this.frame = requestAnimationFrame((time) => this.render(time));
@@ -92,7 +87,6 @@ export class Viewport {
     this.camera.aspect = width / height;
     const ratio = this.renderer.getPixelRatio();
     this.map.setResolution(width * ratio, height * ratio);
-    for (const listener of this.resizeListeners) listener(width, height);
     this.invalidate();
   }
 

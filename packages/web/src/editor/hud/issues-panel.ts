@@ -1,28 +1,12 @@
 import { h, setText } from '../dom.js';
 import { changed, type Store } from '../store.js';
 import type { EditorState } from '../state.js';
-import { translate, type Translator } from '../../i18n/i18n.js';
+import { rememberFlag, rememberedFlag } from '../preferences.js';
+import { translator } from '../../i18n/i18n.js';
 import type { SnapshotIndex } from '../../scene/snapshot-index.js';
 import { violationText } from '../violations.js';
 
 const OPEN_KEY = 'mapedit.issuesOpen';
-
-function remembered(): boolean | undefined {
-  try {
-    const value = globalThis.localStorage?.getItem(OPEN_KEY);
-    return value === null || value === undefined ? undefined : value === 'true';
-  } catch {
-    return undefined;
-  }
-}
-
-function remember(open: boolean): void {
-  try {
-    globalThis.localStorage?.setItem(OPEN_KEY, String(open));
-  } catch {
-    // Only a convenience; the panel still toggles.
-  }
-}
 
 /**
  * Violations and file errors, numbered like the flags on the map. Clicking a
@@ -41,10 +25,10 @@ export class IssuesPanel {
     private readonly index: () => SnapshotIndex | undefined,
     private readonly actions: { focusViolation(id: string): void },
   ) {
-    this.open = remembered() ?? true;
+    this.open = rememberedFlag(OPEN_KEY) ?? true;
     this.toggle.addEventListener('click', () => {
       this.open = !this.open;
-      remember(this.open);
+      rememberFlag(OPEN_KEY, this.open);
       this.render(this.store.state);
     });
     this.element.append(
@@ -58,7 +42,7 @@ export class IssuesPanel {
   }
 
   private render(state: EditorState): void {
-    const t: Translator = (key, params) => translate(state.lang, key, params);
+    const t = translator(state.lang);
     const scene = state.scene;
     this.element.hidden = !scene;
     if (!scene) return;

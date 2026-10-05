@@ -1,12 +1,11 @@
 import { h, setText } from '../dom.js';
 import type { Store } from '../store.js';
 import type { EditorState } from '../state.js';
-import { translate } from '../../i18n/i18n.js';
+import { translator } from '../../i18n/i18n.js';
 
 /** What the page is waiting for, if anything: the server, a map, or its models. */
 export function statusMessage(state: EditorState): string | undefined {
-  const t = (key: Parameters<typeof translate>[1], params?: Record<string, string | number>) =>
-    translate(state.lang, key, params);
+  const t = translator(state.lang);
   if (state.status === 'incompatible') return t('status.incompatible');
   if (!state.project) return t('loading.server');
   if (state.project.maps.length === 0) return t('loading.noMaps');
@@ -48,7 +47,7 @@ export class StatusCard {
     if (showMeter) {
       this.fill.style.width = `${(100 * loaded) / total}%`;
       this.meter.setAttribute('aria-valuenow', String(Math.round((100 * loaded) / total)));
-      setText(this.count, translate(state.lang, 'loading.models', { loaded, total }));
+      setText(this.count, translator(state.lang)('loading.models', { loaded, total }));
     }
   }
 }

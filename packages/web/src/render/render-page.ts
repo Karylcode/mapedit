@@ -62,14 +62,14 @@ class RenderPage {
   private readonly scene = new Scene();
   private readonly map = new MapView(new AssetCache());
   private snapshot?: SceneSnapshot;
-  private readonly floor = new Scene();
+  private readonly groundPlane = new Scene();
   private queue: Promise<unknown> = Promise.resolve();
-  /** Spacing of the floor grid drawn under maps without terrain, in meters. */
+  /** Spacing of the grid drawn on the ground plane under a module preview, in meters. */
   private gridStep = 0.5;
 
   constructor(private readonly mapId: string | null) {
     this.scene.background = new Color(palette.sky);
-    this.scene.add(this.map.root, this.floor);
+    this.scene.add(this.map.root, this.groundPlane);
   }
 
   /** Never throws; a failure is reported by the next `mapeditRender` call instead. */
@@ -130,7 +130,7 @@ class RenderPage {
     this.map.setShowViolations(spec.showViolations ?? true);
     this.map.setOutlines('selection', spec.highlight ?? []);
     const region = regionOf(spec, this.content(snapshot));
-    this.placeFloor(snapshot, region);
+    this.placeGroundPlane(snapshot, region);
     const tile = spec.tileSize;
     renderer.setSize(tile, tile, false);
     this.map.setResolution(tile, tile);
@@ -203,9 +203,9 @@ class RenderPage {
    * Module previews have no terrain: they get a ground plane with a grid, so
    * sizes and shadows can be read.
    */
-  private placeFloor(snapshot: SceneSnapshot, region: Region): void {
-    for (const child of [...this.floor.children]) {
-      this.floor.remove(child);
+  private placeGroundPlane(snapshot: SceneSnapshot, region: Region): void {
+    for (const child of [...this.groundPlane.children]) {
+      this.groundPlane.remove(child);
       const mesh = child as Mesh;
       mesh.geometry?.dispose();
       (mesh.material as Material | undefined)?.dispose();
@@ -224,7 +224,7 @@ class RenderPage {
     plane.receiveShadow = true;
     const grid = new GridHelper(span, Math.round(span / step), 0x8a958e, 0xaab3ad);
     grid.position.set(x, 0, z);
-    this.floor.add(plane, grid);
+    this.groundPlane.add(plane, grid);
   }
 }
 

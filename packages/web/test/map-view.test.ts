@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { InstancedMesh, Mesh, Raycaster, Vector3 } from 'three';
 import { createServer, mockScene, type MapeditServer } from '@mapedit/server';
 import type { SceneSnapshot } from '@mapedit/protocol';
@@ -59,8 +59,8 @@ describe('MapView with the mock snapshot', () => {
     );
     // Nine block structures, one foundation, one unknown type drawn as a placeholder.
     expect(byType).toEqual({ block: 9, foundation: 1, missing_block: 1 });
-    expect(view.flags.children).toHaveLength(scene.violations.length);
-    expect(view.violationGlass.count).toBe(9);
+    expect(view.violationMarks.flags.children).toHaveLength(scene.violations.length);
+    expect(view.violationMarks.glass.count).toBe(9);
     // Every module of the eight violating structures, plus the zone marker is clean.
     expect(view.screenSprites()).toHaveLength(scene.violations.length + scene.markers.length);
   });
@@ -129,6 +129,26 @@ describe('MapView with the mock snapshot', () => {
     other.violations = [];
     view.apply(other);
     expect(meshes(view).instanced.filter((m) => m.name)).toEqual([]);
-    expect(view.flags.children).toHaveLength(0);
+    expect(view.violationMarks.flags.children).toHaveLength(0);
+  });
+
+  it('singles out a violation without redrawing modules or markers (FE23)', async () => {
+    const view = new MapView(new AssetCache(fetcher));
+    const scene = mockScene();
+    view.apply(scene);
+    await view.settled();
+    const parts = view as unknown as {
+      modules: { update(): void };
+      markers: { update(): void };
+    };
+    const modules = vi.spyOn(parts.modules, 'update');
+    const markers = vi.spyOn(parts.markers, 'update');
+    const overlap = scene.violations.find((v) => v.kind === 'overlap')!;
+    view.focusViolation(overlap.id);
+    expect(view.outlines.focus.refs).toEqual(overlap.refs);
+    view.focusViolation(undefined);
+    expect(view.outlines.focus.refs).toEqual([]);
+    expect(modules).not.toHaveBeenCalled();
+    expect(markers).not.toHaveBeenCalled();
   });
 });

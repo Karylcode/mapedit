@@ -76,7 +76,10 @@ describe.skipIf(!executable)('violations, notices and language in a real browser
   it('flies to a violation, enlarges its flag and outlines its objects when clicked', async () => {
     const before = await editorState(page, (e) => e.viewport.overview.target.toArray());
     await page.locator('.issue').nth(1).click();
-    await poll(() => editorState(page, (e) => e.controls.moving), { timeout: 3000 }).toBe(false);
+    // The flight ends over the unsupported structure.
+    await poll(() => editorState(page, (e) => e.viewport.overview.target.x), {
+      timeout: 3000,
+    }).toBeCloseTo(51, 0);
     const state = await editorState(page, (e) => ({
       target: e.viewport.overview.target.toArray(),
       focus: e.map.outlines.focus.refs,

@@ -1,7 +1,14 @@
+import type { ObjectRef } from '@mapedit/protocol';
 import { h } from '../dom.js';
 import type { Translator } from '../../i18n/i18n.js';
 
 export type ToastLevel = 'info' | 'warning' | 'error';
+
+/**
+ * The key of the toast about a human edit to `ref`: the editor's own result and the
+ * server's edit_rejected notice share it, so one rejection shows once.
+ */
+export const editToastKey = (ref: ObjectRef): string => `edit:${ref}`;
 
 /** Text in the interface language, recomputed when the language changes. */
 export type Localized = string | ((t: Translator) => string);

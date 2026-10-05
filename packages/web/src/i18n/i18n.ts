@@ -64,3 +64,13 @@ export function hasMessage(key: string): key is MessageKey {
 
 export type Translator = (key: MessageKey, params?: Params) => string;
 export type { MessageKey, Params };
+
+/** Translation into one language: the `t` a view renders with. */
+export function translator(lang: Lang): Translator {
+  return (key, params) => translate(lang, key, params);
+}
+
+/** Translation into whatever language `lang()` gives at each call, for code that outlives a render. */
+export function liveTranslator(lang: () => Lang): Translator {
+  return (key, params) => translate(lang(), key, params);
+}

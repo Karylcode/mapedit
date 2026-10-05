@@ -1,7 +1,7 @@
 import { h, setText } from '../dom.js';
 import { changed, type Store } from '../store.js';
 import type { EditorState } from '../state.js';
-import { translate, LANGS, type Lang } from '../../i18n/i18n.js';
+import { translator, LANGS, type Lang, type MessageKey } from '../../i18n/i18n.js';
 
 /**
  * Drawing-style title block: project, map, revision and live link, plus the
@@ -51,11 +51,9 @@ export class TitleBlock {
   }
 
   private render(state: EditorState, previous?: EditorState): void {
-    const t = (key: Parameters<typeof translate>[1], params?: Record<string, string | number>) =>
-      translate(state.lang, key, params);
+    const t = translator(state.lang);
     if (!previous || changed(state, previous, 'lang')) {
-      for (const [key, label] of Object.entries(this.labels))
-        setText(label, t(key as Parameters<typeof translate>[1]));
+      for (const [key, label] of Object.entries(this.labels)) setText(label, t(key as MessageKey));
       this.mapSelect.setAttribute('aria-label', t('title.switchMap'));
       this.element.querySelector('.tb-lang')?.setAttribute('aria-label', t('lang.label'));
       for (const [lang, button] of this.langButtons) {

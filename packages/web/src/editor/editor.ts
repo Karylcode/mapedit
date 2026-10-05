@@ -2,7 +2,7 @@ import './styles.css';
 import { Box3, Vector3 } from 'three';
 import type { ObjectRef, SceneSnapshot } from '@mapedit/protocol';
 import { Connection, socketUrl } from '../net/connection.js';
-import { initialLang, saveLang, translate, type Lang, type Translator } from '../i18n/i18n.js';
+import { initialLang, liveTranslator, saveLang, translator, type Lang } from '../i18n/i18n.js';
 import { AssetCache } from '../scene/assets.js';
 import { MapView } from '../scene/map-view.js';
 import { OverviewControls } from '../scene/overview-controls.js';
@@ -34,7 +34,7 @@ const FLASH_MS = 1600;
 
 export function start(root: HTMLElement = document.body): void {
   const store = new Store<EditorState>(initialState(initialLang()));
-  const t: Translator = (key, params) => translate(store.state.lang, key, params);
+  const t = liveTranslator(() => store.state.lang);
   const connection = new Connection({ url: socketUrl(location), client: 'editor' });
   const map = new MapView(new AssetCache());
   const index = () => map.index;
@@ -202,8 +202,7 @@ export function start(root: HTMLElement = document.body): void {
       map.setOutlines('hover', outlined);
     }
     if (changed(state, previous, 'focusedViolation')) map.focusViolation(state.focusedViolation);
-    if (changed(state, previous, 'lang'))
-      toasts.setTranslator((key, params) => translate(state.lang, key, params));
+    if (changed(state, previous, 'lang')) toasts.setTranslator(translator(state.lang));
   });
 
   const updateProgress = (): void => {

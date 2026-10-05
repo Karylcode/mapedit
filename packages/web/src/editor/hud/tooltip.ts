@@ -2,7 +2,7 @@ import { parseObjectRef } from '@mapedit/protocol';
 import { h, setText } from '../dom.js';
 import { changed, type Store } from '../store.js';
 import type { EditorState } from '../state.js';
-import { translate, type Translator } from '../../i18n/i18n.js';
+import { translator } from '../../i18n/i18n.js';
 import type { SnapshotIndex } from '../../scene/snapshot-index.js';
 import { describeObject, violationCount } from '../describe.js';
 
@@ -28,7 +28,7 @@ export class Tooltip {
   private render(state: EditorState): void {
     const index = this.index();
     const hover = state.hover;
-    const t: Translator = (key, params) => translate(state.lang, key, params);
+    const t = translator(state.lang);
     const description = hover && index ? describeObject(hover.ref, index, t) : undefined;
     this.element.hidden = !description;
     if (!hover || !index || !description) return;

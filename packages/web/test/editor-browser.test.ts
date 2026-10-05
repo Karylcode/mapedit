@@ -53,9 +53,9 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
         terrain: e.map.root.getObjectByName('terrain').children.length,
         generated: e.map.root.getObjectByName('generated').children.length,
         markers: e.map.root.getObjectByName('markers').children.length,
-        flags: e.map.flags.children.length,
+        flags: e.map.violationMarks.flags.children.length,
         progress: e.store.state.progress,
-        violationBoxes: e.map.violationGlass.count,
+        violationBoxes: e.map.violationMarks.glass.count,
       };
     });
     expect(drawn.types).toEqual({ block: 9, foundation: 1, missing_block: 1 });
@@ -109,7 +109,10 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     const target = await screenPoint(page, 'module:raised_foundation/base');
     await page.mouse.click(target.x, target.y);
     await page.keyboard.press('f');
-    await poll(() => editorState(page, (e) => e.controls.moving), { timeout: 3000 }).toBe(false);
+    // The flight ends over the foundation.
+    await poll(() => editorState(page, (e) => e.viewport.overview.target.x), {
+      timeout: 3000,
+    }).toBeCloseTo(21, 0);
     const after = await editorState(page, (e) => ({
       target: e.viewport.overview.target.toArray(),
       distance: e.viewport.overview.distance,

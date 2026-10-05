@@ -80,7 +80,7 @@ export class OverviewControls {
     this.stop();
     this.sync();
     this.raycaster.setFromCamera(pointer, this.camera);
-    const anchor =
+    const pivot =
       this.ground.groundPoint(this.raycaster) ??
       this.planePoint(pointer, new Plane(new Vector3(0, 1, 0), -this.overview.target.y));
     const before = this.overview.distance;
@@ -90,12 +90,12 @@ export class OverviewControls {
       this.overview.maxDistance,
     );
     const factor = this.overview.distance / before;
-    if (anchor) this.overview.target.sub(anchor).multiplyScalar(factor).add(anchor);
+    if (pivot) this.overview.target.sub(pivot).multiplyScalar(factor).add(pivot);
     this.overview.clamp();
     this.followTerrain();
   }
 
-  /** Keep the orbit pivot on the ground so turning feels anchored to the map. */
+  /** Keep the orbit pivot on the ground so turning stays fixed to the map. */
   followTerrain(): void {
     const target = this.overview.target;
     const height = this.ground.heightAt(target.x, target.z);
@@ -126,10 +126,6 @@ export class OverviewControls {
     this.overview.distance = MathUtils.lerp(tween.from.distance, tween.to.distance, eased);
     this.overview.clamp();
     if (t >= 1) this.tween = undefined;
-    return this.tween !== undefined;
-  }
-
-  get moving(): boolean {
     return this.tween !== undefined;
   }
 

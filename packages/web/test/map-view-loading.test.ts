@@ -72,16 +72,20 @@ const batches = (view: MapView) =>
   view.root.getObjectByName('modules')!.children as InstancedMesh[];
 
 describe('MapView while module models load', () => {
-  it('refreshes at most once per module type as their models arrive one by one (FE1)', async () => {
+  it('redraws at most once per module type as their models arrive one by one (FE1)', async () => {
     const types = Array.from({ length: 20 }, (_, i) => `/assets/fe1/type${i}.glb`);
     const network = controlledFetcher();
     const view = new MapView(new AssetCache(network.fetcher));
     let refreshes = 0;
-    const original = (view as unknown as { refresh(): void }).refresh.bind(view);
-    // Stop runaway cascades early so a regression fails fast instead of hanging.
-    vi.spyOn(view as unknown as { refresh(): void }, 'refresh').mockImplementation(() => {
-      if (++refreshes <= 500) original();
-    });
+    // A full refresh or the modules alone (FE23): either counts as one redraw.
+    for (const method of ['refresh', 'updateModules'] as const) {
+      const target = view as unknown as Record<typeof method, () => void>;
+      const original = target[method].bind(view);
+      // Stop runaway cascades early so a regression fails fast instead of hanging.
+      vi.spyOn(target, method).mockImplementation(() => {
+        if (++refreshes <= 500) original();
+      });
+    }
     view.apply(snapshot(types));
     refreshes = 0;
     for (const url of types) await network.release(url);

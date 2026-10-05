@@ -8,13 +8,13 @@ import type {
   ViolationView,
 } from '@mapedit/protocol';
 import type { Connection, Request } from '../net/connection.js';
-import { translate, type MessageKey, type Params, type Translator } from '../i18n/i18n.js';
+import { liveTranslator, type MessageKey, type Translator } from '../i18n/i18n.js';
 import type { MapView } from '../scene/map-view.js';
 import { Ghost } from '../scene/ghost.js';
 import type { Store } from './store.js';
 import type { EditorState } from './state.js';
 import type { Viewport } from './viewport.js';
-import type { Toasts } from './hud/toasts.js';
+import { editToastKey, type Toasts } from './hud/toasts.js';
 import type { CursorNote } from './hud/cursor-note.js';
 import { PreviewThrottle } from './preview-throttle.js';
 import { movableOf } from './selection.js';
@@ -389,7 +389,7 @@ export class EditController {
             : 'edit.moveRejected';
       this.toasts.show({
         level: 'warning',
-        key: `edit:${pending.ref}`,
+        key: editToastKey(pending.ref),
         text: (t) => t(key, { name }),
         detail,
       });
@@ -436,8 +436,7 @@ export class EditController {
     return `${violationTitle(violation, this.t)} — ${violationMessage(violation, this.t)}`;
   }
 
-  private t = (key: MessageKey, params?: Params): string =>
-    translate(this.store.state.lang, key, params);
+  private t = liveTranslator(() => this.store.state.lang);
 
   private say(level: 'info' | 'warning', key: MessageKey): void {
     this.toasts.show({ level, key, text: (t) => t(key) });

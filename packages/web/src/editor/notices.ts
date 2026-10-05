@@ -8,7 +8,7 @@ import {
 import type { Translator } from '../i18n/i18n.js';
 import type { SnapshotIndex } from '../scene/snapshot-index.js';
 import { objectNames } from './describe.js';
-import type { ToastInput } from './hud/toasts.js';
+import { editToastKey, type ToastInput } from './hud/toasts.js';
 
 export type Notice = Extract<ServerMessage, { type: 'notice' }>;
 
@@ -70,10 +70,9 @@ export function noticeToast(
         text: (t) => t('notice.agent_change_overridden', { objects: objects(t) }),
       };
     case 'edit_rejected':
-      // Shares its key with the editor's own result toast, so one rejection shows once.
       return {
         level: 'warning',
-        key: `edit:${refs[0] ?? ''}`,
+        key: editToastKey(refs[0] ?? ''),
         text: (t) => t('notice.edit_rejected', { objects: objects(t) }),
         detail: notice.message,
       };

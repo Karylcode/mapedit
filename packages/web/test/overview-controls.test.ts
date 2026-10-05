@@ -95,7 +95,7 @@ describe('OverviewControls', () => {
     expect(overview.target.toArray()).toEqual([10, 0, 20]);
     expect(overview.distance).toBe(12);
     controls.flyTo(new Vector3(30, 0, 30), 20, 0);
-    expect(controls.moving).toBe(false);
+    expect(controls.update(0)).toBe(false);
     expect(overview.target.toArray()).toEqual([30, 0, 30]);
   });
 });

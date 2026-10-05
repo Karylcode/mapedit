@@ -1,28 +1,12 @@
 import { h, setText } from '../dom.js';
 import { changed, type Store } from '../store.js';
 import type { EditorState } from '../state.js';
-import { translate, type Translator } from '../../i18n/i18n.js';
+import { rememberFlag, rememberedFlag } from '../preferences.js';
+import { translator } from '../../i18n/i18n.js';
 import type { SnapshotIndex } from '../../scene/snapshot-index.js';
 import { authorName, describeEntry, entryTime } from '../history-text.js';
 
 const OPEN_KEY = 'mapedit.historyOpen';
-
-function remembered(): boolean | undefined {
-  try {
-    const value = globalThis.localStorage?.getItem(OPEN_KEY);
-    return value === null || value === undefined ? undefined : value === 'true';
-  } catch {
-    return undefined;
-  }
-}
-
-function remember(open: boolean): void {
-  try {
-    globalThis.localStorage?.setItem(OPEN_KEY, String(open));
-  } catch {
-    // Only a convenience; the panel still toggles.
-  }
-}
 
 /**
  * The project's change log: who changed what and when, newest first, with a
@@ -42,12 +26,12 @@ export class HistoryPanel {
     private readonly index: () => SnapshotIndex | undefined,
     actions: { undo(): void; redo(): void },
   ) {
-    this.open = remembered() ?? globalThis.innerWidth > 720;
+    this.open = rememberedFlag(OPEN_KEY) ?? globalThis.innerWidth > 720;
     this.undo.addEventListener('click', () => actions.undo());
     this.redo.addEventListener('click', () => actions.redo());
     this.toggle.addEventListener('click', () => {
       this.open = !this.open;
-      remember(this.open);
+      rememberFlag(OPEN_KEY, this.open);
       this.render(this.store.state);
     });
     this.element.append(
@@ -61,7 +45,7 @@ export class HistoryPanel {
   }
 
   private render(state: EditorState): void {
-    const t: Translator = (key, params) => translate(state.lang, key, params);
+    const t = translator(state.lang);
     const { entries, cursor } = state.history;
     this.element.dataset.open = String(this.open);
     setText(this.title, t('history.title'));

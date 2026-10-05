@@ -1,34 +1,33 @@
 import {
-  BoxGeometry,
   Box3,
-  Color,
   DirectionalLight,
   Group,
   HemisphereLight,
-  InstancedMesh,
   Matrix4,
   Mesh,
-  MeshStandardMaterial,
   Plane,
   Raycaster,
   Vector3,
   type Material,
   type Object3D,
 } from 'three';
-import type {
-  GeneratedMeshView,
-  InstanceView,
-  ObjectRef,
-  SceneSnapshot,
-  TerrainView,
+import {
+  markerPosition,
+  type GeneratedMeshView,
+  type InstanceView,
+  type ObjectRef,
+  type SceneSnapshot,
+  type TerrainView,
+  type ViolationView,
 } from '@mapedit/protocol';
 import type { Asset, AssetCache } from './assets.js';
 import { SnapshotIndex, violatingRefs } from './snapshot-index.js';
-import { buildMarker, type MarkerObject } from './markers.js';
-import { ViolationFlags } from './flags.js';
+import { ModuleBatches, type ModelState } from './module-batches.js';
+import { MarkerLayer } from './marker-layer.js';
+import { ViolationMarks } from './violation-marks.js';
 import { palette } from './palette.js';
 import { sunDirection } from './sun.js';
-import { BoxOutlines, GlassBoxes, type OrientedBox } from './outline.js';
+import { BoxOutlines, type OrientedBox } from './outline.js';
 
 export type OutlineLayer = 'selection' | 'hover' | 'focus' | 'flash';
 
@@ -38,31 +37,20 @@ export interface PickHit {
   distance: number;
 }
 
-interface ModuleBatch {
-  /** The asset the meshes were built from; undefined for placeholder boxes. */
-  asset?: Asset;
-  meshes: InstancedMesh[];
-  capacity: number;
-  refs: ObjectRef[];
-}
-
-const WHITE = new Color(1, 1, 1);
-const VIOLATION_TINT = new Color(1, 0.5, 0.45);
 const scratch = new Matrix4();
 
 /**
- * Everything drawn for one map snapshot. A new snapshot only reloads what
- * changed: terrain chunks and generated meshes by URL, module types by URL;
- * instance matrices, markers and violation marks are cheap and recomputed.
+ * Everything drawn for one map snapshot: terrain and generated meshes here,
+ * modules, markers and violation marks in their own classes. A new snapshot
+ * only reloads what changed: terrain chunks, generated meshes and module models
+ * by URL. A model that arrives redraws the modules only, and singling out a
+ * violation changes only its flag and outline.
  */
 export class MapView {
   readonly root = new Group();
   readonly sun = new DirectionalLight(palette.sun, 2.3);
   readonly hemisphere = new HemisphereLight(palette.skyLight, palette.groundLight, 2.4);
-  readonly flags = new ViolationFlags();
-  /** Red glass and outlines around objects in violation, like an invalid placement. */
-  readonly violationGlass = new GlassBoxes(palette.flag, 0.3);
-  readonly violationLines = new BoxOutlines(palette.flag, 2, { xray: false });
+  readonly violationMarks = new ViolationMarks();
   /** Chalk-line outlines, drawn over everything so they stay visible. */
   readonly outlines: Record<OutlineLayer, { lines: BoxOutlines; refs: readonly ObjectRef[] }> = {
     selection: { lines: new BoxOutlines(palette.chalkline, 3), refs: [] },
@@ -75,15 +63,12 @@ export class MapView {
   showViolations = true;
 
   private readonly terrainGroup = new Group();
-  private readonly moduleGroup = new Group();
   private readonly generatedGroup = new Group();
-  private readonly markerGroup = new Group();
+  private readonly modules = new ModuleBatches();
+  private readonly markers = new MarkerLayer();
   private readonly terrain = new Map<string, { url: string; meshes: Mesh[] }>();
   private readonly terrainMaterials = new Map<string, Material>();
-  private readonly batches = new Map<string, ModuleBatch>();
   private readonly generated = new Map<string, Mesh[]>();
-  private readonly markers = new Map<ObjectRef, MarkerObject>();
-  private markerSignature = '';
   private readonly failed = new Set<string>();
   /** Module type URLs with a load in flight; each gets one callback. */
   private readonly loadingTypes = new Set<string>();
@@ -96,9 +81,7 @@ export class MapView {
   constructor(private readonly assets: AssetCache) {
     this.root.name = 'map';
     this.terrainGroup.name = 'terrain';
-    this.moduleGroup.name = 'modules';
     this.generatedGroup.name = 'generated';
-    this.markerGroup.name = 'markers';
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0004;
@@ -108,12 +91,10 @@ export class MapView {
       this.sun,
       this.sun.target,
       this.terrainGroup,
-      this.moduleGroup,
+      this.modules.group,
       this.generatedGroup,
-      this.markerGroup,
-      this.flags,
-      this.violationGlass,
-      this.violationLines,
+      this.markers.group,
+      ...this.violationMarks.objects,
       ...Object.values(this.outlines).map((layer) => layer.lines),
     );
   }
@@ -130,7 +111,7 @@ export class MapView {
 
   /** Line widths are in pixels, so outlines need the drawing buffer size. */
   setResolution(width: number, height: number): void {
-    this.violationLines.setResolution(width, height);
+    this.violationMarks.setResolution(width, height);
     for (const layer of Object.values(this.outlines)) layer.lines.setResolution(width, height);
   }
 
@@ -180,7 +161,11 @@ export class MapView {
   /** Single out one violation: its flag grows and the objects it names get a thick red outline. */
   focusViolation(id: string | undefined): void {
     this.focusedViolation = id;
-    this.refresh();
+    const index = this.index;
+    if (!index) return;
+    const focused = this.focused(index);
+    this.violationMarks.focus(this.shownViolations(index), focused?.id);
+    this.setOutlines('focus', focused?.refs ?? []);
   }
 
   setShowViolations(show: boolean): void {
@@ -208,14 +193,17 @@ export class MapView {
 
   /** The nearest structure module, generated mesh or marker under the ray. */
   pick(raycaster: Raycaster): PickHit | undefined {
-    const objects: Object3D[] = [...this.moduleGroup.children, ...this.generatedGroup.children];
-    for (const marker of this.markers.values()) objects.push(...marker.pickables);
+    const objects: Object3D[] = [
+      ...this.modules.group.children,
+      ...this.generatedGroup.children,
+      ...this.markers.pickables(),
+    ];
     let volume: PickHit | undefined;
     for (const hit of raycaster.intersectObjects(objects, false)) {
       const object = hit.object;
-      let ref: ObjectRef | undefined = object.userData.ref as ObjectRef | undefined;
-      const batch = object.userData.batch as ModuleBatch | undefined;
-      if (batch && hit.instanceId !== undefined) ref = batch.refs[hit.instanceId];
+      const ref =
+        this.modules.refAt(object, hit.instanceId) ??
+        (object.userData.ref as ObjectRef | undefined);
       if (!ref) continue;
       const result = { ref, point: hit.point, distance: hit.distance };
       // Trigger volumes often enclose other objects; those win when both are hit.
@@ -252,12 +240,11 @@ export class MapView {
   frameOf(ref: ObjectRef): Matrix4 | undefined {
     const structure = this.index?.structures.get(ref);
     if (structure) return new Matrix4().fromArray(structure.transform);
-    const marker = this.index?.markers.get(ref);
-    if (!marker) return undefined;
-    const shape = marker.shape;
+    const shape = this.index?.markers.get(ref)?.shape;
+    if (!shape) return undefined;
     return new Matrix4()
       .makeRotationY((shape.rotation * Math.PI) / 180)
-      .setPosition(...(shape.kind === 'point' ? shape.position : shape.center));
+      .setPosition(...markerPosition(shape));
   }
 
   /** Terrain height at a map position, if terrain is drawn there. */
@@ -332,14 +319,7 @@ export class MapView {
 
   /** Sprites that keep a constant on-screen size. */
   screenSprites(): Object3D[] {
-    return [...this.flags.children, ...[...this.markers.values()].map((m) => m.icon)];
-  }
-
-  dispose(): void {
-    this.clear();
-    this.flags.clear();
-    for (const material of this.terrainMaterials.values()) material.dispose();
-    this.terrainMaterials.clear();
+    return [...this.violationMarks.flags.children, ...this.markers.icons()];
   }
 
   private sizeOf(instance: InstanceView): Vector3 {
@@ -350,14 +330,10 @@ export class MapView {
   private clear(): void {
     for (const { meshes } of this.terrain.values()) this.terrainGroup.remove(...meshes);
     this.terrain.clear();
-    for (const batch of this.batches.values()) this.removeBatch(batch);
-    this.batches.clear();
+    this.modules.clear();
     for (const meshes of this.generated.values()) this.generatedGroup.remove(...meshes);
     this.generated.clear();
-    for (const marker of this.markers.values()) marker.dispose();
     this.markers.clear();
-    this.markerGroup.clear();
-    this.markerSignature = '';
   }
 
   private track(promise: Promise<unknown>): void {
@@ -387,10 +363,19 @@ export class MapView {
     );
   }
 
+  /** A module type's model, asking for it when it is neither loaded nor failed. */
+  private model(url: string): ModelState {
+    if (this.failed.has(url)) return 'failed';
+    const asset = this.assets.get(url);
+    if (asset) return asset;
+    this.loadModuleType(url);
+    return 'loading';
+  }
+
   /**
-   * Load a module type's model once per URL, then redraw. A type still loading
-   * when the next snapshot arrives is not asked for again: each arrival costs
-   * one refresh, however many snapshots came in between.
+   * Load a module type's model once per URL, then redraw the modules. A type
+   * still loading when the next snapshot arrives is not asked for again: each
+   * arrival costs one redraw, however many snapshots came in between.
    */
   private loadModuleType(url: string): void {
     if (this.loadingTypes.has(url)) return;
@@ -407,7 +392,7 @@ export class MapView {
         )
         .then(() => {
           this.loadingTypes.delete(url);
-          this.refresh();
+          this.updateModules();
         }),
     );
   }
@@ -486,126 +471,47 @@ export class MapView {
       }
   }
 
-  /** Recompute instance matrices, tints, markers and flags from the current snapshot. */
+  /** Redraw everything that follows the snapshot: modules, markers, violation marks, outlines. */
   private refresh(): void {
     const index = this.index;
     if (!index) return;
-    const scene = index.scene;
-    const violating: Set<ObjectRef> = this.showViolations
-      ? violatingRefs(index, scene.violations)
-      : new Set();
-    const tint = (ref: ObjectRef): Color => (violating.has(ref) ? VIOLATION_TINT : WHITE);
-
-    const byType = new Map<string, InstanceView[]>();
-    for (const structure of scene.structures)
-      for (const instance of structure.instances) {
-        const list = byType.get(instance.moduleType) ?? [];
-        list.push(instance);
-        byType.set(instance.moduleType, list);
-      }
-    for (const [typeId, batch] of this.batches)
-      if (!byType.has(typeId)) {
-        this.removeBatch(batch);
-        this.batches.delete(typeId);
-      }
-    for (const [typeId, instances] of byType) {
-      const type = index.moduleTypes.get(typeId);
-      let asset: Asset | undefined;
-      if (type && !this.failed.has(type.url)) {
-        asset = this.assets.get(type.url);
-        if (!asset) {
-          this.loadModuleType(type.url);
-          // Keep drawing what this type showed until the model arrives: its previous
-          // model, or the box of one that failed and is being asked for again.
-          const previous = this.batches.get(typeId);
-          if (!previous) continue;
-          asset = previous.asset;
-        }
-      }
-      const batch = this.batchFor(typeId, asset, instances.length, type?.size);
-      batch.refs = instances.map((instance) => instance.ref);
-      instances.forEach((instance, i) => {
-        const transform = scratch.fromArray(instance.transform);
-        batch.meshes.forEach((mesh, part) => {
-          const local = asset?.parts[part]?.matrix;
-          mesh.setMatrixAt(i, local ? transform.clone().multiply(local) : transform);
-          mesh.setColorAt(i, tint(instance.ref));
-        });
-      });
-      for (const mesh of batch.meshes) {
-        mesh.count = instances.length;
-        mesh.instanceMatrix.needsUpdate = true;
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-        mesh.computeBoundingBox();
-        mesh.computeBoundingSphere();
-      }
-    }
-
-    const markerSignature = JSON.stringify([scene.markers, [...violating].sort()]);
-    if (markerSignature !== this.markerSignature) {
-      this.markerSignature = markerSignature;
-      for (const marker of this.markers.values()) marker.dispose();
-      this.markers.clear();
-      this.markerGroup.clear();
-      for (const view of scene.markers) {
-        const marker = buildMarker(view, violating.has(view.ref));
-        if (marker.isVolume) for (const mesh of marker.pickables) mesh.userData.volume = true;
-        this.markers.set(view.ref, marker);
-        this.markerGroup.add(marker.root);
-      }
-    }
-    const focused = scene.violations.find((v) => v.id === this.focusedViolation);
-    if (!focused) this.focusedViolation = undefined;
-    this.flags.update(this.showViolations ? scene.violations : [], this.focusedViolation);
-    const violationBoxes = [...violating].flatMap((ref) => this.boxesFor(ref));
-    this.violationGlass.setBoxes(violationBoxes);
-    this.violationLines.setBoxes(violationBoxes);
+    const violating = this.violating(index);
+    this.modules.update(index, violating, (url) => this.model(url));
+    this.markers.update(index.scene.markers, violating);
+    const focused = this.focused(index);
+    this.violationMarks.update(
+      this.shownViolations(index),
+      [...violating].flatMap((ref) => this.boxesFor(ref)),
+      focused?.id,
+    );
     this.outlines.focus.refs = focused?.refs ?? [];
     for (const layer of Object.values(this.outlines))
       layer.lines.setBoxes(layer.refs.flatMap((ref) => this.boxesFor(ref)));
     this.changed();
   }
 
-  private batchFor(
-    typeId: string,
-    asset: Asset | undefined,
-    count: number,
-    size: readonly number[] | undefined,
-  ): ModuleBatch {
-    const existing = this.batches.get(typeId);
-    if (existing && existing.asset === asset && existing.capacity >= count) return existing;
-    if (existing) this.removeBatch(existing);
-    // A new model for the same instances keeps the buffer; only more instances grow it.
-    const capacity =
-      existing && count <= existing.capacity
-        ? existing.capacity
-        : Math.max(count, existing ? existing.capacity * 2 : 0, 1);
-    const batch: ModuleBatch = { asset, meshes: [], capacity, refs: [] };
-    const parts = asset
-      ? asset.parts.map((part) => ({ geometry: part.geometry, material: part.material }))
-      : [placeholderPart(size)];
-    for (const part of parts) {
-      const mesh = new InstancedMesh(part.geometry, part.material, capacity);
-      mesh.name = typeId;
-      mesh.castShadow = mesh.receiveShadow = true;
-      mesh.userData.batch = batch;
-      mesh.userData.placeholder = !asset;
-      batch.meshes.push(mesh);
-      this.moduleGroup.add(mesh);
-    }
-    this.batches.set(typeId, batch);
-    return batch;
+  /** Redraw the modules alone, when a model has arrived. */
+  private updateModules(): void {
+    const index = this.index;
+    if (!index) return;
+    this.modules.update(index, this.violating(index), (url) => this.model(url));
+    this.changed();
   }
 
-  private removeBatch(batch: ModuleBatch): void {
-    for (const mesh of batch.meshes) {
-      this.moduleGroup.remove(mesh);
-      mesh.dispose();
-      if (mesh.userData.placeholder) {
-        mesh.geometry.dispose();
-        (mesh.material as Material).dispose();
-      }
-    }
+  private shownViolations(index: SnapshotIndex): readonly ViolationView[] {
+    return this.showViolations ? index.scene.violations : [];
+  }
+
+  /** Objects drawn in red because a shown violation names them. */
+  private violating(index: SnapshotIndex): Set<ObjectRef> {
+    return violatingRefs(index, this.shownViolations(index));
+  }
+
+  /** The violation singled out in the list, while the snapshot still has it. */
+  private focused(index: SnapshotIndex): ViolationView | undefined {
+    const focused = index.scene.violations.find((v) => v.id === this.focusedViolation);
+    if (!focused) this.focusedViolation = undefined;
+    return focused;
   }
 
   /** URLs the current snapshot needs. */
@@ -625,20 +531,7 @@ export class MapView {
     const urls = this.snapshotUrls();
     for (const { url } of this.terrain.values()) urls.add(url);
     for (const key of this.generated.keys()) urls.add(key.slice(key.indexOf('\n') + 1));
-    for (const batch of this.batches.values()) if (batch.asset) urls.add(batch.asset.url);
+    for (const url of this.modules.urls()) urls.add(url);
     return urls;
   }
-}
-
-/** A see-through red box for modules whose type is missing or failed to load. */
-function placeholderPart(size: readonly number[] | undefined) {
-  const [x, y, z] = size && size.length === 3 ? size : [1, 1, 1];
-  const geometry = new BoxGeometry(x, y, z).translate(x! / 2, y! / 2, z! / 2);
-  const material = new MeshStandardMaterial({
-    color: palette.missing,
-    transparent: true,
-    opacity: 0.55,
-    roughness: 0.9,
-  });
-  return { geometry, material };
 }

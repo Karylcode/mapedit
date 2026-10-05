@@ -48,7 +48,7 @@ describe('structures attached to another structure (FE12)', () => {
   it('marks it red and gives it bounds to fly to and outline', () => {
     const view = new MapView(new AssetCache(() => new Promise<ArrayBuffer>(() => {})));
     view.apply(mergedScene());
-    expect(view.violationGlass.count).toBe(1);
+    expect(view.violationMarks.glass.count).toBe(1);
     const bounds = view.boundsOf('structure:shed');
     expect(bounds).toBeDefined();
     expect(bounds!.min.x).toBeCloseTo(60.25);

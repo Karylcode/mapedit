@@ -359,6 +359,23 @@ is not modified here.
     - 本機則略過並提示先跑 `pnpm build`，因為打包 CLI 會複製 `packages/web/dist`，
       同時替換它可能干擾旁邊正在跑的 packed-CLI 測試；CI 是一個檔案接一個檔案跑。
   - W0 的 Vite 代理已在 FE4 補上自動測試。
+- **FE23 完成**：
+  - 重複的程式：
+    - 面板開關的記憶改用共用的 `editor/preferences.ts`（`rememberedFlag`、`rememberFlag`）。
+    - 每個介面檔各自宣告的 `t`，改用 `i18n.ts` 的 `translator(lang)`；需要跟著目前語言的，用 `liveTranslator`。
+    - `MapView.frameOf` 改用 `@mapedit/protocol` 的 `markerPosition`。
+  - 提示的 key `edit:<ref>` 改成 `hud/toasts.ts` 的 `editToastKey(ref)`，編輯結果和 `edit_rejected` 提示共用。
+  - 用語：`/render` 的 `floor`／`placeFloor` 改成 `groundPlane`／`placeGroundPlane`；縮放時的 `anchor` 改成 `pivot`。
+  - 刪掉沒用到的 `Viewport.onResize`、`OverviewCamera.focus`、`OverviewCamera.mapSize`、`OverviewControls.moving`、
+    `MapView.dispose`。原本用 `moving` 的測試，改成輪詢鏡頭飛到預期的位置。
+  - 拆開 `MapView`，只更新有變的部分：
+    - `ModuleBatches`（`scene/module-batches.ts`）：模組的 instancing、染色和替代方塊。
+    - `MarkerLayer`（`scene/marker-layer.ts`）：標記；只有標記本身或標記的違規變了才重建。原本任何違規變動都會重建。
+    - `ViolationMarks`（`scene/violation-marks.ts`）：旗子、紅色玻璃和外框。
+    - 模型載入完成時只重畫模組；在清單上點違規，只換旗子和焦點外框，不再整個 `refresh()`。
+  - 測試：
+    - `test/map-view.test.ts`：新增「點違規不會重畫模組和標記」。
+    - `test/map-view-loading.test.ts`：FE1 的測試改成同時計算完整重畫和只重畫模組的次數，避免拆開之後變成空洞的斷言。
 
 ## 自行決定的事
 

@@ -2,7 +2,7 @@ import { parseObjectRef } from '@mapedit/protocol';
 import { h } from '../dom.js';
 import { changed, type Store } from '../store.js';
 import type { EditorState } from '../state.js';
-import { translate, type MessageKey, type Translator } from '../../i18n/i18n.js';
+import { translator, type MessageKey } from '../../i18n/i18n.js';
 import type { SnapshotIndex } from '../../scene/snapshot-index.js';
 import { describeObject } from '../describe.js';
 
@@ -57,7 +57,7 @@ export class ActionBar {
   }
 
   private render(state: EditorState): void {
-    const t: Translator = (key, params) => translate(state.lang, key, params);
+    const t = translator(state.lang);
     const index = this.index();
     const description =
       state.selection && index ? describeObject(state.selection, index, t) : undefined;

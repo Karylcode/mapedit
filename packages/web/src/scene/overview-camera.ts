@@ -30,10 +30,6 @@ export class OverviewCamera {
     this.clamp();
   }
 
-  get mapSize(): MapSize {
-    return this.size;
-  }
-
   /** Target and distance that show the whole map. */
   mapFraming(fov: number, aspect = 1): { target: Vector3; distance: number } {
     return {
@@ -49,13 +45,6 @@ export class OverviewCamera {
     this.distance = framing.distance;
     this.bearing = 180;
     this.pitch = 55;
-    this.clamp();
-  }
-
-  /** Center a sphere of the given radius. */
-  focus(center: Vector3, radius: number, fov: number, aspect = 1): void {
-    this.target.copy(center);
-    this.distance = fitDistance(Math.max(radius, 1), fov, aspect);
     this.clamp();
   }
 
