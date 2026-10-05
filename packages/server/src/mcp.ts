@@ -113,6 +113,44 @@ function floorPlan(instances: InstanceView[], scene: SceneSnapshot) {
   };
 }
 
+/** The raw argument at a schema issue's path. */
+function argumentAt(value: unknown, path: readonly PropertyKey[]): unknown {
+  let current = value;
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || !Object.hasOwn(current, key)) return undefined;
+    current = (current as Record<PropertyKey, unknown>)[key];
+  }
+  return current;
+}
+/** One English sentence per invalid argument, instead of the schema library's JSON report. */
+function argumentErrors(error: z.ZodError, values: unknown): string {
+  return error.issues
+    .map((issue) => {
+      const name = issue.path.map(String).join('.');
+      if (issue.code === 'unrecognized_keys') {
+        const keys = issue.keys.map((key) => JSON.stringify(key)).join(', ');
+        return issue.keys.length === 1
+          ? `Unknown argument ${keys}; remove it.`
+          : `Unknown arguments ${keys}; remove them.`;
+      }
+      if (issue.code === 'invalid_type')
+        return argumentAt(values, issue.path) === undefined
+          ? `Missing required argument ${name} (${issue.expected}).`
+          : `Argument ${name} must be ${/^[aeiou]/.test(issue.expected) ? 'an' : 'a'} ${issue.expected}.`;
+      // A union reports the allowed values of the field that selects its member.
+      const allowed =
+        issue.code === 'invalid_value'
+          ? issue.values
+          : issue.code === 'invalid_union'
+            ? (issue as { options?: unknown[] }).options
+            : undefined;
+      if (allowed?.length)
+        return `Argument ${name} must be one of ${allowed.map((value) => JSON.stringify(value)).join(', ')}.`;
+      return `Argument ${name}: ${issue.message}.`;
+    })
+    .join(' ');
+}
+
 function checkInputSize(value: unknown): void {
   const pending = [value];
   let visited = 0;
@@ -140,9 +178,13 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
     },
   );
   const pager = resultPager(services);
+  /** `revision` is the project revision the result was computed from, when known. */
   const tools = new Map<
     string,
-    { definition: Tool; run(args: unknown): Promise<CallToolResult> }
+    {
+      definition: Tool;
+      run(args: unknown): Promise<{ result: CallToolResult; revision?: number }>;
+    }
   >();
   function registerTool<S extends z.ZodRawShape>(
     name: string,
@@ -178,16 +220,25 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
               `Send only {"cursor":"..."} to continue a paged result. Remove ${others.map((key) => JSON.stringify(key)).join(', ')}, or run the tool again without cursor.`,
             );
           // Answer only after the latest file changes, like every other tool call.
-          return pager.nextPage(
-            name,
-            cursorSchema.parse((values as { cursor: unknown }).cursor),
-            async () => {
-              await services.flush();
-              return services.projectRevision();
-            },
-          );
+          return {
+            result: await pager.nextPage(
+              name,
+              cursorSchema.parse((values as { cursor: unknown }).cursor),
+              async () => {
+                await services.flush();
+                return services.projectRevision();
+              },
+            ),
+          };
         }
-        return handler(input.parse(values));
+        const parsed = input.safeParse(values);
+        if (!parsed.success) throw new Error(argumentErrors(parsed.error, values));
+        // Every tool answers after the latest file changes. The revision is read right after
+        // they are processed, so a change processed while the tool runs voids the result's
+        // continuation cursor instead of labelling an older result with a newer revision.
+        await services.flush();
+        const revision = services.projectRevision();
+        return { result: await handler(parsed.data), revision };
       },
     });
   }
@@ -200,10 +251,10 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       checkInputSize(request.params.arguments);
       const tool = tools.get(name);
       if (!tool) throw new Error('Unknown tool. Use tools/list to see the fixed tool names.');
-      const result = await tool.run(request.params.arguments);
-      return pager.firstPage(name, result, services.projectRevision());
+      const { result, revision } = await tool.run(request.params.arguments);
+      return pager.paginate(name, result, revision ?? services.projectRevision());
     } catch (error) {
-      return pager.firstPage(
+      return pager.paginate(
         name,
         {
           isError: true,
@@ -222,7 +273,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       inputSchema: { ...mapSchema, ...pageSchema },
     },
     async ({ map, offset, limit }) => {
-      await services.flush();
       const scenes = await services.getScenes(map);
       return textResult({
         maps: scenes.map((scene) => ({
@@ -254,7 +304,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       inputSchema: { ...mapSchema, ...pageSchema },
     },
     async ({ map, offset, limit }) => {
-      await services.flush();
       const scenes = await services.getScenes(map);
       return textResult({
         maps: scenes.map((scene) => ({
@@ -290,7 +339,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
     },
     async ({ map, structure, views, tileSize, focus, highlight, showViolations }) => {
       const target = structure === undefined ? undefined : normalizeStructureRef(structure);
-      await services.flush();
       const scene = await services.getScene(map);
       if (target) {
         const object = scene.structures.find((s) => s.ref === target.ref);
@@ -337,7 +385,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
     },
     async ({ map, structure, offset, limit }) => {
       const { ref } = normalizeStructureRef(structure);
-      await services.flush();
       const scene = await services.getScene(map);
       const found = scene.structures.find((s) => s.ref === ref);
       if (!found) throw new Error(`Structure '${structure}' does not exist.`);
@@ -370,7 +417,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       inputSchema: { ...mapSchema, x: z.number().finite(), z: z.number().finite() },
     },
     async ({ map, x, z }) => {
-      await services.flush();
       return textResult(await services.query(map, x, z));
     },
   );
@@ -384,7 +430,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
     },
     async ({ map, structure, offset, limit }) => {
       const { ref } = normalizeStructureRef(structure);
-      await services.flush();
       const compiled = await services.getCompilation(map);
       if (!compiled) return textResult({ items: [], total: 0, nextOffset: null });
       const object = compiled.scene.structures.find((s) => s.ref === ref);
@@ -419,7 +464,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       inputSchema: pageSchema,
     },
     async ({ offset, limit }) => {
-      await services.flush();
       return textResult(
         page(
           services
@@ -453,7 +497,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       inputSchema: { module: z.string() },
     },
     async ({ module }) => {
-      await services.flush();
       const result = await services.buildModule(module);
       return {
         content: [
@@ -480,7 +523,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       inputSchema: { ...mapSchema, command: terrainCommandSchema },
     },
     async ({ map, command }) => {
-      await services.flush();
       return textResult(await services.terrain(map, command));
     },
   );
@@ -493,7 +535,6 @@ export function createMcpServer(services: AgentServices, screenshots: Screenshot
       inputSchema: { ...mapSchema, out: z.string().min(1) },
     },
     async ({ map, out }) => {
-      await services.flush();
       return textResult(await services.export(map, out));
     },
   );

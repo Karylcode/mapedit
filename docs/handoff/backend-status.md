@@ -1,6 +1,23 @@
 # Backend implementation status
 
-**Second review round (start here):** F17–F26 and F23b from
+**Third review round (start here):** F27–F37 from `docs/handoff/backend-fixes-3.md`
+are fixed on the `backend` branch, one numbered commit each, with follow-ups for
+F30 (a map whose map.yaml is broken still opens) and F33 (lint ignores the copied
+editor build), plus the frontend requests FE13/FE22 and a copy of the frontend's
+FE18 wording for `Edit.position`. The 第三輪修正 section at the end lists each
+change and its tests. Every protocol.md change is an addition and
+`protocolVersion` stays 1:
+- `failure` codes and flow 9 (file errors);
+- flow 10 (one answer per request) and `unknown_map`;
+- overlap `estimated`;
+- `HistoryEntry.action` and `refs`, and `MapInfo.kind`;
+- notice `mapId` and the scene-before-notice order.
+
+The 編輯器前端 session was notified and has finished FE17 on these fields. The
+F33 packed-CLI acceptance with the real editor waits for PR #2, and the F17 real
+Claude Code check remains under 需要人處理.
+
+**Second review round:** F17–F26 and F23b from
 `docs/handoff/backend-fixes-2.md` are fixed on the `backend` branch, one numbered
 commit each (F22 also has a guide follow-up), plus three requests from the
 編輯器前端 session (non-metallic terrain, sun and point-marker directions,
@@ -28,6 +45,16 @@ two-agent/Unity Play experience remain the planned joint acceptance after the
 frontend exists. GitHub publication and CI status are recorded below.
 
 ## 目前進度
+
+Third round: F27–F37 are complete on `backend`, one numbered commit per item, and
+every bug fix has a test that failed before the change. The exception is the F36
+performance test: it measures cost that F20 did not cover, and it already passed
+before (0.33 s). On this Windows machine `pnpm build`, `pnpm lint`,
+`pnpm typecheck` and `pnpm e2e` pass. `pnpm test` passes all 362 tests in
+60 files; see 已知問題 for the intermittent Node 24 worker abort, which did not
+occur in the final runs. The fresh no-AI village still has zero violations and
+file errors and exports a 5,062,564-byte GLB. Push and CI results for this round
+are recorded at the end of 第三輪修正.
 
 Second round: F17–F26 and F23b are complete on `backend`, one numbered commit per
 item. Every behavior change has a test that failed before the change; the
@@ -199,6 +226,16 @@ Both calls should complete without an API 400.
   `violationParamsProblems` (F23); violation ids now use fixed rule ids (F26);
   `mapeditRender` should throw a readable error when it cannot draw, which the
   backend relays as `Render page error: …`.
+- Third round (the 編輯器前端 session was notified on completion of F28, F34 and
+  F35 and has implemented FE17 with them):
+  - translate edits with `failure` (F28, F30);
+  - handle the `unknown_map` notice (F30);
+  - show `estimated` overlaps as estimates (F32);
+  - read `HistoryEntry.action` and `refs` and `MapInfo.kind` (F34);
+  - use a notice's `refs` only when its `mapId` is the open map (F35).
+
+  The editor build keeps its bundles in `static/`, since `/assets/` belongs to
+  the backend; packaging copies `packages/web/dist` into the CLI (F33).
 
 ## 已知問題
 
@@ -208,10 +245,12 @@ Both calls should complete without an API 400.
 - UnityGLTF emits optional URP/VisualScripting assembly-reference warnings in the
   minimal built-in-renderer test project; compilation and actual import pass.
 - Overlaps between solids that are not their own bounding box (openings, or
-  Structures rotated off 90°) still need one exact Boolean each, about 0.15–0.3
-  ms per overlapping pair on this machine (F20). A map whose 2,000 Modules all
-  overlap that way can exceed 2 seconds, for example 4.3 s for 15,286 overlapping
-  30°-rotated door Modules; ordinary maps have few overlaps.
+  Structures rotated off 90°) need one exact Boolean each, about 0.15–0.3 ms per
+  pair on this machine. Since F32, solids whose oriented boxes are apart skip it,
+  and after 200 exact overlaps in one check the rest are estimated from oriented
+  boxes and marked `estimated: true`. Such estimates can report an overlap that
+  the exact shapes do not have (for example between diagonal neighbours of round
+  Modules) until the first overlaps are fixed and the map is checked again.
 - Local `pnpm test` on this machine (Windows, Node 24.15, four Vitest workers)
   sometimes loses one test file: Vitest reports `Worker exited unexpectedly`, and
   the worker's exit code is `3221226505` (`0xC0000409`, a native fail-fast abort)
@@ -851,3 +890,99 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   notice came first and had no `mapId` before). It also covers
   `overwritten_by_agent` after the scene, `edit_rejected` with its `mapId`,
   and mock mode. Deviation: none.
+- **F36 complete:**
+  - **Order:** `unsupported` advice now tries the fixes in this order:
+    1. lowering the whole Structure;
+    2. a clear compatible Socket inside the Structure;
+    3. lowering only the Module and its attachment chain;
+    4. an obstructed Socket inside the Structure;
+    5. a clear Socket in another Structure, which moves and merges a whole
+       Structure;
+    6. an obstructed one there;
+    7. `canFloat`.
+  - **Socket options:** they are sorted with same-Structure options first. The
+    expensive placement test is lazy: only up to 8 options, nearest first, are
+    tested per suggestion, so not every candidate Socket moves a whole
+    Structure.
+  - **Shared Sockets:** the advice remembers which Module each target Socket
+    was suggested for during one check. It prefers a Socket that no other
+    Module was given. When only a taken one fits, it adds "wall_n.top is also
+    suggested for module:house/roof_a, and a Socket takes one attachment;
+    attach only one of them there."
+  - **Map bounds:** the placement test checks the moved Module bounds with
+    `exceededMapEdges`, the compiler's own test and tolerance (1e-7), instead
+    of the solid's bounds with 1e-4. The compiler's Module and marker bounds
+    checks call `exceededMapEdges` once instead of repeating its comparisons.
+  - Tests: `core/test/suggestions.test.ts` "F36":
+    - A lamp floating 0.5 m over a table edge, with a neighbour's free Socket
+      3 m away. It is now told to lower the lamp; before, it was told to
+      attach the whole house to the neighbour.
+    - Two roof halves above one free `wall_n.top`. The second now carries the
+      note; before, there was no note.
+    - A 1 m model in a 2 m Module next to the east edge. The suggested move
+      now stays inside the map when recompiled; before, it produced
+      `out_of_bounds`.
+    - A performance test with 2,000 Modules, whose 1,000 floating blocks each
+      see about ten cross-Structure Sockets. It took 0.33 s on this machine
+      both before and after the lazy test, because placements are cached and
+      boxes use arithmetic; it stays as the measurement F20 lacked.
+  - Deviation: none.
+- **F37 complete:**
+  - **Revision race:** `registerTool`'s `run` validates the arguments, flushes
+    file changes, reads the project revision right away, and only then runs
+    the tool. The handlers no longer flush themselves, so there is still one
+    flush per call. A change processed while the tool runs now voids the
+    continuation cursor; before, it was labelled with the newer revision.
+    Test: `server/test/mcp-paging.test.ts` "F37" processes a change during a
+    paged `query`. The continuation answers "Results changed…"; before, it
+    served the page.
+  - **Argument errors:** invalid arguments are explained one sentence each,
+    instead of zod's JSON report:
+    - "Missing required argument z (number)."
+    - "Argument x must be a number."
+    - "Unknown arguments "size", "depth"; remove them."
+    - "Argument command.operation must be one of …"
+
+    Tests: the same file, plus the updated F17 and paging tests in
+    `mcp-schema.test.ts` and `mcp-paging.test.ts`.
+  - **Enumerations:** `packages/protocol/src/violation-params.ts` declares
+    each one once as an `as const` list and derives its type from it:
+    `OFF_GRID_FIELDS`, `ROTATION_FIELDS`, `ROTATION_STEPS`, `MAP_EDGES`,
+    `MISSING_REFERENCE_REASONS`, `SOCKET_PROBLEMS` and `OVERLAP_TARGETS`. The
+    params check uses the same lists. Test: `protocol/test/catalogs.test.ts`
+    compares three of them with the lists in protocol.md section 3 and has
+    the check accept every value.
+  - **Socket addresses:** `socketAddress(instance, socket, structure?)` in
+    `socket-rules.ts` writes the `attach` format. The compiler's
+    `socketAddresses` and the geometry suggestions both use it. Test:
+    `core/test/suggestions.test.ts` "F37", plus the F27, F36 and performance
+    tests that read the addresses in suggestions.
+  - **Naming:** `ToolResultPager.firstPage` is now `paginate`, since every
+    result passes through it. Test: the F24 terminology test.
+  - **Types:** `StateStore.entries` and `cursor` are `readonly`. Test:
+    `server/test/history.test.ts` reads the modifiers from the source.
+  - **Packed acceptance:** `scripts/test-packed-cli.mjs` checks before packing
+    that no package's `src` is newer than its `tsconfig.tsbuildinfo`, using
+    the new `scripts/build-freshness.mjs`. If one is, it stops with "Run pnpm
+    build first: …". It loads the server's containment check from `dist` only
+    after that check. Test: `cli/test/package-assets.test.ts` "F37" with fake
+    packages that are fresh, stale and never built.
+  - Deviation: none.
+- **Kept on purpose – `--enable-unsafe-swiftshader` (listed under 這次不用改):**
+  the flag lets Chrome or Edge fall back to SwiftShader, a software WebGL. Chrome
+  calls it unsafe because a hostile page could reach that rasterizer. Here the
+  headless browser only opens the backend's own `/render` page:
+  `ScreenshotService` aborts every request that is not to the backend's origin,
+  `data:` or `blob:`, so the page runs only the editor build and loads only
+  the backend's own GLBs. Without the flag, machines without a GPU, such as
+  GitHub's Ubuntu runners, cannot create a WebGL context and every screenshot
+  fails. It stays in `SCREENSHOT_BROWSER_ARGS`; the test that checks the flag
+  is unchanged.
+- **Extra (frontend FE18):** `docs/protocol.md` section 4 now describes
+  `Edit.position` as where the object's origin should go (a Structure's
+  `position`, a point marker's `position` or a box marker's `center`), not
+  the point under the pointer. The wording is copied exactly from the frontend
+  branch (`2b094d9`), so both branches merge cleanly. No code reads it
+  differently, and the MCP texts never described it.
+- **Still for a person:** the F17 real Claude Code check stays under 需要人處理,
+  unchanged.

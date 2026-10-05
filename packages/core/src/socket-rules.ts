@@ -11,6 +11,11 @@ import {
   yawOf,
 } from './math.js';
 
+/** A Socket as attach writes it: `instance.socket`, or `structure/instance.socket` across Structures. */
+export function socketAddress(instanceId: string, socketId: string, structureId?: string): string {
+  return `${structureId ? `${structureId}/` : ''}${instanceId}.${socketId}`;
+}
+
 /** A Socket definition together with the transform of the frame that owns it. */
 export interface SocketPose {
   socket: Socket;

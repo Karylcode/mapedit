@@ -8,8 +8,7 @@ import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { packedLockfile, packedManifest, packedNames } from './packed-lockfile.mjs';
-// Packing needs a build, so the server's own containment check is available here.
-import { containsPath as isWithin } from '../packages/server/dist/paths.js';
+import { staleBuilds } from './build-freshness.mjs';
 
 // Build-time tooling uses the already installed parser; the consumer resolves only packed packages.
 const { parse, stringify } = createRequire(
@@ -18,11 +17,19 @@ const { parse, stringify } = createRequire(
 
 const execute = promisify(execFile);
 const repository = await realpath(fileURLToPath(new URL('../', import.meta.url)));
+const packageFolders = ['protocol', 'core', 'server', 'cli'];
+// Packing takes each package's dist folder, so an old build would be tested silently.
+const stale = await staleBuilds(repository, packageFolders);
+if (stale.length)
+  throw new Error(
+    `Run pnpm build first: the build of ${stale.map((folder) => `packages/${folder}`).join(', ')} is older than its sources.`,
+  );
+// The build is current, so the server's own containment check is available here.
+const { containsPath: isWithin } = await import('../packages/server/dist/paths.js');
 const temporary = await realpath(await mkdtemp(path.join(tmpdir(), 'mapedit-packed-')));
 const artifacts = path.join(temporary, 'artifacts');
 const consumer = path.join(temporary, 'consumer');
 const project = path.join(temporary, 'project');
-const packageFolders = ['protocol', 'core', 'server', 'cli'];
 const keep = process.argv.includes('--keep');
 const run = async (executable, args, cwd) => {
   try {

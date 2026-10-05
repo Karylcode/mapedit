@@ -5,6 +5,7 @@ import { compileMap } from '../src/compiler.js';
 import type { Compilation } from '../src/domain.js';
 import { parseProject } from '../src/format.js';
 import { checkGeometry } from '../src/geometry.js';
+import { socketAddress } from '../src/socket-rules.js';
 import { box, union, type Shape } from '../src/model-api.js';
 import { buildModel, type ModelGeometry } from '../src/model.js';
 
@@ -548,5 +549,186 @@ describe('F27 compatible Sockets in the same Structure always beat canFloat', ()
     const roof = suggestionFor(violations, 'module:house/roof');
     expect(roof).toContain('Attach roof to wall_n.top (6 m below)');
     expect(roof).not.toContain('canFloat');
+  });
+});
+
+describe('F36 suggestion quality', () => {
+  const suggestionFor = (violations: ViolationView[], ref: string): string => {
+    const violation = violations.find(
+      (item) => item.kind === 'unsupported' && item.refs.includes(ref),
+    );
+    expect(violation, `Expected ${ref} to be unsupported`).toBeDefined();
+    return violation!.suggestion ?? '';
+  };
+
+  it('lowers a Module inside its Structure before attaching the whole Structure elsewhere', async () => {
+    // A lamp floats 0.5 m above the edge of a table. A neighbouring post has a compatible free
+    // Socket 3 m away, where the whole house would hang clear of everything.
+    const compiled = fixture(
+      [
+        {
+          id: 'house',
+          position: [10, 10],
+          modules: [
+            { id: 'table', module: 'table', at: [0, 0, 0] },
+            { id: 'lamp', module: 'lamp', at: [1.5, 1.5, 1.5] },
+          ],
+        },
+        placed('post', [14, 0, 13], 'pillar'),
+      ],
+      [
+        { id: 'table', size: [2, 1, 2] },
+        {
+          id: 'lamp',
+          size: [1, 1, 1],
+          sockets: [{ id: 'bottom', type: 'floor', position: [1, 0, 1], direction: 'down' }],
+        },
+        {
+          id: 'pillar',
+          size: [0.5, 4, 0.5],
+          sockets: [{ id: 'top', type: 'floor', position: [0, 4, 0], direction: 'up' }],
+        },
+      ],
+    );
+    const { violations } = await checkGeometry(
+      compiled,
+      await geometryModels({
+        table: box([2, 1, 2]),
+        lamp: box([1, 1, 1]),
+        pillar: box([0.5, 4, 0.5]),
+      }),
+    );
+    const lamp = suggestionFor(violations, 'module:house/lamp');
+    expect(lamp).toMatch(/^Lower lamp by 0.5 m/);
+    expect(lamp).not.toContain('structure:house to');
+  });
+
+  it('says when one free Socket is suggested to several Modules', async () => {
+    // Two roof halves float above the same wall, which has one free top Socket.
+    const compiled = fixture(
+      [
+        {
+          id: 'house',
+          position: [10, 10],
+          modules: [
+            { id: 'wall_n', module: 'wall', at: [0, 0, 0] },
+            { id: 'roof_a', module: 'roof', at: [0, 3, -1] },
+            { id: 'roof_b', module: 'roof', at: [0, 3, 1] },
+          ],
+        },
+      ],
+      [
+        {
+          id: 'wall',
+          size: [2, 2, 1],
+          sockets: [{ id: 'top', type: 'wall', position: [1, 2, 0.5], direction: 'up' }],
+        },
+        {
+          id: 'roof',
+          size: [2, 0.5, 2],
+          sockets: [{ id: 'bottom', type: 'roof', position: [1, 0, 0.5], direction: 'down' }],
+        },
+      ],
+    );
+    const { violations } = await checkGeometry(
+      compiled,
+      await geometryModels({ wall: box([2, 2, 1]), roof: box([2, 0.5, 2]) }),
+    );
+    const first = suggestionFor(violations, 'module:house/roof_a');
+    const second = suggestionFor(violations, 'module:house/roof_b');
+    expect(first).toContain('Attach roof_a to wall_n.top');
+    expect(first).not.toContain('also suggested');
+    expect(second).toContain('Attach roof_b to wall_n.top');
+    expect(second).toContain('wall_n.top is also suggested for module:house/roof_a');
+  });
+
+  it('never suggests a move that the map bounds check rejects', async () => {
+    // The half block is a 1 m wide model in a 2 m Module: its solid can move east while its
+    // Module bounds, which the compiler checks, would leave the map.
+    const definitions = [{ id: 'block' }, { id: 'half' }];
+    const structures = [placed('a', [98, 0, 10], 'half'), placed('b', [96.5, 0, 10])];
+    const compiled = fixture(structures, definitions);
+    const { violations } = await checkGeometry(
+      compiled,
+      await geometryModels({ block: box([2, 2, 2]), half: box([1, 2, 2]) }),
+    );
+    const overlap = violationOf(violations, 'overlap');
+    const move = suggestedMove(overlap);
+    const after = fixture(
+      structures.map((structure) =>
+        structure.id === move.structureId
+          ? {
+              ...structure,
+              position: [
+                structure.position[0] + move.delta[0],
+                structure.position[1] + move.delta[2],
+              ] as [number, number],
+            }
+          : structure,
+      ),
+      definitions,
+    );
+    expect(after.scene.violations.filter((item) => item.kind === 'out_of_bounds')).toEqual([]);
+    expect(
+      (
+        await checkGeometry(
+          after,
+          await geometryModels({ block: box([2, 2, 2]), half: box([1, 2, 2]) }),
+        )
+      ).violations.filter((item) => item.kind === 'overlap'),
+    ).toEqual([]);
+  });
+});
+
+describe('F36 suggestion search cost', () => {
+  it('checks 2000 Modules whose suggestions weigh many candidate Sockets within the two-second budget', async () => {
+    // 1000 supported ground blocks with free top Sockets on a 2 m grid, and 50 floating
+    // Structures of 20 blocks, 3.5 m above them: too high to lower, with about ten compatible
+    // Sockets within 5 m of every floating block, each attaching a whole Structure.
+    const ground = Array.from({ length: 1000 }, (_, index) =>
+      placed(
+        `g${String(index).padStart(4, '0')}`,
+        [2 + (index % 40) * 2, 0, 2 + Math.floor(index / 40) * 2],
+        'ground',
+      ),
+    );
+    const floating = Array.from({ length: 50 }, (_, index): TestStructure => ({
+      id: `f${String(index).padStart(2, '0')}`,
+      position: [2 + (index % 10) * 8, 2 + Math.floor(index / 10) * 10],
+      height: 5.5,
+      modules: Array.from({ length: 20 }, (_, module) => ({
+        id: `m${String(module).padStart(2, '0')}`,
+        module: 'float',
+        at: [(module % 4) * 2, 0, Math.floor(module / 4) * 2] as Vec3,
+      })),
+    }));
+    const models = await geometryModels({ ground: box([2, 2, 2]), float: box([2, 2, 2]) });
+    const start = performance.now();
+    const compiled = fixture(
+      [...floating, ...ground],
+      [
+        {
+          id: 'ground',
+          sockets: [{ id: 'top', type: 'floor', position: [1, 2, 1], direction: 'up' }],
+        },
+        {
+          id: 'float',
+          sockets: [{ id: 'bottom', type: 'floor', position: [1, 0, 1], direction: 'down' }],
+        },
+      ],
+    );
+    const { violations } = await checkGeometry(compiled, models);
+    const elapsed = performance.now() - start;
+    expect(compiled.instances).toHaveLength(2000);
+    expect(violations.filter((item) => item.kind === 'unsupported')).toHaveLength(1000);
+    expect(violations[0]!.suggestion).toMatch(/^Attach structure:f00 to g\d{4}\/base\.top/);
+    expect(elapsed).toBeLessThan(2000);
+  });
+});
+
+describe('F37 one Socket address format', () => {
+  it('writes attach addresses like the compiler reads them', () => {
+    expect(socketAddress('wall_n', 'top')).toBe('wall_n.top');
+    expect(socketAddress('wall_n', 'top', 'house')).toBe('house/wall_n.top');
   });
 });

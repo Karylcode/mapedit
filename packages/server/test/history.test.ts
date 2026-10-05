@@ -55,6 +55,30 @@ describe('F26 mock notices are a mock-only capability', () => {
     expect(members).not.toContain('triggerMockNotice');
   });
 
+  it('F37 exposes history entries and cursor read-only on StateStore', async () => {
+    const file = new URL('../src/state.ts', import.meta.url);
+    const source = ts.createSourceFile(
+      'state.ts',
+      await readFile(file, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    const readonly = new Map<string, boolean>();
+    source.forEachChild((node) => {
+      if (ts.isInterfaceDeclaration(node) && node.name.text === 'StateStore')
+        for (const member of node.members)
+          readonly.set(
+            member.name?.getText(source) ?? '',
+            ts.isPropertySignature(member) &&
+              (member.modifiers ?? []).some(
+                (modifier) => modifier.kind === ts.SyntaxKind.ReadonlyKeyword,
+              ),
+          );
+    });
+    expect(readonly.get('cursor')).toBe(true);
+    expect(readonly.get('entries')).toBe(true);
+  });
+
   it('detects the capability on the mock state only', () => {
     expect(canTriggerMockNotices(new MemoryState())).toBe(true);
     const plain = { ...new MemoryState(), triggerMockNotice: undefined } as unknown as StateStore;

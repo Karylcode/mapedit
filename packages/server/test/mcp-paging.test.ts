@@ -77,7 +77,8 @@ async function fixture(options: { error?: boolean; small?: boolean } = {}) {
   parsed.modules['block']!.name = large;
   const counts = { flush: 0, continuations: 0, terrain: 0, export: 0, build: 0, query: 0 };
   // An unprocessed Agent file edit; the next flush turns it into a new project revision.
-  const project = { revision: 0, pendingChange: false };
+  // `changeDuringQuery` processes one while a query runs, as a concurrent refresh would.
+  const project = { revision: 0, pendingChange: false, changeDuringQuery: false };
   class Screenshots extends ScreenshotService {
     override async capture(): Promise<Buffer> {
       throw new Error(large);
@@ -114,6 +115,10 @@ async function fixture(options: { error?: boolean; small?: boolean } = {}) {
     },
     async query() {
       counts.query++;
+      if (project.changeDuringQuery) {
+        project.changeDuringQuery = false;
+        project.revision++;
+      }
       return { detail: detail.value };
     },
     async buildModule() {
@@ -245,8 +250,9 @@ describe('F11 bounded MCP text and captured continuation pages', () => {
     expect(initial.isError).toBe(true);
     expect(counts.flush).toBe(0);
     firstPage(initial);
-    const errors = JSON.parse(await collect(call, 'query', initial)) as Array<{ keys: string[] }>;
-    expect(errors[0]!.keys).toEqual([large]);
+    expect(await collect(call, 'query', initial)).toBe(
+      `Unknown argument ${JSON.stringify(large)}; remove it.`,
+    );
     expect(counts.flush).toBe(counts.continuations);
     expect(counts.query).toBe(0);
   });
@@ -366,6 +372,41 @@ describe('F11 bounded MCP text and captured continuation pages', () => {
     const evicted = await call('query', { cursor });
     expect(evicted.isError).toBe(true);
     expect(resultText(evicted)).toMatch(/expired|unavailable/i);
+  });
+});
+
+describe('F37 MCP details', () => {
+  it('labels a result with the revision read right after file changes were processed', async () => {
+    const { call, project } = await fixture();
+    // A file change is processed while the tool runs, so its result may mix both revisions.
+    project.changeDuringQuery = true;
+    const cursor = firstPage(await call('query', { x: 0, z: 0 })).paging.nextCursor!;
+    const next = await call('query', { cursor });
+    expect(next.isError).toBe(true);
+    expect(resultText(next)).toBe(
+      'Results changed since the first page. Run the tool again without cursor.',
+    );
+  });
+
+  it('explains invalid arguments in one sentence each', async () => {
+    const { call, counts } = await fixture({ small: true });
+    const text = async (name: string, args: Record<string, unknown>) => {
+      const result = await call(name, args);
+      expect(result.isError, name).toBe(true);
+      return resultText(result);
+    };
+    expect(await text('query', { x: 0 })).toBe('Missing required argument z (number).');
+    expect(await text('query', { x: 'west', z: 0 })).toBe('Argument x must be a number.');
+    expect(await text('query', { x: 0, z: 0, size: 2, depth: 1 })).toBe(
+      'Unknown arguments "size", "depth"; remove them.',
+    );
+    expect(
+      await text('terrain', {
+        command: { operation: 'up', region: { kind: 'circle', center: [0, 0], radius: 1 } },
+      }),
+    ).toMatch(/^Argument command(\.operation)? /);
+    expect(await text('export', {})).toBe('Missing required argument out (string).');
+    expect(counts.flush).toBe(0);
   });
 });
 

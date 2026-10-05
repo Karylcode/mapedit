@@ -24,8 +24,8 @@ const mockTerrainHeight = (): number => 0;
 export interface StateStore {
   project: ProjectInfo;
   scene: SceneSnapshot;
-  entries: HistoryEntry[];
-  cursor: number;
+  readonly entries: HistoryEntry[];
+  readonly cursor: number;
   flush(): Promise<void>;
   openMap(id: string): Promise<void>;
   getScene(id?: string): Promise<SceneSnapshot>;
