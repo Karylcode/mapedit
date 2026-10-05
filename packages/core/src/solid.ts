@@ -57,11 +57,6 @@ export function orientedBox(local: Bounds, matrix: Mat4): OrientedBox {
   };
 }
 const IDENTITY: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-/**
- * How far apart two oriented boxes must be before a Boolean is skipped, so rounding
- * between a box and its solid never changes an exact result.
- */
-const SKIP_GAP = 1e-7;
 /** Map-axis bounds as an oriented box. */
 export const axisAlignedBox = (bounds: Bounds): OrientedBox => orientedBox(bounds, IDENTITY);
 function moveOrientedBox(box: OrientedBox, matrix: Mat4): OrientedBox {
@@ -70,6 +65,26 @@ function moveOrientedBox(box: OrientedBox, matrix: Mat4): OrientedBox {
     axes: box.axes.map((axis) => rotateVector(matrix, axis)) as [Vec3, Vec3, Vec3],
     half: box.half,
   };
+}
+const cross = (u: Vec3, v: Vec3): Vec3 => [
+  u[1] * v[2] - u[2] * v[1],
+  u[2] * v[0] - u[0] * v[2],
+  u[0] * v[1] - u[1] * v[0],
+];
+/** How far a box reaches from its center along a unit axis. */
+const reach = (box: OrientedBox, axis: Vec3): number =>
+  box.axes.reduce((sum, own, index) => sum + box.half[index]! * Math.abs(dot(own, axis)), 0);
+/** The unit axes that can separate two boxes: their face normals and edge cross products. */
+function* separatingAxes(a: OrientedBox, b: OrientedBox): Iterable<Vec3> {
+  for (const candidate of [
+    ...a.axes,
+    ...b.axes,
+    ...a.axes.flatMap((u) => b.axes.map((v) => cross(u, v))),
+  ]) {
+    const length = Math.hypot(...candidate);
+    // Parallel edge pairs give no axis; the face axes already cover them.
+    if (length >= 1e-9) yield candidate.map((value) => value / length) as Vec3;
+  }
 }
 /**
  * Whether two oriented boxes share volume deeper than `margin` along every separating axis.
@@ -81,26 +96,59 @@ export function orientedBoxesOverlap(
   margin = GEOMETRY_TOLERANCE,
 ): boolean {
   const offset = b.center.map((value, axis) => value - a.center[axis]!) as Vec3;
-  const cross = (u: Vec3, v: Vec3): Vec3 => [
-    u[1] * v[2] - u[2] * v[1],
-    u[2] * v[0] - u[0] * v[2],
-    u[0] * v[1] - u[1] * v[0],
-  ];
-  const reach = (box: OrientedBox, axis: Vec3) =>
-    box.axes.reduce((sum, own, index) => sum + box.half[index]! * Math.abs(dot(own, axis)), 0);
-  for (const candidate of [
-    ...a.axes,
-    ...b.axes,
-    ...a.axes.flatMap((u) => b.axes.map((v) => cross(u, v))),
-  ]) {
-    const length = Math.hypot(...candidate);
-    // Parallel edge pairs give no axis; the face axes already cover them.
-    if (length < 1e-9) continue;
-    const axis = candidate.map((value) => value / length) as Vec3;
+  for (const axis of separatingAxes(a, b))
     if (Math.abs(dot(offset, axis)) >= reach(a, axis) + reach(b, axis) - margin) return false;
-  }
   return true;
 }
+/**
+ * How far rounding may put a solid outside its oriented box. Both are placed by the same
+ * matrix in double precision, so they differ by a few units in the last place of their
+ * coordinates; this allows 64.
+ */
+const roundingSlack = (box: OrientedBox): number =>
+  64 *
+  Number.EPSILON *
+  (1 + Math.max(...box.center.map(Math.abs)) + box.half[0] + box.half[1] + box.half[2]);
+/** The area of a box's shadow on the plane across a unit axis, whatever its edge angles. */
+function shadow(box: OrientedBox, axis: Vec3): number {
+  const [u, v, w] = box.axes,
+    [x, y, z] = box.half;
+  return (
+    4 *
+    (y * z * Math.abs(dot(cross(v, w), axis)) +
+      x * z * Math.abs(dot(cross(u, w), axis)) +
+      x * y * Math.abs(dot(cross(u, v), axis)))
+  );
+}
+/**
+ * At most how much volume two solids inside these oriented boxes can share, allowing for
+ * rounding. Along any axis their shared part lies where the boxes' projections overlap, so it
+ * holds at most that depth times the smaller shadow the boxes cast across the axis. The least
+ * such product over the separating axes is the bound, and it is zero when an axis separates
+ * the boxes.
+ */
+export function sharedVolumeBound(first: OrientedBox, second: OrientedBox): number {
+  const grown = (box: OrientedBox): OrientedBox => {
+    const slack = roundingSlack(box);
+    return { ...box, half: box.half.map((value) => value + slack) as Vec3 };
+  };
+  const a = grown(first),
+    b = grown(second);
+  const offset = b.center.map((value, axis) => value - a.center[axis]!) as Vec3;
+  let bound = Infinity;
+  for (const axis of separatingAxes(a, b)) {
+    const depth = reach(a, axis) + reach(b, axis) - Math.abs(dot(offset, axis));
+    if (depth <= 0) return 0;
+    bound = Math.min(bound, depth * Math.min(shadow(a, axis), shadow(b, axis)));
+  }
+  return bound;
+}
+/**
+ * Solids in boxes that can share at most half of MIN_VOLUME only touch or are apart, so the
+ * Boolean would find no overlap; the other half covers rounding in the Boolean itself.
+ */
+const onlyTouch = (a: OrientedBox, b: OrientedBox): boolean =>
+  sharedVolumeBound(a, b) <= MIN_VOLUME / 2;
 export function intersectsBounds(a: Bounds, b: Bounds, margin = 0): boolean {
   return [0, 1, 2].every(
     (axis) => a.max[axis]! + margin > b.min[axis]! && b.max[axis]! + margin > a.min[axis]!,
@@ -132,8 +180,8 @@ export function manifoldOverlap(a: Manifold, b: Manifold): Vec3 | undefined {
 /**
  * Where two placed solids overlap, or undefined when they only touch or are apart.
  * Two solids that fill their bounds intersect in exactly the shared box, and solids whose
- * oriented boxes are apart cannot meet, which avoids most Boolean operations.
- * `beforeBoolean` runs right before a Boolean operation, so callers can count them.
+ * oriented boxes are apart or only touch cannot overlap, which avoids most Boolean
+ * operations. `beforeBoolean` runs right before a Boolean operation, so callers can count them.
  */
 export function overlapLocation(
   a: PlacedSolid,
@@ -145,8 +193,7 @@ export function overlapLocation(
     const shared = sharedBounds(a.bounds, b.bounds);
     return boundsVolume(shared) > MIN_VOLUME ? boundsCenter(shared) : undefined;
   }
-  if (a.oriented && b.oriented && !orientedBoxesOverlap(a.oriented, b.oriented, -SKIP_GAP))
-    return undefined;
+  if (a.oriented && b.oriented && onlyTouch(a.oriented, b.oriented)) return undefined;
   beforeBoolean?.();
   return manifoldOverlap(a.solid, b.solid);
 }
@@ -171,11 +218,7 @@ export function restsOn(upper: PlacedSolid, lower: PlacedSolid): boolean {
   // Solids whose bounds only share a face, such as neighbours side by side, share no volume.
   if (!intersectsBounds(nudged, lower.bounds)) return false;
   if (upper.box && lower.box) return boundsVolume(sharedBounds(nudged, lower.bounds)) > MIN_VOLUME;
-  if (
-    upper.oriented &&
-    lower.oriented &&
-    !orientedBoxesOverlap(nudgedBox(upper.oriented), lower.oriented, -SKIP_GAP)
-  )
+  if (upper.oriented && lower.oriented && onlyTouch(nudgedBox(upper.oriented), lower.oriented))
     return false;
   const probe = upper.solid.translate([0, -GEOMETRY_TOLERANCE * 2, 0]);
   try {
