@@ -80,6 +80,8 @@ export const zhTW = {
   'history.delete': '刪除 {name}',
   'history.files': '改了 {files}',
   'history.moreFiles': '{files} 等 {count} 個檔案',
+  'history.onMaps': '{change}（在「{maps}」）',
+  'history.alsoOnMaps': '{change}（也改了「{maps}」）',
   'list.separator': '、',
   'list.more': '{names} 等 {count} 個',
 
@@ -97,6 +99,7 @@ export const zhTW = {
   'notice.edit_rejected': '{objects} 的修改沒有套用',
   'notice.file_error': '有檔案無法讀取',
   'notice.unknown_map': '專案裡已經沒有這張地圖，可能剛被刪除',
+  'notice.mapDeleted': '「{map}」已經被刪除，請從選單改開其他地圖',
   'notice.onMap': '「{map}」上的 {objects}',
   'history.nothingToUndo': '沒有可以復原的修改',
   'history.nothingToRedo': '沒有可以重做的修改',
@@ -240,6 +243,8 @@ export const en: Record<MessageKey, Message> = {
   'history.files': 'Changed {files}',
   'history.moreFiles': (p) =>
     `${p.files} and ${p.more} more ${Number(p.more) === 1 ? 'file' : 'files'}`,
+  'history.onMaps': '{change} (on {maps})',
+  'history.alsoOnMaps': '{change} (also on {maps})',
   'list.separator': ', ',
   'list.more': (p) => `${p.names} and ${p.more} more`,
 
@@ -258,6 +263,7 @@ export const en: Record<MessageKey, Message> = {
   'notice.edit_rejected': 'Your change to {objects} was not applied',
   'notice.file_error': 'A file could not be read',
   'notice.unknown_map': 'That map is no longer in the project; it may have just been deleted',
+  'notice.mapDeleted': '{map} has been deleted; open another map from the list',
   'notice.onMap': '{objects} on {map}',
   'history.nothingToUndo': 'Nothing to undo',
   'history.nothingToRedo': 'Nothing to redo',

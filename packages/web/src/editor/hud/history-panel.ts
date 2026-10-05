@@ -76,7 +76,10 @@ export class HistoryPanel {
           },
           h('span', { class: 'history-author', text: authorName(entry.author, t) }),
           h('time', { class: 'history-time', text: entryTime(entry, state.lang) }),
-          h('span', { class: 'history-summary', text: describeEntry(entry, index, t) }),
+          h('span', {
+            class: 'history-summary',
+            text: describeEntry(entry, index, t, state.project),
+          }),
         ),
       );
     }

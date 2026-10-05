@@ -88,11 +88,16 @@ export function noticeToast(
         detail: notice.message,
       };
     case 'unknown_map':
+      // With a map: the Agent deleted a map this page had open. Without: openMap was refused.
       return {
         level: 'error',
-        key: `unknown_map:${notice.message}`,
-        text: (t) => t('notice.unknown_map'),
+        key: `unknown_map:${notice.mapId ?? notice.message}`,
+        text: (t) =>
+          notice.mapId === undefined
+            ? t('notice.unknown_map')
+            : t('notice.mapDeleted', { map: map! }),
         detail: notice.message,
+        ...(notice.mapId === undefined ? {} : { seconds: 30 }),
       };
     default: {
       // A code newer than this interface: the server's English message says what happened.
