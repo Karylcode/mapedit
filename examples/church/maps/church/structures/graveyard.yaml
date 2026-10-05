@@ -1,0 +1,35 @@
+# Rows of graves south of the church, and an older plot turned off the church's axis.
+structures:
+  - id: graveyard
+    name: Graveyard
+    position: [38, 62]
+    modules:
+      - { id: grave_a1, module: gravestone, at: [0, 0, 0] }
+      - { id: grave_a2, module: grave_cross, at: [3, 0, 0] }
+      - { id: grave_a3, module: gravestone, at: [6, 0, 0] }
+      - { id: grave_a4, module: gravestone, at: [9, 0, 0] }
+      - { id: grave_a5, module: grave_cross, at: [12, 0, 0] }
+      - { id: grave_a6, module: gravestone, at: [15, 0, 0] }
+      - { id: grave_b1, module: grave_cross, at: [0, 0, 4] }
+      - { id: grave_b2, module: gravestone, at: [3, 0, 4] }
+      - { id: grave_b3, module: gravestone, at: [6, 0, 4] }
+      - { id: grave_b4, module: grave_cross, at: [9, 0, 4] }
+      - { id: grave_b5, module: gravestone, at: [12, 0, 4] }
+      - { id: grave_b6, module: gravestone, at: [15, 0, 4] }
+      - { id: grave_c1, module: gravestone, at: [0, 0, 8] }
+      - { id: grave_c2, module: gravestone, at: [3, 0, 8] }
+      - { id: grave_c3, module: grave_cross, at: [6, 0, 8] }
+      - { id: grave_c4, module: gravestone, at: [9, 0, 8] }
+      - { id: grave_c5, module: gravestone, at: [12, 0, 8] }
+      - { id: grave_c6, module: grave_cross, at: [15, 0, 8] }
+
+  - id: old_graves
+    name: Old Graves
+    position: [64, 66]
+    rotation: 15
+    modules:
+      - { id: grave_1, module: grave_cross, at: [0, 0, 0] }
+      - { id: grave_2, module: gravestone, at: [3, 0, 0] }
+      - { id: grave_3, module: grave_cross, at: [6, 0, 0] }
+      - { id: grave_4, module: gravestone, at: [1.5, 0, 4] }
+      - { id: grave_5, module: grave_cross, at: [4.5, 0, 4] }

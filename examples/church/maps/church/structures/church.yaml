@@ -1,0 +1,46 @@
+# A gothic church, nave running west to east: bell tower and spire at the west end,
+# five nave bays with buttresses between them, and a half-octagon apse at the east end.
+structures:
+  - id: church
+    name: Grey Church
+    position: [26, 38]
+    rotation: 0
+    modules:
+      - { id: tower, module: bell_tower, at: [4, 0, 5] }
+      - { id: spire, module: spire, at: [4, 22, 5] }
+      - { id: facade, module: west_facade, at: [12, 0, 3] }
+
+      - { id: wall_n1, module: nave_wall, at: [13, 0, 3] }
+      - { id: wall_n2, module: nave_wall, at: [18, 0, 3] }
+      - { id: wall_n3, module: nave_wall, at: [23, 0, 3] }
+      - { id: wall_n4, module: nave_wall, at: [28, 0, 3] }
+      - { id: wall_n5, module: nave_wall, at: [33, 0, 3] }
+      - { id: wall_s1, module: nave_wall, at: [13, 0, 14] }
+      - { id: wall_s2, module: nave_wall, at: [18, 0, 14] }
+      - { id: wall_s3, module: nave_wall, at: [23, 0, 14] }
+      - { id: wall_s4, module: nave_wall, at: [28, 0, 14] }
+      - { id: wall_s5, module: nave_wall, at: [33, 0, 14] }
+
+      - { id: roof_1, module: nave_roof, at: [13, 10, 2.5] }
+      - { id: roof_2, module: nave_roof, at: [18, 10, 2.5] }
+      - { id: roof_3, module: nave_roof, at: [23, 10, 2.5] }
+      - { id: roof_4, module: nave_roof, at: [28, 10, 2.5] }
+      - { id: roof_5, module: nave_roof, at: [33, 10, 2.5] }
+
+      # North buttresses are turned around so their wall side faces south.
+      - { id: buttress_n1, module: buttress, at: [12.5, 0, 1], rotation: 180 }
+      - { id: buttress_n2, module: buttress, at: [17.5, 0, 1], rotation: 180 }
+      - { id: buttress_n3, module: buttress, at: [22.5, 0, 1], rotation: 180 }
+      - { id: buttress_n4, module: buttress, at: [27.5, 0, 1], rotation: 180 }
+      - { id: buttress_n5, module: buttress, at: [32.5, 0, 1], rotation: 180 }
+      - { id: buttress_n6, module: buttress, at: [37.5, 0, 1], rotation: 180 }
+      - { id: buttress_s1, module: buttress, at: [12.5, 0, 15] }
+      - { id: buttress_s2, module: buttress, at: [17.5, 0, 15] }
+      - { id: buttress_s3, module: buttress, at: [22.5, 0, 15] }
+      - { id: buttress_s4, module: buttress, at: [27.5, 0, 15] }
+      - { id: buttress_s5, module: buttress, at: [32.5, 0, 15] }
+      - { id: buttress_s6, module: buttress, at: [37.5, 0, 15] }
+
+      - { id: apse, module: apse, at: [38, 0, 3] }
+      - { id: apse_roof, module: apse_roof, at: [38, 10, 3] }
+      - { id: altar, module: altar, at: [39.5, 0, 7.5], rotation: 90 }
