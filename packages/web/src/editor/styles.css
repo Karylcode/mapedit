@@ -578,6 +578,12 @@ kbd {
   color: #fff;
 }
 
+/* An estimated overlap may not be real: a pale pennant, like its hollow flag on the map. */
+.issue[data-estimated='true'] .issue-number {
+  background: var(--flag-wash);
+  color: var(--flag-ink);
+}
+
 .issue-main {
   display: flex;
   flex-direction: column;

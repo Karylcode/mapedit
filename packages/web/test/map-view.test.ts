@@ -132,6 +132,27 @@ describe('MapView with the mock snapshot', () => {
     expect(view.violationMarks.flags.children).toHaveLength(0);
   });
 
+  it('marks an estimated overlap apart from certain violations (FE26)', async () => {
+    const view = new MapView(new AssetCache(fetcher));
+    const scene = mockScene();
+    view.apply(scene);
+    await view.settled();
+    const certainBoxes = view.violationMarks.glass.count;
+    const overlap = scene.violations.find((v) => v.kind === 'overlap')!;
+    overlap.params = { ...overlap.params, estimated: true };
+    view.apply({ ...scene, revision: scene.revision + 1 });
+    const marks = view.violationMarks;
+    // Its two modules leave the red glass for a dashed outline of their own.
+    expect(marks.glass.count).toBe(certainBoxes - 2);
+    expect(marks.estimatedLines.visible).toBe(true);
+    expect(marks.estimatedLines.material.dashed).toBe(true);
+    expect(marks.estimatedLines.geometry.instanceCount).toBe(2 * 12);
+    const flags = marks.flags.children.map((flag) => flag.userData);
+    expect(flags.filter((flag) => flag.estimated).map((flag) => flag.violation)).toEqual([
+      overlap.id,
+    ]);
+  });
+
   it('singles out a violation without redrawing modules or markers (FE23)', async () => {
     const view = new MapView(new AssetCache(fetcher));
     const scene = mockScene();

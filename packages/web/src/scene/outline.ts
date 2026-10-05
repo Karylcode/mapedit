@@ -45,12 +45,16 @@ export function boxEdgePositions(boxes: readonly OrientedBox[]): number[] {
   return positions;
 }
 
-/** Screen-space-width box outlines (the "chalk line"). */
+/** Screen-space-width box outlines (the "chalk line"); `dashed` ones mark what is uncertain. */
 export class BoxOutlines extends LineSegments2 {
   constructor(
     color: number,
     width: number,
-    { opacity = 1, xray = true }: { opacity?: number; xray?: boolean } = {},
+    {
+      opacity = 1,
+      xray = true,
+      dashed = false,
+    }: { opacity?: number; xray?: boolean; dashed?: boolean } = {},
   ) {
     const material = new LineMaterial({
       color,
@@ -59,6 +63,10 @@ export class BoxOutlines extends LineSegments2 {
       opacity,
       depthTest: !xray,
       depthWrite: false,
+      // Dashes are measured along the edges, in meters.
+      dashed,
+      dashSize: 0.3,
+      gapSize: 0.2,
     });
     super(new LineSegmentsGeometry(), material);
     this.renderOrder = xray ? 12 : 3;
@@ -71,6 +79,7 @@ export class BoxOutlines extends LineSegments2 {
     if (boxes.length) geometry.setPositions(boxEdgePositions(boxes));
     this.geometry.dispose();
     this.geometry = geometry;
+    if (boxes.length && this.material.dashed) this.computeLineDistances();
     this.visible = boxes.length > 0;
   }
 

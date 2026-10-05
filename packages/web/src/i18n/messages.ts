@@ -148,6 +148,8 @@ export const zhTW = {
   'violation.socket.directions': '{socketA} 和 {socketB} 的方向無法相對',
   'violation.overlap.module': '兩個模組互相重疊',
   'violation.overlap.terrain': '模組埋進地形裡',
+  'violation.overlap.estimatedTitle': '可能穿模',
+  'violation.overlap.estimated': '可能重疊（估算，修好前面的重疊後重新檢查）',
   'violation.unsupported.message': '底下沒有東西撐著，也沒有一路接到地面',
   'direction.north': '北',
   'direction.south': '南',
@@ -308,6 +310,9 @@ export const en: Record<MessageKey, Message> = {
   'violation.socket.directions': '{socketA} and {socketB} cannot face each other',
   'violation.overlap.module': 'Two modules overlap',
   'violation.overlap.terrain': 'The module sinks into the terrain',
+  'violation.overlap.estimatedTitle': 'Possible overlap',
+  'violation.overlap.estimated':
+    'May overlap (estimated; fix the overlaps listed before it, then check again)',
   'violation.unsupported.message': 'Nothing holds it up all the way down to the ground',
   'direction.north': 'north',
   'direction.south': 'south',

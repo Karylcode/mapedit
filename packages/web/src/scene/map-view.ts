@@ -21,7 +21,7 @@ import {
   type ViolationView,
 } from '@mapedit/protocol';
 import type { Asset, AssetCache } from './assets.js';
-import { SnapshotIndex, violatingRefs } from './snapshot-index.js';
+import { isEstimated, SnapshotIndex, violatingRefs } from './snapshot-index.js';
 import { ModuleBatches, type ModelState } from './module-batches.js';
 import { MarkerLayer } from './marker-layer.js';
 import { ViolationMarks } from './violation-marks.js';
@@ -479,9 +479,14 @@ export class MapView {
     this.modules.update(index, violating, (url) => this.model(url));
     this.markers.update(index.scene.markers, violating);
     const focused = this.focused(index);
+    // Objects that only estimated overlaps name may be fine: a dashed outline, no red glass.
+    const estimated = [
+      ...violatingRefs(index, this.shownViolations(index).filter(isEstimated)),
+    ].filter((ref) => !violating.has(ref));
     this.violationMarks.update(
       this.shownViolations(index),
       [...violating].flatMap((ref) => this.boxesFor(ref)),
+      estimated.flatMap((ref) => this.boxesFor(ref)),
       focused?.id,
     );
     this.outlines.focus.refs = focused?.refs ?? [];
@@ -502,9 +507,10 @@ export class MapView {
     return this.showViolations ? index.scene.violations : [];
   }
 
-  /** Objects drawn in red because a shown violation names them. */
+  /** Objects drawn in red because a shown violation that is not an estimate names them. */
   private violating(index: SnapshotIndex): Set<ObjectRef> {
-    return violatingRefs(index, this.shownViolations(index));
+    const certain = this.shownViolations(index).filter((violation) => !isEstimated(violation));
+    return violatingRefs(index, certain);
   }
 
   /** The violation singled out in the list, while the snapshot still has it. */

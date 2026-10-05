@@ -416,6 +416,21 @@ CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一�
   測試：`test/dev-proxy.test.ts`，兩項修正前都失敗。
   - `forwardedOrigin('http://rebind.example:5173', 'rebind.example:5173', …)` 不改寫。
   - 實際對開發伺服器送 Host、Origin 都是 `rebind.example:<埠>` 的 WebSocket 升級，後端回 403。修正前回 101，連上了。
+- **FE26 完成**：後端標了 `params.estimated` 的重疊（F32 的估算），在清單和地圖上都和確定的重疊分開。
+  - 清單：
+    - 標題是「可能穿模」（英文 Possible overlap）。
+    - 說明是「可能重疊（估算，修好前面的重疊後重新檢查）」，英文用 may overlap，和後端 F38 一致。
+    - 編號旗是淡紅底、深紅字。
+  - 地圖：
+    - 只被估算重疊點名的物件：不加紅色玻璃、不染紅，改用紅色虛線外框。
+    - 旗子是空心的：粉筆白底、紅框、紅字。
+    - 同一個物件只要有一項確定的違規，就照確定的畫。
+
+  測試，三項修正前都失敗：
+  - `test/notices.test.ts`：中英文的標題和說明。
+  - `test/map-view.test.ts`：把 mock 的重疊標成估算後，那兩個模組從紅色玻璃移到虛線外框，那面旗子標成估算。
+  - `test/issues-browser.test.ts`：用 Playwright 改寫 mock 送來的快照，把重疊標成估算。清單的標題、說明和編號旗的顏色，
+    以及地圖上的虛線和空心旗子都看得出來。
 
 ## 自行決定的事
 

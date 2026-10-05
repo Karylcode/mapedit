@@ -7,7 +7,7 @@ import {
   type ViolationView,
 } from '@mapedit/protocol';
 import { hasMessage, type MessageKey, type Translator } from '../i18n/i18n.js';
-import type { SnapshotIndex } from '../scene/snapshot-index.js';
+import { isEstimated, type SnapshotIndex } from '../scene/snapshot-index.js';
 import { objectNames } from './describe.js';
 
 const OPPOSITE: Record<MapEdge, MapEdge> = {
@@ -43,6 +43,7 @@ const isKnownKind = (kind: string): kind is ViolationKind =>
 
 /** A short title for one violation in the interface language. */
 export function violationTitle(violation: ViolationView, t: Translator): string {
+  if (isEstimated(violation)) return t('violation.overlap.estimatedTitle');
   return violationKindName(violation.kind, t);
 }
 
@@ -97,6 +98,7 @@ export function violationMessage(violation: ViolationView, t: Translator): strin
         socketB: socketName(v.params.socketB),
       });
     case 'overlap':
+      if (v.params.estimated) return t('violation.overlap.estimated');
       return t(
         v.params.target === 'terrain' ? 'violation.overlap.terrain' : 'violation.overlap.module',
       );

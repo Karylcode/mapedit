@@ -110,6 +110,16 @@ export function idOf(ref: ObjectRef): string {
 }
 
 /** Refs of drawn instances and markers that any violation refers to. */
+/**
+ * An overlap the backend estimated from bounding boxes after its exact limit;
+ * it may not be real until the overlaps before it are fixed (protocol section 3).
+ */
+export function isEstimated(violation: ViolationView): boolean {
+  return (
+    violation.kind === 'overlap' && (violation.params as { estimated?: unknown }).estimated === true
+  );
+}
+
 export function violatingRefs(
   index: SnapshotIndex,
   violations: readonly ViolationView[],

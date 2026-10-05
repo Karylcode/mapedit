@@ -3,7 +3,7 @@ import { changed, type Store } from '../store.js';
 import type { EditorState } from '../state.js';
 import { rememberFlag, rememberedFlag } from '../preferences.js';
 import { translator } from '../../i18n/i18n.js';
-import type { SnapshotIndex } from '../../scene/snapshot-index.js';
+import { isEstimated, type SnapshotIndex } from '../../scene/snapshot-index.js';
 import { violationText } from '../violations.js';
 
 const OPEN_KEY = 'mapedit.issuesOpen';
@@ -70,6 +70,7 @@ export class IssuesPanel {
           type: 'button',
           class: 'issue',
           'data-kind': violation.kind,
+          'data-estimated': String(isEstimated(violation)),
           'aria-pressed': String(state.focusedViolation === violation.id),
         },
         h('span', { class: 'issue-number', text: String(i + 1) }),

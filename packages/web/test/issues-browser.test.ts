@@ -151,6 +151,47 @@ describe.skipIf(!executable)('violations, notices and language in a real browser
     expect(await page.locator('html').getAttribute('lang')).toBe('en');
   });
 
+  it('shows an estimated overlap as one, in the list and on the map (FE26)', async () => {
+    // The mock's overlap, as the backend reports it past its exact limit.
+    const estimated = await openEditor(browser, server.url, 'zh-TW', async (target) => {
+      await target.routeWebSocket(/\/ws$/, (client) => {
+        const upstream = client.connectToServer();
+        client.onMessage((message) => upstream.send(message));
+        upstream.onMessage((message) => {
+          const data = JSON.parse(String(message)) as {
+            type: string;
+            scene?: { violations: { kind: string; params: Record<string, unknown> }[] };
+          };
+          for (const violation of data.scene?.violations ?? [])
+            if (violation.kind === 'overlap') violation.params.estimated = true;
+          client.send(JSON.stringify(data));
+        });
+      });
+    });
+    const item = estimated.locator('.issue[data-kind="overlap"]');
+    expect(await item.getAttribute('data-estimated')).toBe('true');
+    expect(await item.locator('.issue-title strong').innerText()).toBe('可能穿模');
+    expect(await item.locator('.issue-message').innerText()).toBe(
+      '可能重疊（估算，修好前面的重疊後重新檢查）',
+    );
+    // A pale pennant in the list instead of the solid red one.
+    const fill = (selector: string) =>
+      estimated.locator(selector).evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(await fill('.issue[data-kind="overlap"] .issue-number')).not.toBe(
+      await fill('.issue[data-kind="unsupported"] .issue-number'),
+    );
+    // On the map: a dashed outline and a hollow flag.
+    const marks = await editorState(estimated, (e) => ({
+      dashed: e.map.violationMarks.estimatedLines.visible,
+      flags: e.map.violationMarks.flags.children.filter(
+        (flag: { userData: { estimated: boolean } }) => flag.userData.estimated,
+      ).length,
+    }));
+    expect(marks).toEqual({ dashed: true, flags: 1 });
+    expect(pageErrors(estimated)).toEqual([]);
+    await estimated.close();
+  });
+
   it('reports no page or console errors', () => {
     expect(pageErrors(page)).toEqual([]);
   });

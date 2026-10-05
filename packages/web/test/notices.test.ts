@@ -138,6 +138,21 @@ describe('violation text', () => {
     }
   });
 
+  it('says an estimated overlap may not be real (FE26)', () => {
+    const overlap = mockScene().violations.find((v) => v.kind === 'overlap')!;
+    const estimated = { ...overlap, params: { ...overlap.params, estimated: true } };
+    expect(violationText(estimated, index, tr('zh-TW'))).toMatchObject({
+      title: '可能穿模',
+      message: '可能重疊（估算，修好前面的重疊後重新檢查）',
+    });
+    expect(violationText(estimated, index, tr('en'))).toMatchObject({
+      title: 'Possible overlap',
+      message: 'May overlap (estimated; fix the overlaps listed before it, then check again)',
+    });
+    // A certain overlap reads as before.
+    expect(violationText(overlap, index, tr('zh-TW')).title).toBe('穿模');
+  });
+
   it('translates the message from params and keeps other advice and the source line', () => {
     const overlap = mockScene().violations.find((v) => v.kind === 'overlap')!;
     expect(violationText(overlap, index, tr('zh-TW'))).toEqual({
