@@ -16,12 +16,24 @@ export type Shortcut =
   | { action: 'none' };
 
 /**
- * What a key press asks the editor to do. Letter shortcuts follow the letter
- * printed on the key (`event.key`), so Ctrl+Z undoes on QWERTZ and AZERTY
- * keyboards too; WASD stays positional and is handled with the camera.
+ * The Latin letter a shortcut reads. A Latin layout gives the letter printed on
+ * the key (`event.key`), so Ctrl+Z undoes on QWERTZ and AZERTY. A key printing
+ * a letter of another script, as on Russian, Greek or Hebrew keyboards, falls
+ * back to its position (`event.code`). Digits and symbols never fall back: on
+ * Dvorak the Z position prints ";", and its own Z key already gives "z".
+ */
+function letterOf(press: KeyPress): string | undefined {
+  if (/^[a-z]$/i.test(press.key)) return press.key.toLowerCase();
+  if (!/^\p{L}$/u.test(press.key)) return undefined;
+  return /^Key([A-Z])$/.exec(press.code)?.[1]!.toLowerCase();
+}
+
+/**
+ * What a key press asks the editor to do. Letter shortcuts read `letterOf`;
+ * WASD stays positional and is handled with the camera.
  */
 export function shortcutFor(press: KeyPress, dragging: boolean): Shortcut | undefined {
-  const letter = press.key.length === 1 ? press.key.toLowerCase() : undefined;
+  const letter = letterOf(press);
   if (press.ctrlKey || press.metaKey) {
     if (press.altKey || (letter !== 'z' && letter !== 'y')) return undefined;
     // Undo and redo act on the whole project, Agent edits included: never repeat them.

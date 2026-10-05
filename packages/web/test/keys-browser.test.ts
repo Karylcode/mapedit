@@ -68,6 +68,11 @@ describe.skipIf(!executable)('editor keyboard shortcuts in a real browser', () =
     ]);
   });
 
+  it('keeps the shortcuts on a Russian keyboard by their position (FE27)', async () => {
+    expect(await press([{ key: 'я', code: 'KeyZ', ctrlKey: true }])).toEqual(['undo']);
+    expect(await press([{ key: 'н', code: 'KeyY', ctrlKey: true }])).toEqual(['redo']);
+  });
+
   it('reports no page or console errors', () => {
     expect(pageErrors(page)).toEqual([]);
   });

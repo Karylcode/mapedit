@@ -431,6 +431,17 @@ CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一�
   - `test/map-view.test.ts`：把 mock 的重疊標成估算後，那兩個模組從紅色玻璃移到虛線外框，那面旗子標成估算。
   - `test/issues-browser.test.ts`：用 Playwright 改寫 mock 送來的快照，把重疊標成估算。清單的標題、說明和編號旗的顏色，
     以及地圖上的虛線和空心旗子都看得出來。
+- **FE27 完成**（FE7 的後續）：快捷鍵讀的字母改成：
+  - `event.key` 是拉丁字母（a–z）時用它，QWERTZ、AZERTY 照舊正確。
+  - 是其他文字的字母時（俄文、希臘文、希伯來文），退回用 `event.code` 的位置。
+  - 數字和符號不退回：清單寫的是「不是 ASCII 字母就退回」，但 Dvorak 在 QWERTY 的 Z 位置印的是「;」，
+    照字面做會讓 Ctrl+; 變成復原；它真正的 Z 鍵本來就會給 `z`。
+
+  測試：
+  - `test/keys.test.ts`：修正前失敗。
+    - 俄文 `я`／`KeyZ` 加 Ctrl 會復原，`н`／`KeyY` 會重做；希臘文、希伯來文也可以。
+    - R、Shift+R、F 都能用；QWERTZ 仍然正確；`6`／`KeyZ` 不會復原。
+  - `test/keys-browser.test.ts`：在瀏覽器裡送出俄文鍵盤的事件，會送出 `undo`、`redo`。
 
 ## 自行決定的事
 

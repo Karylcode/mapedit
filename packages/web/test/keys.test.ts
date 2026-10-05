@@ -36,6 +36,37 @@ describe('shortcutFor', () => {
     expect(shortcutFor(press({ key: 'f', code: 'KeyF' }), false)).toEqual({ action: 'focus' });
   });
 
+  it('falls back to the key position on keyboards without Latin letters (FE27)', () => {
+    // Russian, Greek and Hebrew: the printed letter is no ASCII letter, the position is.
+    expect(shortcutFor(press({ key: 'я', code: 'KeyZ', ctrlKey: true }), false)).toEqual({
+      action: 'undo',
+    });
+    expect(shortcutFor(press({ key: 'н', code: 'KeyY', ctrlKey: true }), false)).toEqual({
+      action: 'redo',
+    });
+    expect(shortcutFor(press({ key: 'ζ', code: 'KeyZ', metaKey: true }), false)).toEqual({
+      action: 'undo',
+    });
+    expect(shortcutFor(press({ key: 'ז', code: 'KeyZ', ctrlKey: true }), false)).toEqual({
+      action: 'undo',
+    });
+    expect(shortcutFor(press({ key: 'к', code: 'KeyR' }), false)).toEqual({
+      action: 'rotate',
+      direction: 1,
+    });
+    expect(shortcutFor(press({ key: 'К', code: 'KeyR', shiftKey: true }), false)).toEqual({
+      action: 'rotate',
+      direction: -1,
+    });
+    expect(shortcutFor(press({ key: 'а', code: 'KeyF' }), false)).toEqual({ action: 'focus' });
+    // A Latin layout still follows the printed letter: QWERTZ's Z sits where QWERTY has Y.
+    expect(shortcutFor(press({ key: 'z', code: 'KeyY', ctrlKey: true }), false)).toEqual({
+      action: 'undo',
+    });
+    // Non-letter keys never fall back: a digit on the Z position is no Z.
+    expect(shortcutFor(press({ key: '6', code: 'KeyZ', ctrlKey: true }), false)).toBeUndefined();
+  });
+
   it('never repeats undo, redo, delete or applied rotations (FE6)', () => {
     expect(shortcutFor(press({ key: 'z', ctrlKey: true, repeat: true }), false)).toEqual({
       action: 'none',
