@@ -18,6 +18,14 @@ const PAN_KEYS: Record<string, [forward: number, right: number]> = {
   ArrowRight: [0, 1],
 };
 
+/**
+ * Mouse movement beyond this many pixels in one event is a glitch, not a hand:
+ * Chrome on Windows now and then reports one huge jump while the pointer is
+ * locked, and the first event after locking can carry the cursor's leap to the
+ * middle of the screen. Either would snap the view around.
+ */
+export const LOOK_GLITCH = 300;
+
 /** First-person flight keys, by key position: forward, right and up. */
 const FLY_KEYS: Record<string, [forward: number, right: number, up: number]> = {
   KeyW: [1, 0, 0],
@@ -183,15 +191,26 @@ export class OverviewInput {
     this.viewport.invalidate();
   }
 
-  /** Hide the cursor so the mouse turns the view; without it, dragging does. */
+  /**
+   * Hide the cursor so the mouse turns the view; without it, dragging does.
+   * Raw mouse input skips the system's pointer acceleration, which also avoids
+   * Chrome's sudden jumps; browsers without it get a plain lock.
+   */
   private capture(): void {
-    try {
-      // Newer browsers return a promise that rejects when the lock is refused.
-      const request = this.canvas.requestPointerLock() as unknown;
-      if (request instanceof Promise) request.catch(() => undefined);
-    } catch {
-      // No pointer lock here: dragging turns the view instead.
-    }
+    const lock = (options?: PointerLockOptions): void => {
+      try {
+        // Newer browsers return a promise that rejects when the lock is refused.
+        const request = this.canvas.requestPointerLock(options) as unknown;
+        if (request instanceof Promise)
+          request.catch((error: unknown) => {
+            if (options && error instanceof DOMException && error.name === 'NotSupportedError')
+              lock();
+          });
+      } catch {
+        // No pointer lock here: dragging turns the view instead.
+      }
+    };
+    lock({ unadjustedMovement: true });
   }
 
   private lockChanged(): void {
@@ -257,8 +276,11 @@ export class OverviewInput {
   private pointerMove(event: PointerEvent): void {
     if (this.firstPerson) {
       const look = this.look;
-      if (this.locked) this.viewport.firstPerson.look(event.movementX, event.movementY);
-      else if (look?.id === event.pointerId) {
+      if (this.locked) {
+        if (Math.abs(event.movementX) > LOOK_GLITCH || Math.abs(event.movementY) > LOOK_GLITCH)
+          return;
+        this.viewport.firstPerson.look(event.movementX, event.movementY);
+      } else if (look?.id === event.pointerId) {
         this.viewport.firstPerson.look(event.clientX - look.x, event.clientY - look.y);
         look.x = event.clientX;
         look.y = event.clientY;

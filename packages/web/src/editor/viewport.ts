@@ -22,6 +22,7 @@ const pixelRatio = () => Math.min(globalThis.devicePixelRatio || 1, 2);
 /** The editor's WebGL view. It renders on demand: only after something changed. */
 export class Viewport {
   readonly renderer: WebGLRenderer;
+  /** Each frame the overview or first-person camera sets its own field of view. */
   readonly camera = new PerspectiveCamera(40, 1, 0.5, 5000);
   readonly scene = new Scene();
   readonly overview = new OverviewCamera();

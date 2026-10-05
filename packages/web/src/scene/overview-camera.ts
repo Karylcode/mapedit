@@ -15,6 +15,8 @@ export class OverviewCamera {
   bearing = 180;
   pitch = 55;
   distance = 100;
+  /** Vertical field of view in degrees. */
+  fov = 40;
   minDistance = 2;
   maxDistance = 2000;
   minPitch = 12;
@@ -59,6 +61,7 @@ export class OverviewCamera {
     camera.position.copy(this.target).addScaledVector(this.offset(), this.distance);
     camera.up.set(0, 1, 0);
     camera.lookAt(this.target);
+    camera.fov = this.fov;
     camera.near = Math.max(0.05, this.distance * 0.01);
     camera.far = this.distance * 4 + Math.hypot(this.size.x, this.size.z) * 2;
     camera.updateProjectionMatrix();
