@@ -12,6 +12,7 @@ import {
   projectPoint,
   screenPoint,
   poll,
+  pageErrors,
 } from './browser/harness.js';
 
 const executable = await findBrowser();
@@ -200,18 +201,29 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
 
   it('cancels a drag with Escape', async () => {
     const before = (await placement(page, 'structure:out_of_bounds'))!;
+    // On the map's east edge it sits under the change log; bring it to the middle.
+    await editorState(page, (e) => {
+      e.viewport.overview.target.set(90, 0, 15);
+      e.viewport.invalidate();
+    });
     const from = await screenPoint(page, 'module:out_of_bounds/base');
-    const to = await projectPoint(page, [before.x - 20, 0, before.z + 20]);
+    const to = await projectPoint(page, [before.x - 10, 0, before.z + 10]);
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     await page.mouse.move(to.x, to.y, { steps: 8 });
+    // The drag really started: its preview is on screen before Escape.
+    await poll(() =>
+      editorState(page, (e) => e.viewport.scene.getObjectByName('ghost')?.name),
+    ).toBe('ghost');
     await page.keyboard.press('Escape');
     expect(
       await editorState(page, (e) => e.viewport.scene.getObjectByName('ghost')),
     ).toBeUndefined();
     await page.mouse.up();
+    // Nothing is dropped: give a wrongly sent edit time to arrive, then check.
     await page.waitForTimeout(200);
     expect(await placement(page, 'structure:out_of_bounds')).toEqual(before);
+    await lookDown(page);
   });
 
   for (const interruption of ['pointercancel', 'lostpointercapture', 'blur'] as const)
@@ -246,4 +258,74 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
       });
       expect(requests).toEqual(['applyEdit']);
     });
+
+  it('rotates the other way with Shift+R (FE21)', async () => {
+    await page.keyboard.press('Escape');
+    const house = await screenPoint(page, 'module:house/base');
+    await page.mouse.click(house.x, house.y);
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:house');
+    const before = (await placement(page, 'structure:house'))!.yaw;
+    await page.keyboard.press('Shift+R');
+    const turned = async () => {
+      const yaw = (await placement(page, 'structure:house'))!.yaw;
+      return Math.round(((((yaw - before) % 360) + 540) % 360) - 180);
+    };
+    await poll(turned).toBe(-15);
+  });
+
+  it('deletes with Backspace as well as Delete (FE21)', async () => {
+    const exists = () =>
+      editorState(page, (e) =>
+        e.store.state.scene.structures.some((s: { ref: string }) => s.ref === 'structure:socket_b'),
+      );
+    const socket = await screenPoint(page, 'module:socket_b/base');
+    await page.mouse.click(socket.x, socket.y);
+    await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:socket_b');
+    await page.keyboard.press('Backspace');
+    await poll(exists).toBe(false);
+  });
+
+  it('bases a drop on the revision its drag started from (FE21)', async () => {
+    await page.evaluate(() => {
+      const editor = (
+        globalThis as unknown as {
+          mapeditEditor: { connection: { request(m: object): number | undefined } };
+        }
+      ).mapeditEditor;
+      const sent: object[] = [];
+      (globalThis as unknown as { sentRequests: object[] }).sentRequests = sent;
+      const original = editor.connection.request.bind(editor.connection);
+      editor.connection.request = (message) => (sent.push(message), original(message));
+    });
+    const revision = () => editorState(page, (e) => e.store.state.revision as number);
+    const from = await screenPoint(page, 'module:house/base');
+    const to = await projectPoint(page, [60, 0, 60]);
+    const started = await revision();
+    await dragTo(page, from, to, async () => {
+      // The Agent moves the house while the human is still dragging it.
+      const response = await fetch(`${server.url}/api/mock/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notice: 'agent_changed' }),
+      });
+      expect(response.status).toBe(200);
+      await poll(revision).toBeGreaterThan(started);
+    });
+    const drop = await page.evaluate(() =>
+      (
+        globalThis as unknown as { sentRequests: { type: string; baseRevision?: number }[] }
+      ).sentRequests
+        .filter((message) => message.type === 'applyEdit')
+        .at(-1),
+    );
+    expect(drop?.baseRevision).toBe(started);
+    // So the backend knows the drop replaced the Agent's change, and says so.
+    await poll(() => page.locator('.toast-text').allInnerTexts()).toContain(
+      'Your drop replaced the change the Agent made to House while you were dragging',
+    );
+  });
+
+  it('reports no page or console errors', () => {
+    expect(pageErrors(page)).toEqual([]);
+  });
 });

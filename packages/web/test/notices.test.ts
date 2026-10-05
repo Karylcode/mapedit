@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { mockScene } from '@mapedit/server';
 import {
+  MAP_EDGES,
+  MISSING_REFERENCE_REASONS,
   NOTICE_CODES,
+  OFF_GRID_FIELDS,
+  OVERLAP_TARGETS,
+  ROTATION_FIELDS,
+  SOCKET_PROBLEMS,
   VIOLATION_KINDS,
   type NoticeCode,
   type SceneSnapshot,
@@ -10,7 +16,7 @@ import { SnapshotIndex } from '../src/scene/snapshot-index.js';
 import { FileErrorFilter, noticeToast, type Notice } from '../src/editor/notices.js';
 import { violationText } from '../src/editor/violations.js';
 import { objectNames, wholeObjects } from '../src/editor/describe.js';
-import { translate, type Translator, type Lang } from '../src/i18n/i18n.js';
+import { hasMessage, translate, type Translator, type Lang } from '../src/i18n/i18n.js';
 import type { Localized } from '../src/editor/hud/toasts.js';
 
 const index = new SnapshotIndex(mockScene());
@@ -109,6 +115,19 @@ describe('notices about another map (FE17)', () => {
 });
 
 describe('violation text', () => {
+  it('translates every params value the protocol lists (FE21)', () => {
+    // The English dictionary has the same keys as the Chinese one by type.
+    const keys = [
+      ...OFF_GRID_FIELDS.map((field) => `violation.field.${field}`),
+      ...ROTATION_FIELDS.map((field) => `violation.rotationField.${field}`),
+      ...MAP_EDGES.map((edge) => `direction.${edge}`),
+      ...MISSING_REFERENCE_REASONS.map((reason) => `violation.missing.${reason}`),
+      ...SOCKET_PROBLEMS.map((problem) => `violation.socket.${problem}`),
+      ...OVERLAP_TARGETS.map((target) => `violation.overlap.${target}`),
+    ];
+    expect(keys.filter((key) => !hasMessage(key))).toEqual([]);
+  });
+
   it('names every kind in both languages', () => {
     for (const kind of VIOLATION_KINDS) {
       const violation = { ...mockScene().violations[0]!, kind };

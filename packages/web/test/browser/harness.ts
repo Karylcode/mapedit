@@ -67,9 +67,31 @@ export function launch(executablePath: string): Promise<Browser> {
   return chromium.launch({ executablePath, headless: true, args: ['--enable-unsafe-swiftshader'] });
 }
 
+const errorsOf = new WeakMap<Page, string[]>();
+
+/**
+ * Collect a page's uncaught errors and its console errors; three.js reports
+ * shader and WebGL failures only on the console.
+ */
+export function watchErrors(page: Page): void {
+  const errors: string[] = [];
+  errorsOf.set(page, errors);
+  page.on('pageerror', (error) => errors.push(`page error: ${String(error)}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error')
+      errors.push(`console error: ${message.text()} (${message.location().url})`);
+  });
+}
+
+/** Errors collected by `watchErrors` so far. */
+export function pageErrors(page: Page): string[] {
+  return [...(errorsOf.get(page) ?? [])];
+}
+
 /**
  * Open the editor and wait until the map's models are drawn. `prepare` runs
- * before the page loads, e.g. to route its WebSocket.
+ * before the page loads, e.g. to route its WebSocket. Errors are collected
+ * for `pageErrors`.
  */
 export async function openEditor(
   browser: Browser,
@@ -82,9 +104,7 @@ export async function openEditor(
     deviceScaleFactor: 1,
     locale,
   });
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(String(error)));
-  (page as Page & { errors: string[] }).errors = errors;
+  watchErrors(page);
   await prepare?.(page);
   await page.goto(url);
   await waitForEditor(page);

@@ -10,6 +10,7 @@ import {
   projectPoint,
   screenPoint,
   type EditorHandle,
+  pageErrors,
   poll,
 } from './browser/harness.js';
 
@@ -155,6 +156,34 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     expect(await camera()).toMatchObject({ bearing: orbited.bearing });
   });
 
+  it('pans with the arrow keys the same way as WASD (FE21)', async () => {
+    // From the middle of the map, so no edge stops the camera.
+    await editorState(page, (e) => {
+      e.viewport.overview.target.set(50, 0, 50);
+      e.viewport.invalidate();
+    });
+    const target = () => editorState(page, (e) => e.viewport.overview.target.toArray() as number[]);
+    const hold = async (key: string) => {
+      const before = await target();
+      await page.keyboard.down(key);
+      await page.waitForTimeout(200);
+      await page.keyboard.up(key);
+      const after = await target();
+      return [after[0]! - before[0]!, after[2]! - before[2]!] as const;
+    };
+    for (const [arrow, letter] of [
+      ['ArrowUp', 'KeyW'],
+      ['ArrowDown', 'KeyS'],
+      ['ArrowLeft', 'KeyA'],
+      ['ArrowRight', 'KeyD'],
+    ] as const) {
+      const [ax, az] = await hold(arrow);
+      const [lx, lz] = await hold(letter);
+      expect(Math.hypot(ax, az), `${arrow} moves the camera`).toBeGreaterThan(0.1);
+      expect(ax * lx + az * lz, `${arrow} moves like ${letter}`).toBeGreaterThan(0);
+    }
+  });
+
   it('stops reconnecting when the server cannot read hello (FE15)', async () => {
     const other = await browser.newPage({
       viewport: { width: 1280, height: 800 },
@@ -246,6 +275,7 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
           ).toBe(false);
       }
     }
+    expect(pageErrors(narrow)).toEqual([]);
     await narrow.close();
   });
 
@@ -258,6 +288,7 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
       return e.toasts.texts();
     });
     expect(texts).toEqual(['Info 4', 'Info 3', 'Info 2', 'Your edit was replaced']);
+    expect(pageErrors(fresh)).toEqual([]);
     await fresh.close();
   });
 
@@ -281,10 +312,11 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     await fresh.mouse.move(640, 400);
     await fresh.mouse.move(660, 410);
     await poll(pixels).toEqual({ ratio: 2, width: 2560 });
+    expect(pageErrors(fresh)).toEqual([]);
     await fresh.close();
   });
 
-  it('reports no page errors', () => {
-    expect((page as Page & { errors: string[] }).errors).toEqual([]);
+  it('reports no page or console errors', () => {
+    expect(pageErrors(page)).toEqual([]);
   });
 });

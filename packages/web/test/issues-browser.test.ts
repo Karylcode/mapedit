@@ -2,7 +2,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Browser, Page } from 'playwright-core';
 import { createServer, type MapeditServer } from '@mapedit/server';
 import type { NoticeCode } from '@mapedit/protocol';
-import { buildWeb, editorState, findBrowser, launch, openEditor, poll } from './browser/harness.js';
+import {
+  buildWeb,
+  editorState,
+  findBrowser,
+  launch,
+  openEditor,
+  poll,
+  pageErrors,
+} from './browser/harness.js';
 
 const executable = await findBrowser();
 
@@ -73,7 +81,11 @@ describe.skipIf(!executable)('violations, notices and language in a real browser
       target: e.viewport.overview.target.toArray(),
       focus: e.map.outlines.focus.refs,
       focused: e.store.state.focusedViolation,
+      unsupported: e.store.state.scene.violations.find(
+        (v: { kind: string }) => v.kind === 'unsupported',
+      ).id,
     }));
+    expect(state.focused).toBe(state.unsupported);
     expect(state.target).not.toEqual(before);
     expect(state.target[0]).toBeCloseTo(51, 0);
     expect(state.focus).toEqual(['module:unsupported/base']);
@@ -114,14 +126,29 @@ describe.skipIf(!executable)('violations, notices and language in a real browser
     expect(toasts).not.toMatch(/[一-鿿]/);
     expect(toasts).toMatch(/A file could not be read/);
     expect(await page.locator('.history-author').first().innerText()).toMatch(/Agent|Human/);
-    const visible = await page.locator('.hud').innerText();
-    // Only names from the project and the map may contain Chinese now.
-    expect(visible).not.toMatch(/專案|地圖|違規|修改紀錄|即時同步/);
+    // Nothing in the interface is Chinese now, labels included, except the switch back to 中文.
+    const texts = await page.evaluate(() => {
+      const hud = document.querySelector<HTMLElement>('.hud')!;
+      const switcher = hud.querySelector<HTMLElement>('.tb-lang')!;
+      switcher.style.display = 'none';
+      const visible = hud.innerText;
+      switcher.style.display = '';
+      const labels = [...hud.querySelectorAll('[aria-label], [title]')]
+        .filter((element) => !switcher.contains(element) || element === switcher)
+        .map((element) => [element.getAttribute('aria-label'), element.getAttribute('title')]);
+      return [visible, ...labels.flat().filter((label): label is string => Boolean(label))];
+    });
+    expect(texts.length).toBeGreaterThan(5);
+    for (const text of texts) expect(text).not.toMatch(/\p{Script=Han}/u);
     expect(await page.evaluate(() => localStorage.getItem('mapedit.lang'))).toBe('en');
     await page.reload();
     await page.waitForFunction(() =>
       Boolean((globalThis as { mapeditEditor?: unknown }).mapeditEditor),
     );
     expect(await page.locator('html').getAttribute('lang')).toBe('en');
+  });
+
+  it('reports no page or console errors', () => {
+    expect(pageErrors(page)).toEqual([]);
   });
 });

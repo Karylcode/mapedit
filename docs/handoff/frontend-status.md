@@ -6,13 +6,13 @@ is not modified here.
 
 **檢查入口：** W0–W6 全部完成，分支 `frontend`（從 `backend` 開出，已合併 `backend` 到 bf99ebf 為止的所有修正）。
 這台 Windows 上整個 repo 的 `pnpm typecheck`、`pnpm lint`、`pnpm test`（68 個檔案、407 個測試，其中前端
-15 個檔案、94 個測試，含 6 個用 headless Edge 實際操作的瀏覽器測試檔）全部通過。程式從
+15 個檔案、94 個測試，含 5 個用 headless Edge 實際操作的瀏覽器測試檔）全部通過。程式從
 `packages/web/src/main.ts` 開始：`editor/` 是編輯器（`editor.ts` 把連線、場景、輸入、編輯和介面接在一起），
 `render/` 是截圖頁，`scene/` 是兩者共用的 three.js 畫面，`net/connection.ts` 是 WebSocket 客戶端，
 `i18n/` 是兩種語言的文字。
 [PR #2](https://github.com/Karylcode/mapedit/pull/2) 的 CI（[run 37237237682](https://github.com/Karylcode/mapedit/actions/runs/37237237682)）
 在 Windows／Ubuntu × Node 22／24 四個組合全部通過：Windows 68 個檔案全過；Ubuntu 只略過 Windows PowerShell 的
-測試，沒有 GPU 的 runner 上 6 個瀏覽器測試檔（含真的 MCP `screenshot`、`build_module`）都實際執行並通過。
+測試，沒有 GPU 的 runner 上 5 個瀏覽器測試檔（含真的 MCP `screenshot`、`build_module`）都實際執行並通過。
 
 ## 目前進度
 
@@ -301,6 +301,38 @@ is not modified here.
       畫布變成 2560 像素寬（修正前停在 1280）。
     - 備註：headless Edge 用 CDP 改像素比例時，不會觸發 `resolution` 媒體查詢的 `change` 事件，
       所以測試走的是「下一次畫面更新」這條路。
+- **FE21 完成**：補上缺的測試，並讓原本可能永遠通過的斷言在功能壞掉時會失敗。
+  - 每個瀏覽器測試都收集頁面錯誤和 `console.error`（`harness.ts` 的 `watchErrors`、`pageErrors`），
+    每個檔案最後確認沒有錯誤；測試中途另開的頁面，在關閉前也會檢查。
+  - `edit-browser.test.ts`：
+    - Esc 取消拖動：先確認預覽真的出現過。原本拖的 `out_of_bounds` 在地圖東邊，被右邊的修改紀錄蓋住，
+      滑鼠按在面板上，所以從來沒有拖起來過，「預覽消失」一直是空洞地成立。現在先把鏡頭移到它上方再拖，
+      測完再還原鏡頭。
+    - 新增 Shift+R 反方向轉 15 度。
+    - 新增 Backspace 刪除。
+    - 新增「`baseRevision` 取自拖動開始時」：拖動中用 mock 觸發 Agent 移動同一棟房子。放下時送出的
+      `baseRevision` 等於開始拖動時的 revision，並出現「你放下的位置蓋掉了 Agent 的修改」提示。
+      把程式暫時改成用放下時的 revision，這個測試會失敗。
+  - `editor-browser.test.ts`：四個方向鍵各自讓鏡頭移動，方向和對應的 W、S、A、D 相同。
+  - `real-edit-browser.test.ts`（真專案）：
+    - 新增「放下被拒絕」：拖出地圖西邊，提示 `Starter House was not moved`，檔案和 revision 都沒變。
+    - 原本的「復原」之後加上「重做」：Ctrl+Y 再刪一次樓梯。
+  - `render-browser.test.ts`：
+    - `showViolations`、`highlight` 改成數像素：
+      - 開違規後，旗紅的像素多出 1,000 個以上；實測從 58 個變成 2,210 個，58 個是北方箭頭。
+      - `highlight` 有 200 個以上的粉線藍像素，而且不顯示違規。
+    - 會記錄頁面嘗試連到其他網站的請求，最後確認一個都沒有。
+    - MCP 的 `screenshot`、`build_module` 解碼後，第一格中央區域要有 8 種以上的顏色（以 16 為一階）。
+      實測 24 到 70 種；空白畫面只有 1、2 種。只看中央是因為標籤和北方箭頭即使 3D 畫面空白也會畫出來。
+  - `issues-browser.test.ts`：
+    - 點違規之後，`focused` 必須是被點的那一筆。
+    - 切成英文後，`.hud` 的可見文字和 `aria-label`／`title` 完全沒有中文字（只排除切回「中文」的按鈕），
+      不再用五個詞的黑名單。
+  - `notices.test.ts`：違規種類和提示代碼在 FE13 已改用協定的清單。現在也走訪後端 F37 匯出的參數清單
+    （`OFF_GRID_FIELDS`、`ROTATION_FIELDS`、`MAP_EDGES`、`MISSING_REFERENCE_REASONS`、`SOCKET_PROBLEMS`、
+    `OVERLAP_TARGETS`），每個值都要有翻譯。
+  - 換地圖已由 FE3、FE13、FE14 的 `maps-browser.test.ts` 涵蓋。
+  - 這份文件開頭 W6 時寫的「6 個瀏覽器測試檔」改正為 5 個；現在共有 7 個。
 
 ## 自行決定的事
 

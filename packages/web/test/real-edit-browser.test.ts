@@ -16,6 +16,7 @@ import {
   projectPoint,
   screenPoint,
   poll,
+  pageErrors,
 } from './browser/harness.js';
 
 const executable = await findBrowser();
@@ -76,7 +77,25 @@ describe.skipIf(!executable)('editing a real project in a real browser', () => {
     expect(history).toMatchObject({ author: 'human', summary: 'Move structure:house' });
   });
 
-  it('rotates with R and deletes a single module, then undoes', async () => {
+  it('leaves the files alone when a drop is rejected (FE21)', async () => {
+    await page.keyboard.press('Escape');
+    const before = await house();
+    const start = await revision();
+    const from = await screenPoint(page, 'module:house/roof');
+    // Off the west edge of the map: out of bounds, so the backend refuses it.
+    const to = await projectPoint(page, [-10, 4, 30]);
+    await dragTo(page, from, to);
+    await poll(() => page.locator('.toast-text').allInnerTexts()).toContain(
+      'Starter House was not moved',
+    );
+    expect(await house()).toBe(before);
+    expect(await revision()).toBe(start);
+    expect(
+      await editorState(page, (e) => e.viewport.scene.getObjectByName('ghost')),
+    ).toBeUndefined();
+  });
+
+  it('rotates with R and deletes a single module, then undoes and redoes', async () => {
     await page.keyboard.press('Escape');
     const roof = await screenPoint(page, 'module:house/roof');
     await page.mouse.click(roof.x, roof.y);
@@ -98,6 +117,11 @@ describe.skipIf(!executable)('editing a real project in a real browser', () => {
     await page.keyboard.press('Control+z');
     await poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
     expect(await house()).toMatch(/id: stairs/);
+    start = await revision();
+    await page.keyboard.press('Control+y');
+    await poll(revision, { timeout: 15_000 }).toBeGreaterThan(start);
+    expect(await house()).not.toMatch(/id: stairs/);
+    expect(await house()).toMatch(/^# A walkable room/);
   });
 
   it('moves a marker and keeps its properties', async () => {
@@ -152,5 +176,9 @@ describe.skipIf(!executable)('editing a real project in a real browser', () => {
     await poll(() => editorState(page, (e) => e.viewport.overview.target.x), {
       timeout: 5000,
     }).toBe(200);
+  });
+
+  it('reports no page or console errors', () => {
+    expect(pageErrors(page)).toEqual([]);
   });
 });

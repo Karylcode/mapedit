@@ -14,6 +14,7 @@ import {
   openEditor,
   poll,
   screenPoint,
+  pageErrors,
 } from './browser/harness.js';
 
 const executable = await findBrowser();
@@ -188,5 +189,9 @@ describe.skipIf(!executable)('switching maps in a real two-map project', () => {
     const here = page.locator('.toast-text', { hasText: 'The Agent changed Renamed Cottage' });
     await poll(() => here.count()).toBe(1);
     await poll(flashed).toEqual(['structure:house']);
+  });
+
+  it('reports no page or console errors', () => {
+    expect(pageErrors(page)).toEqual([]);
   });
 });

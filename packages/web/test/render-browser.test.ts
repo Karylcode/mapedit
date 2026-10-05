@@ -8,7 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { createServer, type MapeditServer } from '@mapedit/server';
 import type { RenderSpec, RenderWindow } from '@mapedit/protocol';
-import { buildWeb, findBrowser, launch } from './browser/harness.js';
+import { buildWeb, findBrowser, launch, pageErrors, watchErrors } from './browser/harness.js';
 
 const executable = await findBrowser();
 const template = fileURLToPath(new URL('../../../templates/project/', import.meta.url));
@@ -18,15 +18,24 @@ const pngSize = (png: Buffer) => [png.readUInt32BE(16), png.readUInt32BE(20)];
 const fromDataUrl = (url: string) =>
   Buffer.from(url.slice('data:image/png;base64,'.length), 'base64');
 
-/** Open the render page the way the backend does: same-origin requests only. */
+const externalRequests = new WeakMap<Page, string[]>();
+
+/**
+ * Open the render page the way the backend does: same-origin requests only.
+ * Requests to anywhere else are blocked and recorded for `externalRequests`.
+ */
 async function openRender(browser: Browser, server: MapeditServer, map: string): Promise<Page> {
   const page = await browser.newPage();
+  watchErrors(page);
   const origin = new URL(server.url).origin;
+  const external: string[] = [];
+  externalRequests.set(page, external);
   await page.route('**/*', (route) => {
     const url = new URL(route.request().url());
-    return url.origin === origin || url.protocol === 'data:' || url.protocol === 'blob:'
-      ? route.continue()
-      : route.abort();
+    if (url.origin === origin || url.protocol === 'data:' || url.protocol === 'blob:')
+      return route.continue();
+    external.push(url.href);
+    return route.abort();
   });
   await page.goto(`${server.url}/render?map=${encodeURIComponent(map)}`);
   await page.waitForFunction(
@@ -41,6 +50,39 @@ async function openRender(browser: Browser, server: MapeditServer, map: string):
 
 const render = (page: Page, spec: RenderSpec) =>
   page.evaluate((value) => (window as unknown as RenderWindow).mapeditRender(value), spec);
+
+/**
+ * Pixels close to flag red (violations) and chalk-line blue (highlights), and
+ * the number of distinct colors in steps of 16: a blank image has one. With
+ * `region` ([x, y, width, height]), only that part of the image counts.
+ */
+const imageStats = (page: Page, dataUrl: string, region?: [number, number, number, number]) =>
+  page.evaluate(
+    async ({ url, region }) => {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const g = canvas.getContext('2d')!;
+      g.drawImage(image, 0, 0);
+      const [x, y, width, height] = region ?? [0, 0, image.width, image.height];
+      const data = g.getImageData(x, y, width, height).data;
+      const near = (i: number, r: number, gr: number, b: number) =>
+        Math.abs(data[i]! - r) + Math.abs(data[i + 1]! - gr) + Math.abs(data[i + 2]! - b) < 90;
+      const colors = new Set<number>();
+      let flag = 0;
+      let chalkline = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (near(i, 224, 65, 47)) flag++;
+        if (near(i, 43, 95, 217)) chalkline++;
+        colors.add(((data[i]! >> 4) << 8) | ((data[i + 1]! >> 4) << 4) | (data[i + 2]! >> 4));
+      }
+      return { flag, chalkline, colors: colors.size };
+    },
+    { url: dataUrl, region },
+  );
 
 /** RGBA at a pixel of a rendered montage, read back inside the page. */
 const pixel = (page: Page, dataUrl: string, x: number, y: number) =>
@@ -120,8 +162,17 @@ describe.skipIf(!executable)('the /render page', () => {
       showViolations: false,
       highlight: ['structure:overlap_a'],
     });
-    expect(marked).not.toBe(plain);
-    expect(highlighted).not.toBe(plain);
+    const stats = {
+      plain: await imageStats(page, plain),
+      marked: await imageStats(page, marked),
+      highlighted: await imageStats(page, highlighted),
+    };
+    // Violations add flag-red outlines, glass and flags; the top view's north arrow is red too.
+    expect(stats.marked.flag).toBeGreaterThan(stats.plain.flag + 1000);
+    // A highlight is a chalk-line blue outline and shows no violations.
+    expect(stats.plain.chalkline).toBe(0);
+    expect(stats.highlighted.chalkline).toBeGreaterThan(200);
+    expect(stats.highlighted.flag).toBeLessThan(stats.plain.flag + 30);
   });
 
   it('waits for minRevision before drawing', async () => {
@@ -149,6 +200,11 @@ describe.skipIf(!executable)('the /render page', () => {
     );
     await missing.close();
   });
+
+  it('asks nothing of other sites and reports no page or console errors', () => {
+    expect(externalRequests.get(page)).toEqual([]);
+    expect(pageErrors(page)).toEqual([]);
+  });
 });
 
 describe.skipIf(!executable)('MCP screenshots from a real project', () => {
@@ -156,9 +212,14 @@ describe.skipIf(!executable)('MCP screenshots from a real project', () => {
   let root: string;
   let server: MapeditServer;
   let client: Client;
+  let browser: Browser;
+  /** A blank page that decodes the returned images. */
+  let decoder: Page;
 
   beforeAll(async () => {
     web = await buildWeb();
+    browser = await launch(executable!);
+    decoder = await browser.newPage();
     root = await mkdtemp(join(tmpdir(), 'mapedit-render-'));
     await cp(template, root, { recursive: true });
     server = await createServer({ root, port: 0, webRoot: web.dir });
@@ -168,10 +229,20 @@ describe.skipIf(!executable)('MCP screenshots from a real project', () => {
 
   afterAll(async () => {
     await client?.close();
+    await browser?.close();
     await server?.close();
     await web?.dispose();
     if (root) await rm(root, { recursive: true, force: true });
   });
+
+  /**
+   * Distinct colors in the middle of the first tile, away from the view label
+   * and north arrow that are drawn even when the 3D view is blank.
+   */
+  const drawnColors = async (png: Buffer, tile: number) => {
+    const url = `data:image/png;base64,${png.toString('base64')}`;
+    return (await imageStats(decoder, url, [tile / 4, tile / 4, tile / 2, tile / 2])).colors;
+  };
 
   const image = (result: Awaited<ReturnType<Client['callTool']>>) => {
     expect(result.isError).toBeFalsy();
@@ -188,6 +259,7 @@ describe.skipIf(!executable)('MCP screenshots from a real project', () => {
     );
     expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
     expect(pngSize(png)).toEqual([768, 512]);
+    expect(await drawnColors(png, 256)).toBeGreaterThan(8);
   }, 60_000);
 
   it('frames one structure and returns the chosen views', async () => {
@@ -198,6 +270,7 @@ describe.skipIf(!executable)('MCP screenshots from a real project', () => {
       }),
     );
     expect(pngSize(png)).toEqual([256, 128]);
+    expect(await drawnColors(png, 128)).toBeGreaterThan(8);
   }, 60_000);
 
   it('previews a single module for build_module', async () => {
@@ -205,6 +278,8 @@ describe.skipIf(!executable)('MCP screenshots from a real project', () => {
       name: 'build_module',
       arguments: { module: 'wall_door' },
     });
-    expect(pngSize(image(result))).toEqual([768, 512]);
+    const png = image(result);
+    expect(pngSize(png)).toEqual([768, 512]);
+    expect(await drawnColors(png, 256)).toBeGreaterThan(8);
   }, 60_000);
 });

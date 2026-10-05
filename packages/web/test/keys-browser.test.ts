@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Browser, Page } from 'playwright-core';
 import { createServer, type MapeditServer } from '@mapedit/server';
-import { buildWeb, findBrowser, launch, openEditor } from './browser/harness.js';
+import { buildWeb, findBrowser, launch, openEditor, pageErrors } from './browser/harness.js';
 
 const executable = await findBrowser();
 
@@ -66,5 +66,9 @@ describe.skipIf(!executable)('editor keyboard shortcuts in a real browser', () =
     expect(await press([{ key: 'Z', code: 'KeyW', ctrlKey: true, shiftKey: true }])).toEqual([
       'redo',
     ]);
+  });
+
+  it('reports no page or console errors', () => {
+    expect(pageErrors(page)).toEqual([]);
   });
 });
