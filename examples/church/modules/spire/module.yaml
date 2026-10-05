@@ -1,4 +1,4 @@
 id: spire
-name: Octagonal Spire
-size: [8, 14, 8]
+name: Tower Spire
+size: [9, 18, 9]
 material: white

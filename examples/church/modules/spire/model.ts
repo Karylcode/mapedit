@@ -12,24 +12,25 @@ const ccw = (points: Point[]): Point[] => {
   return area > 0 ? points : [...points].reverse();
 };
 
-// Crowns the bell tower: an octagonal spire with a cross, and a pinnacle on each corner pilaster.
+// An octagonal spire with a pinnacle on each corner of the tower. The cross faces west,
+// toward the main door, so it reads as a cross from the front of the church.
 const spire = translate(
   rotate(
     revolve(
       ccw([
         [0, 0],
-        [3.5, 0],
-        [0, 12.5],
+        [4, 0],
+        [0, 15.5],
       ]),
       8,
     ),
     [0, 22.5, 0],
   ),
-  [4, 0, 4],
+  [4.5, 0, 4.5],
 );
 const cross = union(
-  translate(box([0.2, 1.5, 0.2]), [3.9, 12.3, 3.9]),
-  translate(box([0.9, 0.2, 0.2]), [3.55, 13.1, 3.9]),
+  translate(box([0.3, 2.5, 0.3]), [4.35, 15.2, 4.35]),
+  translate(box([0.3, 0.3, 1.4]), [4.35, 16.6, 3.8]),
 );
 const pinnacle = (x: number, z: number) =>
   translate(
@@ -37,11 +38,11 @@ const pinnacle = (x: number, z: number) =>
       ccw([
         [0, 0],
         [0.75, 0],
-        [0, 3],
+        [0, 3.5],
       ]),
       4,
     ),
     [x, 0, z],
   );
-const pinnacles = [0.75, 7.25].flatMap((x) => [0.75, 7.25].map((z) => pinnacle(x, z)));
+const pinnacles = [0.75, 8.25].flatMap((x) => [0.75, 8.25].map((z) => pinnacle(x, z)));
 export default material('white', union(spire, cross, ...pinnacles));

@@ -1,4 +1,4 @@
-import { extrude, material, rotate, translate } from '@mapedit/model';
+import { extrude, material, rotate, translate, union } from '@mapedit/model';
 
 type Point = [number, number];
 
@@ -32,15 +32,21 @@ const slabXY = (outline: Point[], depth: number) =>
 const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
-// A steep roof bay over the nave walls, overhanging each by 0.5 m.
-export default material(
-  'white',
-  slabZY(
-    [
-      [0, 0],
-      [13, 0],
-      [6.5, 10],
-    ],
-    6,
-  ),
-);
+// A pier outside the aisle wall, crowned by a pinnacle, with a flyer leaning over the
+// aisle roof onto the nave wall. Local z = 0 is the nave wall's outer face.
+const pier: Point[] = [
+  [6, 0],
+  [8, 0],
+  [8, 8],
+  [7.4, 9],
+  [7.4, 12.5],
+  [6.7, 16],
+  [6, 12.5],
+];
+const flyer: Point[] = [
+  [0, 16],
+  [6, 11],
+  [6, 12.2],
+  [0, 17.2],
+];
+export default material('white', union(slabZY(pier, 1), slabZY(flyer, 1)));

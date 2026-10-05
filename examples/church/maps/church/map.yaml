@@ -1,4 +1,4 @@
 id: church
 name: Grey Church
 size: { x: 100, z: 100 }
-sun: { azimuth: 150, elevation: 40 }
+sun: { azimuth: 235, elevation: 40 }

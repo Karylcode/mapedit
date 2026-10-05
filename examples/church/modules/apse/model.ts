@@ -33,7 +33,7 @@ const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
 // The rounded east end of the nave: half of a regular octagon with an apothem of 6 m,
-// open to the west, with a lancet window in each of its three outer faces.
+// open to the west, with a tall lancet in each of its three outer faces.
 const side = (apothem: number) => apothem * Math.tan(Math.PI / 8);
 const outer: Point[] = [
   [0, 0],
@@ -51,9 +51,9 @@ const inner: Point[] = [
   [side(5), 11],
   [-1, 11],
 ];
-const walls = difference(extrude(ccw(outer), 10), translate(extrude(ccw(inner), 12), [0, -1, 0]));
-const lancet = translate(slabXY(arch(1.4, 3.5), 3), [-0.7, 3, -1.5]);
-// A lancet centred on the origin, turned so it crosses the face whose outward normal is at `angle`.
+const walls = difference(extrude(ccw(outer), 20), translate(extrude(ccw(inner), 22), [0, -1, 0]));
+const lancet = translate(slabXY(arch(1.6, 8), 3), [-0.8, 4, -1.5]);
+// The lancet turned so it crosses the face whose outward normal is at `angle`.
 const window = (angle: number, x: number, z: number) =>
   translate(rotate(lancet, [0, angle, 0]), [x, 0, z]);
 const mid = (6 + side(6)) / 2;

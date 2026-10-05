@@ -1,6 +1,6 @@
 structures:
   - { id: tree_nw, position: [16, 26], modules: [{ id: tree, module: tree, at: [0, 0, 0] }] }
   - { id: tree_ne, position: [78, 28], modules: [{ id: tree, module: tree, at: [0, 0, 0] }] }
-  - { id: tree_sw, position: [18, 70], modules: [{ id: tree, module: tree, at: [0, 0, 0] }] }
-  - { id: tree_se, position: [82, 74], modules: [{ id: tree, module: tree, at: [0, 0, 0] }] }
-  - { id: tree_s, position: [26, 80], modules: [{ id: tree, module: tree, at: [0, 0, 0] }] }
+  - { id: tree_sw, position: [14, 70], modules: [{ id: tree, module: tree, at: [0, 0, 0] }] }
+  - { id: tree_se, position: [84, 76], modules: [{ id: tree, module: tree, at: [0, 0, 0] }] }
+  - { id: tree_s, position: [26, 84], modules: [{ id: tree, module: tree, at: [0, 0, 0] }] }

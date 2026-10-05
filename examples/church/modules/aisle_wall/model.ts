@@ -1,4 +1,4 @@
-import { extrude, material, rotate, translate } from '@mapedit/model';
+import { box, difference, extrude, material, rotate, translate } from '@mapedit/model';
 
 type Point = [number, number];
 
@@ -32,13 +32,7 @@ const slabXY = (outline: Point[], depth: number) =>
 const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
-// Leans against a wall at local z = 0 and steps back twice on its way up.
-const profile: Point[] = [
-  [0, 0],
-  [2, 0],
-  [2, 4.5],
-  [1.25, 5.5],
-  [1.25, 8],
-  [0, 9.5],
-];
-export default material('white', slabZY(profile, 1));
+// One bay of the low outer aisle wall with a lancet window.
+const window = translate(slabXY(arch(2, 2.5), 3), [2, 2, -1]);
+const recess = (z: number) => translate(slabXY(arch(2.6, 2.5), 0.4), [1.7, 1.8, z]);
+export default material('white', difference(box([6, 8, 1]), window, recess(-0.2), recess(0.8)));

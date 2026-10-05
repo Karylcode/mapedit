@@ -1,4 +1,4 @@
 id: nave_wall
-name: Nave Wall Bay 5m
-size: [5, 10, 1]
+name: Nave Wall Bay
+size: [6, 20, 1]
 material: white

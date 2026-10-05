@@ -1,4 +1,13 @@
-import { difference, extrude, material, rotate, translate } from '@mapedit/model';
+import {
+  box,
+  cylinder,
+  difference,
+  extrude,
+  material,
+  rotate,
+  translate,
+  union,
+} from '@mapedit/model';
 
 type Point = [number, number];
 
@@ -32,14 +41,33 @@ const slabXY = (outline: Point[], depth: number) =>
 const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
-// The nave's west end: a gable with a door behind the tower and two narrow lancets beside it.
+// The main front between the towers: a stepped pointed portal, a rose window with
+// tracery, a lancet in the gable and a cross on the apex facing west.
 const gable: Point[] = [
   [0, 0],
   [12, 0],
-  [12, 10],
-  [6, 17],
-  [0, 10],
+  [12, 20],
+  [6, 30],
+  [0, 20],
 ];
-const door = translate(slabZY(arch(3, 3.5), 3), [-1, 0, 4.5]);
-const lancet = (z: number) => translate(slabZY(arch(0.8, 2.3), 3), [-1, 4, z]);
-export default material('white', difference(slabZY(gable, 1), door, lancet(0.6), lancet(10.6)));
+/** A disc facing west, `depth` thick from x = 0, centred on y = 0, z = 0. */
+const disc = (radius: number, depth: number) =>
+  translate(rotate(cylinder(radius, depth, 32), [0, 0, 90]), [depth, 0, 0]);
+const portal = [
+  translate(slabZY(arch(4, 4.5), 4), [-1, 0, 4]),
+  translate(slabZY(arch(5.2, 4.3), 0.9), [-0.1, 0, 3.4]),
+  translate(slabZY(arch(6.4, 4.1), 0.5), [-0.1, 0, 2.8]),
+];
+const rose = [translate(disc(3, 0.6), [-0.1, 15, 6]), translate(disc(2.2, 4), [-1, 15, 6])];
+const lancet = translate(slabZY(arch(1, 2), 4), [-1, 22, 5.5]);
+const bar = (angle: number) =>
+  translate(rotate(translate(box([0.4, 4.4, 0.3]), [0, -2.2, -0.15]), [angle, 0, 0]), [0.8, 15, 6]);
+const tracery = [0, 45, 90, 135].map(bar);
+const cross = union(
+  translate(box([0.3, 3.2, 0.3]), [0.85, 29.7, 5.85]),
+  translate(box([0.3, 0.3, 1.6]), [0.85, 31.6, 5.2]),
+);
+export default material(
+  'white',
+  union(difference(slabZY(gable, 2), ...portal, ...rose, lancet), ...tracery, cross),
+);

@@ -1,46 +1,83 @@
-# A gothic church, nave running west to east: bell tower and spire at the west end,
-# five nave bays with buttresses between them, and a half-octagon apse at the east end.
+# A gothic church, west front to the west: two towers with spires around the portal,
+# a tall nave with clerestory windows over two lower aisles, flying buttresses, and a
+# half-octagon apse at the east end.
 structures:
   - id: church
     name: Grey Church
-    position: [26, 38]
+    position: [24, 34]
     rotation: 0
     modules:
-      - { id: tower, module: bell_tower, at: [4, 0, 5] }
-      - { id: spire, module: spire, at: [4, 22, 5] }
-      - { id: facade, module: west_facade, at: [12, 0, 3] }
+      # West front: two towers with spires and the portal between them.
+      - { id: tower_n, module: tower, at: [0, 0, 0] }
+      - { id: tower_s, module: tower, at: [0, 0, 21], rotation: 90 }
+      - { id: spire_n, module: spire, at: [0, 32, 0] }
+      - { id: spire_s, module: spire, at: [0, 32, 21] }
+      - { id: front, module: west_front, at: [0, 0, 9] }
+      - { id: west_wall_n, module: west_bay_wall, at: [2, 0, 9] }
+      - { id: west_wall_s, module: west_bay_wall, at: [2, 0, 20] }
+      - { id: west_roof, module: west_roof, at: [2, 20, 9] }
 
-      - { id: wall_n1, module: nave_wall, at: [13, 0, 3] }
-      - { id: wall_n2, module: nave_wall, at: [18, 0, 3] }
-      - { id: wall_n3, module: nave_wall, at: [23, 0, 3] }
-      - { id: wall_n4, module: nave_wall, at: [28, 0, 3] }
-      - { id: wall_n5, module: nave_wall, at: [33, 0, 3] }
-      - { id: wall_s1, module: nave_wall, at: [13, 0, 14] }
-      - { id: wall_s2, module: nave_wall, at: [18, 0, 14] }
-      - { id: wall_s3, module: nave_wall, at: [23, 0, 14] }
-      - { id: wall_s4, module: nave_wall, at: [28, 0, 14] }
-      - { id: wall_s5, module: nave_wall, at: [33, 0, 14] }
+      # Six bays of nave, aisles and lean-to roofs. South-side pieces are turned around.
+      - { id: nave_n1, module: nave_wall, at: [9, 0, 9] }
+      - { id: nave_s1, module: nave_wall, at: [9, 0, 20] }
+      - { id: roof_1, module: nave_roof, at: [9, 20, 8.5] }
+      - { id: aisle_n1, module: aisle_wall, at: [9, 0, 3] }
+      - { id: aisle_s1, module: aisle_wall, at: [9, 0, 26] }
+      - { id: aisle_roof_n1, module: aisle_roof, at: [9, 8, 3] }
+      - { id: aisle_roof_s1, module: aisle_roof, at: [9, 8, 21], rotation: 180 }
+      - { id: nave_n2, module: nave_wall, at: [15, 0, 9] }
+      - { id: nave_s2, module: nave_wall, at: [15, 0, 20] }
+      - { id: roof_2, module: nave_roof, at: [15, 20, 8.5] }
+      - { id: aisle_n2, module: aisle_wall, at: [15, 0, 3] }
+      - { id: aisle_s2, module: aisle_wall, at: [15, 0, 26] }
+      - { id: aisle_roof_n2, module: aisle_roof, at: [15, 8, 3] }
+      - { id: aisle_roof_s2, module: aisle_roof, at: [15, 8, 21], rotation: 180 }
+      - { id: nave_n3, module: nave_wall, at: [21, 0, 9] }
+      - { id: nave_s3, module: nave_wall, at: [21, 0, 20] }
+      - { id: roof_3, module: nave_roof, at: [21, 20, 8.5] }
+      - { id: aisle_n3, module: aisle_wall, at: [21, 0, 3] }
+      - { id: aisle_s3, module: aisle_wall, at: [21, 0, 26] }
+      - { id: aisle_roof_n3, module: aisle_roof, at: [21, 8, 3] }
+      - { id: aisle_roof_s3, module: aisle_roof, at: [21, 8, 21], rotation: 180 }
+      - { id: nave_n4, module: nave_wall, at: [27, 0, 9] }
+      - { id: nave_s4, module: nave_wall, at: [27, 0, 20] }
+      - { id: roof_4, module: nave_roof, at: [27, 20, 8.5] }
+      - { id: aisle_n4, module: aisle_wall, at: [27, 0, 3] }
+      - { id: aisle_s4, module: aisle_wall, at: [27, 0, 26] }
+      - { id: aisle_roof_n4, module: aisle_roof, at: [27, 8, 3] }
+      - { id: aisle_roof_s4, module: aisle_roof, at: [27, 8, 21], rotation: 180 }
+      - { id: nave_n5, module: nave_wall, at: [33, 0, 9] }
+      - { id: nave_s5, module: nave_wall, at: [33, 0, 20] }
+      - { id: roof_5, module: nave_roof, at: [33, 20, 8.5] }
+      - { id: aisle_n5, module: aisle_wall, at: [33, 0, 3] }
+      - { id: aisle_s5, module: aisle_wall, at: [33, 0, 26] }
+      - { id: aisle_roof_n5, module: aisle_roof, at: [33, 8, 3] }
+      - { id: aisle_roof_s5, module: aisle_roof, at: [33, 8, 21], rotation: 180 }
+      - { id: nave_n6, module: nave_wall, at: [39, 0, 9] }
+      - { id: nave_s6, module: nave_wall, at: [39, 0, 20] }
+      - { id: roof_6, module: nave_roof, at: [39, 20, 8.5] }
+      - { id: aisle_n6, module: aisle_wall, at: [39, 0, 3] }
+      - { id: aisle_s6, module: aisle_wall, at: [39, 0, 26] }
+      - { id: aisle_roof_n6, module: aisle_roof, at: [39, 8, 3] }
+      - { id: aisle_roof_s6, module: aisle_roof, at: [39, 8, 21], rotation: 180 }
 
-      - { id: roof_1, module: nave_roof, at: [13, 10, 2.5] }
-      - { id: roof_2, module: nave_roof, at: [18, 10, 2.5] }
-      - { id: roof_3, module: nave_roof, at: [23, 10, 2.5] }
-      - { id: roof_4, module: nave_roof, at: [28, 10, 2.5] }
-      - { id: roof_5, module: nave_roof, at: [33, 10, 2.5] }
+      # Flying buttresses at the bay joints.
+      - { id: flyer_n1, module: flying_buttress, at: [14.5, 0, 1], rotation: 180 }
+      - { id: flyer_s1, module: flying_buttress, at: [14.5, 0, 21] }
+      - { id: flyer_n2, module: flying_buttress, at: [20.5, 0, 1], rotation: 180 }
+      - { id: flyer_s2, module: flying_buttress, at: [20.5, 0, 21] }
+      - { id: flyer_n3, module: flying_buttress, at: [26.5, 0, 1], rotation: 180 }
+      - { id: flyer_s3, module: flying_buttress, at: [26.5, 0, 21] }
+      - { id: flyer_n4, module: flying_buttress, at: [32.5, 0, 1], rotation: 180 }
+      - { id: flyer_s4, module: flying_buttress, at: [32.5, 0, 21] }
+      - { id: flyer_n5, module: flying_buttress, at: [38.5, 0, 1], rotation: 180 }
+      - { id: flyer_s5, module: flying_buttress, at: [38.5, 0, 21] }
+      - { id: flyer_n6, module: flying_buttress, at: [44.5, 0, 1], rotation: 180 }
+      - { id: flyer_s6, module: flying_buttress, at: [44.5, 0, 21] }
 
-      # North buttresses are turned around so their wall side faces south.
-      - { id: buttress_n1, module: buttress, at: [12.5, 0, 1], rotation: 180 }
-      - { id: buttress_n2, module: buttress, at: [17.5, 0, 1], rotation: 180 }
-      - { id: buttress_n3, module: buttress, at: [22.5, 0, 1], rotation: 180 }
-      - { id: buttress_n4, module: buttress, at: [27.5, 0, 1], rotation: 180 }
-      - { id: buttress_n5, module: buttress, at: [32.5, 0, 1], rotation: 180 }
-      - { id: buttress_n6, module: buttress, at: [37.5, 0, 1], rotation: 180 }
-      - { id: buttress_s1, module: buttress, at: [12.5, 0, 15] }
-      - { id: buttress_s2, module: buttress, at: [17.5, 0, 15] }
-      - { id: buttress_s3, module: buttress, at: [22.5, 0, 15] }
-      - { id: buttress_s4, module: buttress, at: [27.5, 0, 15] }
-      - { id: buttress_s5, module: buttress, at: [32.5, 0, 15] }
-      - { id: buttress_s6, module: buttress, at: [37.5, 0, 15] }
-
-      - { id: apse, module: apse, at: [38, 0, 3] }
-      - { id: apse_roof, module: apse_roof, at: [38, 10, 3] }
-      - { id: altar, module: altar, at: [39.5, 0, 7.5], rotation: 90 }
+      # East end.
+      - { id: aisle_end_n, module: aisle_end, at: [45, 0, 3] }
+      - { id: aisle_end_s, module: aisle_end, at: [45, 0, 21], rotation: 180 }
+      - { id: apse, module: apse, at: [45, 0, 9] }
+      - { id: apse_roof, module: apse_roof, at: [45, 20, 9] }
+      - { id: altar, module: altar, at: [46.5, 0, 13.5], rotation: 90 }

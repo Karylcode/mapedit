@@ -32,15 +32,15 @@ const slabXY = (outline: Point[], depth: number) =>
 const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
-// A steep roof bay over the nave walls, overhanging each by 0.5 m.
+// The roof between the two towers: no overhang, so it fits between them exactly.
 export default material(
   'white',
   slabZY(
     [
       [0, 0],
-      [13, 0],
-      [6.5, 10],
+      [12, 0],
+      [6, 10],
     ],
-    6,
+    7,
   ),
 );

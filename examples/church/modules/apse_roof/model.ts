@@ -13,16 +13,15 @@ const ccw = (points: Point[]): Point[] => {
 };
 
 // Half of an octagonal pyramid over the apse; its apex meets the nave ridge.
-const apothem = 6;
 const cone = revolve(
   ccw([
     [0, 0],
-    [apothem / Math.cos(Math.PI / 8), 0],
-    [0, 7],
+    [6 / Math.cos(Math.PI / 8), 0],
+    [0, 10],
   ]),
   8,
 );
 export default material(
   'white',
-  intersection(translate(rotate(cone, [0, 22.5, 0]), [0, 0, 6]), box([6, 7, 12])),
+  intersection(translate(rotate(cone, [0, 22.5, 0]), [0, 0, 6]), box([6, 10, 12])),
 );

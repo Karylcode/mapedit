@@ -32,15 +32,16 @@ const slabXY = (outline: Point[], depth: number) =>
 const slabZY = (outline: Point[], depth: number) =>
   translate(rotate(slabXY(outline, depth), [0, -90, 0]), [depth, 0, 0]);
 
-// A steep roof bay over the nave walls, overhanging each by 0.5 m.
+// Closes the east end of an aisle, following the slope of its lean-to roof.
 export default material(
   'white',
   slabZY(
     [
       [0, 0],
-      [13, 0],
-      [6.5, 10],
+      [6, 0],
+      [6, 11.5],
+      [0, 8.5],
     ],
-    6,
+    1,
   ),
 );
