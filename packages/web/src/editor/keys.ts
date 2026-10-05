@@ -10,7 +10,7 @@ export interface KeyPress {
 }
 
 export type Shortcut =
-  | { action: 'undo' | 'redo' | 'delete' | 'focus' | 'escape' }
+  | { action: 'undo' | 'redo' | 'delete' | 'focus' | 'escape' | 'firstPerson' }
   | { action: 'rotate'; direction: 1 | -1 }
   /** Swallowed without acting, such as a held key that must not repeat. */
   | { action: 'none' };
@@ -50,5 +50,6 @@ export function shortcutFor(press: KeyPress, dragging: boolean): Shortcut | unde
   if (press.key === 'Delete' || press.key === 'Backspace')
     return { action: press.repeat ? 'none' : 'delete' };
   if (letter === 'f') return { action: press.repeat ? 'none' : 'focus' };
+  if (letter === 'v') return { action: press.repeat ? 'none' : 'firstPerson' };
   return undefined;
 }

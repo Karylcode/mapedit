@@ -85,6 +85,7 @@ describe('object descriptions', () => {
       'action.pan',
       'action.zoom',
       'action.wholeMap',
+      'action.firstPerson',
     ]);
     expect(hintsFor('structure:house', index).map((h) => h.action)).toEqual([
       'action.move',

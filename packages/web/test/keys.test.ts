@@ -34,6 +34,12 @@ describe('shortcutFor', () => {
       direction: -1,
     });
     expect(shortcutFor(press({ key: 'f', code: 'KeyF' }), false)).toEqual({ action: 'focus' });
+    expect(shortcutFor(press({ key: 'v', code: 'KeyV' }), false)).toEqual({
+      action: 'firstPerson',
+    });
+    expect(shortcutFor(press({ key: 'v', code: 'KeyV', repeat: true }), false)).toEqual({
+      action: 'none',
+    });
   });
 
   it('falls back to the key position on keyboards without Latin letters (FE27)', () => {

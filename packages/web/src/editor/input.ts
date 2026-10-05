@@ -18,6 +18,21 @@ const PAN_KEYS: Record<string, [forward: number, right: number]> = {
   ArrowRight: [0, 1],
 };
 
+/** First-person flight keys, by key position: forward, right and up. */
+const FLY_KEYS: Record<string, [forward: number, right: number, up: number]> = {
+  KeyW: [1, 0, 0],
+  ArrowUp: [1, 0, 0],
+  KeyS: [-1, 0, 0],
+  ArrowDown: [-1, 0, 0],
+  KeyA: [0, -1, 0],
+  ArrowLeft: [0, -1, 0],
+  KeyD: [0, 1, 0],
+  ArrowRight: [0, 1, 0],
+  Space: [0, 0, 1],
+  ShiftLeft: [0, 0, -1],
+  ShiftRight: [0, 0, -1],
+};
+
 /** What the input layer asks the editor to do. */
 export interface InputActions {
   /** A click (not a drag) on an object or on empty ground. */
@@ -34,6 +49,8 @@ export interface InputActions {
   dragCancel?(): void;
   /** A key press that is not camera movement; return true when handled. */
   key(event: KeyboardEvent): boolean;
+  /** First-person mode started or ended. */
+  modeChanged?(firstPerson: boolean): void;
 }
 
 /** A page position, in CSS pixels. */
@@ -56,9 +73,16 @@ export function typingInto(target: EventTarget | null): boolean {
   return element.isContentEditable || element.closest('input, textarea, select') !== null;
 }
 
-/** Pointer, wheel and keyboard handling for the overview mode. */
+/**
+ * Pointer, wheel and keyboard handling for the overview mode, and for
+ * first-person mode, where the mouse turns the view and the keys fly.
+ */
 export class OverviewInput {
   private gesture?: Gesture;
+  /** Whether the canvas holds the pointer lock of first-person mode. */
+  private locked = false;
+  /** First-person mode without the pointer lock: a held button drags the view around. */
+  private look?: { id: number; x: number; y: number };
   private readonly keys = new Set<string>();
   private readonly raycaster = new Raycaster();
   /** Last pointer position over the map, and whether the hover pick is stale. */
@@ -92,6 +116,7 @@ export class OverviewInput {
       this.keys.clear();
       if (this.gesture) this.interrupt(this.gesture.id);
     });
+    document.addEventListener('pointerlockchange', () => this.lockChanged());
     viewport.addTask((seconds) => this.frame(seconds));
   }
 
@@ -121,6 +146,62 @@ export class OverviewInput {
     return this.gesture?.kind === 'drag';
   }
 
+  get firstPerson(): boolean {
+    return this.viewport.mode === 'firstPerson';
+  }
+
+  /** Fly from where the overview camera is, facing the same way, and capture the mouse. */
+  enterFirstPerson(): void {
+    if (this.firstPerson) return;
+    if (this.gesture) this.interrupt(this.gesture.id);
+    this.controls.stop();
+    this.keys.clear();
+    const { firstPerson, overview } = this.viewport;
+    const scene = this.map.scene;
+    if (scene) firstPerson.setMap(scene.map.size);
+    firstPerson.fromOverview(overview);
+    this.viewport.mode = 'firstPerson';
+    this.hoverPointer = undefined;
+    this.actions.hover(undefined, 0, 0);
+    this.actions.modeChanged?.(true);
+    this.capture();
+    this.viewport.invalidate();
+  }
+
+  /** Back to the overview, above where the eye was and facing the same way. */
+  leaveFirstPerson(): void {
+    if (!this.firstPerson) return;
+    this.look = undefined;
+    this.keys.clear();
+    this.viewport.firstPerson.toOverview(this.viewport.overview);
+    this.controls.followTerrain();
+    this.viewport.mode = 'overview';
+    this.locked = false;
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+    this.actions.modeChanged?.(false);
+    this.hoverStale = true;
+    this.viewport.invalidate();
+  }
+
+  /** Hide the cursor so the mouse turns the view; without it, dragging does. */
+  private capture(): void {
+    try {
+      // Newer browsers return a promise that rejects when the lock is refused.
+      const request = this.canvas.requestPointerLock() as unknown;
+      if (request instanceof Promise) request.catch(() => undefined);
+    } catch {
+      // No pointer lock here: dragging turns the view instead.
+    }
+  }
+
+  private lockChanged(): void {
+    const locked = document.pointerLockElement === this.canvas;
+    const lost = this.locked && !locked;
+    this.locked = locked;
+    // Escape releases the mouse before the page sees the key: that ends first-person mode.
+    if (lost) this.leaveFirstPerson();
+  }
+
   /** Abandon the current gesture, for example when Escape cancels a drag. */
   cancelGesture(): void {
     this.gesture = undefined;
@@ -129,6 +210,7 @@ export class OverviewInput {
 
   /** The gesture ended without a drop: a drag in progress is called off, nothing is applied. */
   private interrupt(pointerId: number): void {
+    if (this.look?.id === pointerId) this.look = undefined;
     const gesture = this.gesture;
     if (!gesture || gesture.id !== pointerId) return;
     this.cancelGesture();
@@ -142,6 +224,18 @@ export class OverviewInput {
     if (this.gesture) return;
     // Keys go to the map after clicking it, even if the map menu had focus.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (this.firstPerson) {
+      // First-person mode only looks around: a click captures the mouse again.
+      if (this.locked || this.look) return;
+      this.capture();
+      this.look = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      try {
+        this.canvas.setPointerCapture(event.pointerId);
+      } catch {
+        // The pointer lock just took the pointer; it turns the view from here.
+      }
+      return;
+    }
     if (event.button === 0)
       this.gesture = {
         kind: 'press',
@@ -161,6 +255,17 @@ export class OverviewInput {
   }
 
   private pointerMove(event: PointerEvent): void {
+    if (this.firstPerson) {
+      const look = this.look;
+      if (this.locked) this.viewport.firstPerson.look(event.movementX, event.movementY);
+      else if (look?.id === event.pointerId) {
+        this.viewport.firstPerson.look(event.clientX - look.x, event.clientY - look.y);
+        look.x = event.clientX;
+        look.y = event.clientY;
+      } else return;
+      this.viewport.invalidate();
+      return;
+    }
     const gesture = this.gesture;
     this.hoverPointer = { x: event.clientX, y: event.clientY };
     if (!gesture) {
@@ -200,6 +305,12 @@ export class OverviewInput {
   }
 
   private pointerUp(event: PointerEvent): void {
+    if (this.look?.id === event.pointerId) {
+      this.look = undefined;
+      if (this.canvas.hasPointerCapture(event.pointerId))
+        this.canvas.releasePointerCapture(event.pointerId);
+      return;
+    }
     const gesture = this.gesture;
     if (!gesture || gesture.id !== event.pointerId) return;
     this.gesture = undefined;
@@ -219,6 +330,10 @@ export class OverviewInput {
   private wheel(event: WheelEvent): void {
     event.preventDefault();
     const lines = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1;
+    if (this.firstPerson) {
+      this.viewport.firstPerson.changeSpeed(event.deltaY * lines);
+      return;
+    }
     this.controls.zoomAt(this.pointer(event.clientX, event.clientY), event.deltaY * lines);
     this.hoverPointer = { x: event.clientX, y: event.clientY };
     this.hoverStale = true;
@@ -233,7 +348,7 @@ export class OverviewInput {
     }
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     // WASD and arrows are directions, so they follow key positions on any layout.
-    if (event.code in PAN_KEYS) {
+    if (event.code in (this.firstPerson ? FLY_KEYS : PAN_KEYS)) {
       this.keys.add(event.code);
       this.viewport.invalidate();
       event.preventDefault();
@@ -242,6 +357,7 @@ export class OverviewInput {
 
   /** Per frame: keyboard panning, camera flights and one hover pick at most. */
   private frame(seconds: number): boolean {
+    if (this.firstPerson) return this.fly(seconds);
     let forward = 0;
     let right = 0;
     for (const code of this.keys) {
@@ -258,5 +374,27 @@ export class OverviewInput {
       this.actions.hover(this.pick(pointer.x, pointer.y), pointer.x, pointer.y);
     }
     return panning || flying;
+  }
+
+  /** Per frame in first-person mode: fly while movement keys are held. */
+  private fly(seconds: number): boolean {
+    let forward = 0;
+    let right = 0;
+    let up = 0;
+    for (const code of this.keys) {
+      const [f, r, u] = FLY_KEYS[code] ?? [0, 0, 0];
+      forward += f;
+      right += r;
+      up += u;
+    }
+    if (forward || right || up)
+      this.viewport.firstPerson.move(
+        Math.sign(forward),
+        Math.sign(right),
+        Math.sign(up),
+        seconds,
+        (x, z) => this.map.heightAt(x, z),
+      );
+    return this.keys.size > 0;
   }
 }

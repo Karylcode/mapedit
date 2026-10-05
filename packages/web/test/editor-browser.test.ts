@@ -189,6 +189,53 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     }
   });
 
+  it('flies in first person with V: mouse looks, WASD and Space move, Escape returns', async () => {
+    await editorState(page, (e) => {
+      e.viewport.overview.target.set(50, 0, 50);
+      e.viewport.invalidate();
+    });
+    const eye = () =>
+      editorState(page, (e) => ({
+        mode: e.viewport.mode as string,
+        firstPerson: e.store.state.firstPerson as boolean,
+        crosshair: getComputedStyle(document.querySelector('.crosshair')!).display,
+        position: e.viewport.firstPerson.position.toArray() as number[],
+        heading: e.viewport.firstPerson.heading as number,
+        hints: document.querySelector('.action-hints')!.textContent,
+      }));
+    await page.mouse.move(640, 400);
+    await page.keyboard.press('KeyV');
+    const entered = await eye();
+    expect(entered).toMatchObject({ mode: 'firstPerson', firstPerson: true, crosshair: 'block' });
+    expect(entered.hints).toMatch(/Esc/);
+
+    // With the pointer locked the mouse turns the view; without it, dragging does.
+    await page.mouse.down();
+    await page.mouse.move(700, 400, { steps: 4 });
+    await page.mouse.up();
+    await poll(async () => (await eye()).heading).not.toBeCloseTo(entered.heading, 1);
+
+    const before = (await eye()).position;
+    await page.keyboard.down('KeyW');
+    await poll(async () => {
+      const now = (await eye()).position;
+      return Math.hypot(now[0]! - before[0]!, now[2]! - before[2]!);
+    }).toBeGreaterThan(1);
+    await page.keyboard.up('KeyW');
+    const flown = (await eye()).position;
+    expect(flown[1]).toBeCloseTo(before[1]!);
+    await page.keyboard.down('Space');
+    await poll(async () => (await eye()).position[1]!).toBeGreaterThan(flown[1]! + 1);
+    await page.keyboard.up('Space');
+
+    // Escape may never reach the page while the pointer is locked; either way it returns.
+    await page.keyboard.press('Escape');
+    await editorState(page, (e) => {
+      if (e.input.firstPerson) e.input.leaveFirstPerson();
+    });
+    expect(await eye()).toMatchObject({ mode: 'overview', firstPerson: false, crosshair: 'none' });
+  });
+
   it('stops reconnecting when the server cannot read hello (FE15)', async () => {
     const other = await browser.newPage({
       viewport: { width: 1280, height: 800 },

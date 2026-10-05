@@ -12,8 +12,26 @@ export interface Hint {
   action: MessageKey;
 }
 
-/** Hints for the current selection; with nothing selected, how to look around. */
-export function hintsFor(selection: string | undefined, index: SnapshotIndex | undefined): Hint[] {
+/** First-person mode: how to fly and how to get back. */
+const FLYING: Hint[] = [
+  { keys: ['key.mouse'], action: 'action.look' },
+  { keys: ['key.wasd'], action: 'action.fly' },
+  { keys: ['key.space'], action: 'action.rise' },
+  { keys: ['Shift'], action: 'action.sink' },
+  { keys: ['key.wheel'], action: 'action.flySpeed' },
+  { keys: ['Esc', 'V'], action: 'action.leaveFirstPerson' },
+];
+
+/**
+ * Hints for the current selection; with nothing selected, how to look around;
+ * in first-person mode, how to fly.
+ */
+export function hintsFor(
+  selection: string | undefined,
+  index: SnapshotIndex | undefined,
+  firstPerson = false,
+): Hint[] {
+  if (firstPerson) return FLYING;
   if (!selection || !index?.has(selection))
     return [
       { keys: ['key.click'], action: 'action.select' },
@@ -21,6 +39,7 @@ export function hintsFor(selection: string | undefined, index: SnapshotIndex | u
       { keys: ['key.middleDrag', 'key.wasd'], action: 'action.pan' },
       { keys: ['key.wheel'], action: 'action.zoom' },
       { keys: ['F'], action: 'action.wholeMap' },
+      { keys: ['V'], action: 'action.firstPerson' },
     ];
   const kind = parseObjectRef(selection)?.kind;
   const hints: Hint[] =
@@ -51,7 +70,7 @@ export class ActionBar {
   ) {
     this.element.append(this.tag, this.hints);
     store.subscribe((state, previous) => {
-      if (changed(state, previous, 'selection', 'lang', 'scene')) this.render(state);
+      if (changed(state, previous, 'selection', 'lang', 'scene', 'firstPerson')) this.render(state);
     });
     this.render(store.state);
   }
@@ -60,7 +79,9 @@ export class ActionBar {
     const t = translator(state.lang);
     const index = this.index();
     const description =
-      state.selection && index ? describeObject(state.selection, index, t) : undefined;
+      state.selection && index && !state.firstPerson
+        ? describeObject(state.selection, index, t)
+        : undefined;
     this.tag.hidden = !description;
     this.element.dataset.selected = String(Boolean(description));
     if (description)
@@ -70,7 +91,7 @@ export class ActionBar {
       );
     const label = (key: string) => (key.startsWith('key.') ? t(key as MessageKey) : key);
     this.hints.replaceChildren(
-      ...hintsFor(state.selection, index).map((hint) =>
+      ...hintsFor(state.selection, index, state.firstPerson).map((hint) =>
         h(
           'li',
           { class: 'action-hint' },
