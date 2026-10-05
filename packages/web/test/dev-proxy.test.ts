@@ -16,10 +16,11 @@ function send(
     method = 'GET',
     origin,
     upgrade = false,
-  }: { method?: string; origin?: string; upgrade?: boolean },
+    host = `127.0.0.1:${port}`,
+  }: { method?: string; origin?: string; upgrade?: boolean; host?: string },
 ): Promise<number> {
   return new Promise((resolve, reject) => {
-    const headers: Record<string, string> = { Host: `127.0.0.1:${port}` };
+    const headers: Record<string, string> = { Host: host };
     if (origin) headers.Origin = origin;
     if (upgrade)
       Object.assign(headers, {
@@ -48,18 +49,29 @@ describe('forwardedOrigin', () => {
   const backend = 'http://127.0.0.1:4790';
 
   it('presents the page this dev server serves as the backend', () => {
-    expect(forwardedOrigin('http://127.0.0.1:5173', '127.0.0.1:5173', backend)).toBe(backend);
-    expect(forwardedOrigin('http://localhost:5174', 'localhost:5174', backend)).toBe(backend);
+    expect(forwardedOrigin('http://127.0.0.1:5173', '127.0.0.1:5173', backend, 5173)).toBe(backend);
+    expect(forwardedOrigin('http://localhost:5174', 'localhost:5174', backend, 5174)).toBe(backend);
+    expect(forwardedOrigin('http://[::1]:5173', '[::1]:5173', backend, 5173)).toBe(backend);
+  });
+
+  it('trusts only loopback names on its own port, whatever DNS says (FE25)', () => {
+    // DNS rebinding: an attacker's name resolving to 127.0.0.1, so Origin and Host agree.
+    expect(
+      forwardedOrigin('http://rebind.example:5173', 'rebind.example:5173', backend, 5173),
+    ).toBe('http://rebind.example:5173');
+    expect(forwardedOrigin('http://127.0.0.1:5174', '127.0.0.1:5174', backend, 5173)).toBe(
+      'http://127.0.0.1:5174',
+    );
   });
 
   it('keeps every other origin, and adds none', () => {
-    expect(forwardedOrigin('http://evil.example', '127.0.0.1:5173', backend)).toBe(
+    expect(forwardedOrigin('http://evil.example', '127.0.0.1:5173', backend, 5173)).toBe(
       'http://evil.example',
     );
-    expect(forwardedOrigin('http://127.0.0.1:9999', '127.0.0.1:5173', backend)).toBe(
+    expect(forwardedOrigin('http://127.0.0.1:9999', '127.0.0.1:5173', backend, 5173)).toBe(
       'http://127.0.0.1:9999',
     );
-    expect(forwardedOrigin(undefined, '127.0.0.1:5173', backend)).toBeUndefined();
+    expect(forwardedOrigin(undefined, '127.0.0.1:5173', backend, 5173)).toBeUndefined();
   });
 });
 
@@ -100,5 +112,12 @@ describe('the Vite dev server proxy (W0, FE4)', () => {
     expect(await send(port, '/ws', { origin: other, upgrade: true })).toBe(403);
     expect(await send(port, '/api/mock/trigger', { method: 'POST', origin: other })).toBe(403);
     expect(await send(port, '/api/project', { origin: other })).toBe(403);
+  });
+
+  it('lets the backend refuse a page that reaches it through DNS rebinding (FE25)', async () => {
+    const host = `rebind.example:${port}`;
+    const origin = `http://${host}`;
+    expect(await send(port, '/ws', { host, origin, upgrade: true })).toBe(403);
+    expect(await send(port, '/api/mock/trigger', { method: 'POST', host, origin })).toBe(403);
   });
 });

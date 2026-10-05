@@ -407,6 +407,15 @@ CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一�
   - 放下被拒絕後，排隊的 `undo` 沒有送出，並出現提示。
   - 放下後按 Ctrl+Z，接著換地圖，舊的回覆之後才到；在新地圖拖另一個物件放下，它的回覆不會把舊的 `undo` 送出。
     修正前，這個 `undo` 會把新的這次放下復原掉。
+- **FE25 完成**（FE4 的後續）：Vite 開發代理只在這些條件都成立時，才把 `Origin` 改寫成後端的：
+  - `Origin` 等於 `http://<Host>`；
+  - 主機名稱是迴路位址（`127.0.0.1`、`localhost`、`[::1]`）；
+  - 連接埠就是開發伺服器收到這個請求的埠（`socket.localPort`）。
+
+  所以攻擊者用 DNS rebinding 讓自己的網域指向 127.0.0.1 時，雖然 Origin 和 Host 對得上，也不會被改寫，後端照樣拒絕。
+  測試：`test/dev-proxy.test.ts`，兩項修正前都失敗。
+  - `forwardedOrigin('http://rebind.example:5173', 'rebind.example:5173', …)` 不改寫。
+  - 實際對開發伺服器送 Host、Origin 都是 `rebind.example:<埠>` 的 WebSocket 升級，後端回 403。修正前回 101，連上了。
 
 ## 自行決定的事
 
