@@ -9,8 +9,8 @@ import {
   launch,
   lookDown,
   openEditor,
+  pressPoint,
   projectPoint,
-  screenPoint,
   poll,
   pageErrors,
 } from './browser/harness.js';
@@ -73,7 +73,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
 
   it('drags a structure with a live preview and applies it on drop', async () => {
     const before = (await placement(page, 'structure:house'))!;
-    const from = await screenPoint(page, 'module:house/base');
+    const from = await pressPoint(page, 'module:house/base');
     const to = await projectPoint(page, [before.x + 1 + 10, 0, before.z + 1 + 6]);
     await dragTo(page, from, to, async () => {
       // The backend answers the previews; wait for the one where the pointer stopped.
@@ -107,7 +107,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
 
   it('turns the preview red with a reason and leaves the object when the drop is rejected', async () => {
     const before = (await placement(page, 'structure:house'))!;
-    const from = await screenPoint(page, 'module:house/base');
+    const from = await pressPoint(page, 'module:house/base');
     const to = await projectPoint(page, [-8, 0, before.z + 1]);
     let during: { state?: string; note: boolean; text: string } | undefined;
     await dragTo(page, from, to, async () => {
@@ -135,7 +135,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
   it('rotates the selection 15 degrees with R', async () => {
     await page.keyboard.press('Escape');
     await page.mouse.click(
-      ...(Object.values(await screenPoint(page, 'module:house/base')) as [number, number]),
+      ...(Object.values(await pressPoint(page, 'module:house/base')) as [number, number]),
     );
     await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:house');
     await page.keyboard.press('r');
@@ -143,7 +143,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
   });
 
   it('rotates the dragged preview with R before dropping', async () => {
-    const from = await screenPoint(page, 'module:overlap_b/base');
+    const from = await pressPoint(page, 'module:overlap_b/base');
     const before = (await placement(page, 'structure:overlap_b'))!;
     const to = await projectPoint(page, [before.x + 1, 0, before.z + 12]);
     await dragTo(page, from, to, async () => {
@@ -161,7 +161,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
         e.store.state.scene.structures.some((s: { ref: string }) => s.ref === 'structure:socket_a'),
       );
     await page.mouse.click(
-      ...(Object.values(await screenPoint(page, 'module:socket_a/base')) as [number, number]),
+      ...(Object.values(await pressPoint(page, 'module:socket_a/base')) as [number, number]),
     );
     await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:socket_a');
     await page.keyboard.press('Delete');
@@ -181,7 +181,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
   });
 
   it('deletes a single module after a second click', async () => {
-    const point = await screenPoint(page, 'module:off_grid/base');
+    const point = await pressPoint(page, 'module:off_grid/base');
     await page.mouse.click(point.x, point.y);
     await page.mouse.click(point.x, point.y);
     await poll(() => editorState(page, (e) => e.store.state.selection)).toBe(
@@ -201,12 +201,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
 
   it('cancels a drag with Escape', async () => {
     const before = (await placement(page, 'structure:out_of_bounds'))!;
-    // On the map's east edge it sits under the change log; bring it to the middle.
-    await editorState(page, (e) => {
-      e.viewport.overview.target.set(90, 0, 15);
-      e.viewport.invalidate();
-    });
-    const from = await screenPoint(page, 'module:out_of_bounds/base');
+    const from = await pressPoint(page, 'module:out_of_bounds/base');
     const to = await projectPoint(page, [before.x - 10, 0, before.z + 10]);
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
@@ -223,13 +218,12 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     // Nothing is dropped: give a wrongly sent edit time to arrive, then check.
     await page.waitForTimeout(200);
     expect(await placement(page, 'structure:out_of_bounds')).toEqual(before);
-    await lookDown(page);
   });
 
   for (const interruption of ['pointercancel', 'lostpointercapture', 'blur'] as const)
     it(`drops a drag the browser interrupts with ${interruption} (FE8)`, async () => {
       const ghost = () => editorState(page, (e) => e.viewport.scene.getObjectByName('ghost')?.name);
-      const from = await screenPoint(page, 'module:house/base');
+      const from = await pressPoint(page, 'module:house/base');
       await page.mouse.move(from.x, from.y);
       await page.mouse.down();
       await page.mouse.move(from.x + 40, from.y + 30, { steps: 6 });
@@ -261,7 +255,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
 
   it('rotates the other way with Shift+R (FE21)', async () => {
     await page.keyboard.press('Escape');
-    const house = await screenPoint(page, 'module:house/base');
+    const house = await pressPoint(page, 'module:house/base');
     await page.mouse.click(house.x, house.y);
     await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:house');
     const before = (await placement(page, 'structure:house'))!.yaw;
@@ -278,7 +272,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
       editorState(page, (e) =>
         e.store.state.scene.structures.some((s: { ref: string }) => s.ref === 'structure:socket_b'),
       );
-    const socket = await screenPoint(page, 'module:socket_b/base');
+    const socket = await pressPoint(page, 'module:socket_b/base');
     await page.mouse.click(socket.x, socket.y);
     await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:socket_b');
     await page.keyboard.press('Backspace');
@@ -298,7 +292,7 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
       editor.connection.request = (message) => (sent.push(message), original(message));
     });
     const revision = () => editorState(page, (e) => e.store.state.revision as number);
-    const from = await screenPoint(page, 'module:house/base');
+    const from = await pressPoint(page, 'module:house/base');
     const to = await projectPoint(page, [60, 0, 60]);
     const started = await revision();
     await dragTo(page, from, to, async () => {

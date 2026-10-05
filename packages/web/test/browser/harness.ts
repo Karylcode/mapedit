@@ -163,6 +163,33 @@ export async function screenPoint(page: Page, ref: ObjectRef): Promise<{ x: numb
   }, ref);
 }
 
+/**
+ * Page coordinates for pressing an object, after centering the camera on it.
+ * With the whole map in view, toasts stack over the upper middle of the map and
+ * the side panels cover its edges; how far toasts reach depends on the
+ * system's fonts. Fails at once, naming the element, if anything still covers
+ * the point.
+ */
+export async function pressPoint(page: Page, ref: ObjectRef): Promise<{ x: number; y: number }> {
+  await page.evaluate((target) => {
+    const editor = (globalThis as unknown as { mapeditEditor: EditorHandle }).mapeditEditor;
+    const bounds = editor.map.boundsOf(target);
+    if (!bounds) throw new Error(`No bounds for ${target}`);
+    const center = bounds.getCenter(bounds.min.clone());
+    editor.viewport.overview.target.set(center.x, 0, center.z);
+    editor.viewport.invalidate();
+  }, ref);
+  const point = await screenPoint(page, ref);
+  const covering = await page.evaluate(({ x, y }) => {
+    const element = document.elementFromPoint(x, y);
+    return element?.classList.contains('viewport-canvas')
+      ? undefined
+      : `${element?.tagName.toLowerCase()}.${element?.className}`;
+  }, point);
+  expect(covering, `what covers ${ref}`).toBeUndefined();
+  return point;
+}
+
 /** Look straight down at the map, so objects at different places never hide each other. */
 export async function lookDown(page: Page): Promise<void> {
   await page.evaluate(() => {

@@ -13,6 +13,7 @@ import {
   lookDown,
   openEditor,
   poll,
+  pressPoint,
   screenPoint,
   pageErrors,
 } from './browser/harness.js';
@@ -141,8 +142,8 @@ describe.skipIf(!executable)('switching maps in a real two-map project', () => {
     ).toEqual({ mapId: 'second', scene: 'second', loading: false, connection: 'second' });
     expect(await page.locator('.tb-select').inputValue()).toBe('second');
     expect(new URL(page.url()).searchParams.get('map')).toBe('second');
-    // The map still open can be picked and edited as before.
-    const house = await screenPoint(page, 'module:house/roof');
+    // The map still open can be picked as before, from under the error toast.
+    const house = await pressPoint(page, 'module:house/roof');
     await page.mouse.click(house.x, house.y);
     await poll(() => editorState(page, (e) => e.store.state.selection)).toBe('structure:house');
   });
