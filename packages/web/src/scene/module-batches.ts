@@ -12,11 +12,14 @@ import type { InstanceView, ObjectRef } from '@mapedit/protocol';
 import type { Asset } from './assets.js';
 import type { SnapshotIndex } from './snapshot-index.js';
 import { palette } from './palette.js';
+import { outlineGeometry, outlineMaterial } from './toon.js';
 
 interface ModuleBatch {
   /** The asset the meshes were built from; undefined for placeholder boxes. */
   asset?: Asset;
   meshes: InstancedMesh[];
+  /** Ink outlines of the meshes, sharing their instance matrices; empty unless outlined. */
+  outlines: InstancedMesh[];
   capacity: number;
   refs: ObjectRef[];
 }
@@ -36,8 +39,14 @@ export class ModuleBatches {
   readonly group = new Group();
   private readonly batches = new Map<string, ModuleBatch>();
 
-  /** `look` gives the material a model part is drawn with, such as its cel-shaded twin. */
-  constructor(private readonly look: (material: Material) => Material = (material) => material) {
+  /**
+   * `look` gives the material a model part is drawn with, such as its
+   * cel-shaded twin; `outlined` says whether loaded models get ink outlines.
+   */
+  constructor(
+    private readonly look: (material: Material) => Material = (material) => material,
+    private readonly outlined: () => boolean = () => false,
+  ) {
     this.group.name = 'modules';
   }
 
@@ -85,6 +94,7 @@ export class ModuleBatches {
           mesh.setColorAt(i, tint);
         });
       });
+      for (const outline of batch.outlines) outline.count = instances.length;
       for (const mesh of batch.meshes) {
         mesh.count = instances.length;
         mesh.instanceMatrix.needsUpdate = true;
@@ -125,7 +135,7 @@ export class ModuleBatches {
       existing && count <= existing.capacity
         ? existing.capacity
         : Math.max(count, existing ? existing.capacity * 2 : 0, 1);
-    const batch: ModuleBatch = { asset, meshes: [], capacity, refs: [] };
+    const batch: ModuleBatch = { asset, meshes: [], outlines: [], capacity, refs: [] };
     const parts = asset
       ? asset.parts.map((part) => ({ geometry: part.geometry, material: this.look(part.material) }))
       : [placeholderPart(size)];
@@ -137,12 +147,24 @@ export class ModuleBatches {
       mesh.userData.placeholder = !asset;
       batch.meshes.push(mesh);
       this.group.add(mesh);
+      if (asset && this.outlined()) {
+        const outline = new InstancedMesh(outlineGeometry(part.geometry), outlineMaterial(), 0);
+        // Same buffer as the model: one upload moves both.
+        outline.instanceMatrix = mesh.instanceMatrix;
+        outline.count = 0;
+        outline.name = `${typeId}:outline`;
+        outline.frustumCulled = false;
+        outline.raycast = () => {};
+        batch.outlines.push(outline);
+        this.group.add(outline);
+      }
     }
     this.batches.set(typeId, batch);
     return batch;
   }
 
   private remove(batch: ModuleBatch): void {
+    for (const outline of batch.outlines) this.group.remove(outline);
     for (const mesh of batch.meshes) {
       this.group.remove(mesh);
       mesh.dispose();

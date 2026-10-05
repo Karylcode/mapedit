@@ -29,7 +29,7 @@ import { ViolationMarks } from './violation-marks.js';
 import { palette } from './palette.js';
 import { sunDirection } from './sun.js';
 import { BoxOutlines, type OrientedBox } from './outline.js';
-import { toonMaterial } from './toon.js';
+import { outlineGeometry, outlineMaterial, setOutlineResolution, toonMaterial } from './toon.js';
 
 export type OutlineLayer = 'selection' | 'hover' | 'focus' | 'flash';
 
@@ -66,7 +66,10 @@ export class MapView {
 
   private readonly terrainGroup = new Group();
   private readonly generatedGroup = new Group();
-  private readonly modules = new ModuleBatches((material) => this.look(material));
+  private readonly modules = new ModuleBatches(
+    (material) => this.look(material),
+    () => this.style === 'toon',
+  );
   private readonly markers = new MarkerLayer();
   private readonly terrain = new Map<string, { url: string; meshes: Mesh[] }>();
   private readonly terrainMaterials = new Map<string, Material>();
@@ -115,6 +118,7 @@ export class MapView {
   /** Line widths are in pixels, so outlines need the drawing buffer size. */
   setResolution(width: number, height: number): void {
     this.violationMarks.setResolution(width, height);
+    setOutlineResolution(width, height);
     for (const layer of Object.values(this.outlines)) layer.lines.setResolution(width, height);
   }
 
@@ -468,6 +472,14 @@ export class MapView {
           mesh.userData.ref = view.owner;
           return mesh;
         });
+        if (this.style === 'toon')
+          for (const part of asset.parts) {
+            const outline = new Mesh(outlineGeometry(part.geometry), outlineMaterial());
+            outline.matrixAutoUpdate = false;
+            outline.matrix.copy(part.matrix);
+            outline.raycast = () => {};
+            meshes.push(outline);
+          }
         if (meshes.length) this.generatedGroup.add(...meshes);
         this.generated.set(key, meshes);
       };

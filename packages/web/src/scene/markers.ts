@@ -103,6 +103,10 @@ export function buildMarker(marker: MarkerView, violating: boolean): MarkerObjec
           opacity: 0.14,
           depthWrite: false,
           side: DoubleSide,
+          // The bottom face lies on the ground; pull it forward so it does not flicker against it.
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -4,
         }),
       ),
     );
