@@ -188,14 +188,6 @@ const nudgedBox = (box: OrientedBox): OrientedBox => ({
   ...box,
   center: [box.center[0], box.center[1] - GEOMETRY_TOLERANCE * 2, box.center[2]],
 });
-/** restsOn without Booleans: the oriented boxes stand in for the solids. */
-export function estimatedRest(upper: PlacedSolid, lower: PlacedSolid): boolean {
-  return orientedBoxesOverlap(
-    nudgedBox(upper.oriented ?? axisAlignedBox(upper.bounds)),
-    lower.oriented ?? axisAlignedBox(lower.bounds),
-    0,
-  );
-}
 /** A rigidly moved copy; the caller deletes its solid. */
 export function moveSolid(entry: PlacedSolid, matrix: Mat4): PlacedSolid {
   const solid = entry.solid.transform(matrix as ManifoldMat4);

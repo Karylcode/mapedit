@@ -986,3 +986,41 @@ F27–F37 from `docs/handoff/backend-fixes-3.md`, fixed on the same `backend` br
   differently, and the MCP texts never described it.
 - **Still for a person:** the F17 real Claude Code check stays under 需要人處理,
   unchanged.
+
+## 第四輪修正
+
+F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` branch.
+
+- **F38 complete:**
+  - **What counts toward the limit:** `EXACT_OVERLAP_LIMIT` (200) now counts
+    only overlaps that needed a Boolean, that is pairs where at least one
+    Module is not a box. Box overlaps stay exact and no longer push round
+    Modules into estimates.
+  - **Edits are exact:** `checkGeometry` takes `GeometryCheckOptions.exact`.
+    `DiskState.preview`, which `apply` also uses, marks the moved Structure's
+    Modules with it, so their pairs are always exact and an estimate never
+    blocks a human edit.
+  - **Support:** estimated pairs no longer give Support. Their contacts are
+    deferred: after the exact Support is known, each deferred pair whose lower
+    Module is supported and whose upper Module is not is probed exactly with
+    `restsOn`, repeated until nothing new is found. Modules already supported,
+    such as everything on terrain, need no probe. `estimatedRest` is gone.
+  - **Wording:** the message is now "may overlap …; estimated from bounding
+    boxes after 200 overlaps that needed exact shapes". protocol.md section 3
+    explains which overlaps count, that estimates may over-report (about half
+    are false for round Modules), that a check is fully exact again only below
+    200 such overlaps, that estimated contact is not Support, and that edits
+    are exact.
+  - Tests:
+    - `core/test/geometry.test.ts` "F38": two diagonal round towers beside 207
+      box overlaps are not reported. Before, they were a "probably overlaps"
+      estimate.
+    - The same file: with 250 round overlaps, a disc floating diagonally above
+      another is unsupported (before, an estimated contact supported it), a
+      disc stacked exactly on another stays supported, and estimates say "may
+      overlap".
+    - `server/test/estimated-overlaps.test.ts`: on a real project with 250 round
+      overlaps, a round Structure moves diagonally next to another through
+      `preview` and `apply`. Before, the estimate rejected it.
+
+  Deviation: none.

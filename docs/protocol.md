@@ -165,7 +165,7 @@ interface ProjectInfo {
 | | `socketA`、`socketB` | `string` | 兩個插槽，格式是 `module:<structureId>/<instanceId>.<socketId>` |
 | | `typeA`、`typeB` | `string` | 兩個插槽各自的插槽類型 |
 | `overlap` | `target` | `'module' \| 'terrain'` | 和另一個模組重疊（`refs` 有兩個模組），或埋進地形（`refs` 只有一個模組） |
-| | `estimated` | `true`（選填） | 新增：一次檢查只精確比對到第 200 個重疊，之後的模組重疊改用外框估算，這時才帶這個欄位。估算可能多報，修好前面的重疊再檢查一次就會是精確結果 |
+| | `estimated` | `true`（選填） | 新增：需要比對精確形狀的重疊（至少一方不是方塊的模組）在一次檢查裡找到 200 個之後，其餘這類配對改用外框估算，這時才帶這個欄位，訊息寫 may overlap。估算可能多報，例如圓柱大約一半是假的；要等這類重疊少於 200 個，重新檢查才會全部精確。估算出來的接觸不算支撐。拖動預覽和套用時，被移動的結構一律精確比對，所以估算不會擋住人的修改 |
 | `unsupported` | （無） | | 只有共同的 `file`、`line` |
 
 `OffGridField`：

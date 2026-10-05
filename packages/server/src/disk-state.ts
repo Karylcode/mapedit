@@ -9,6 +9,7 @@ import {
   transformMatrix,
   createViolation,
   EditError,
+  type GeometryCheckOptions,
   type ParsedProject,
 } from '@mapedit/core';
 import type {
@@ -20,7 +21,7 @@ import type {
   ServerMessage,
   ViolationView,
 } from '@mapedit/protocol';
-import { markerPosition } from '@mapedit/protocol';
+import { markerPosition, parseObjectRef } from '@mapedit/protocol';
 import type { Preview, StateStore } from './state.js';
 import type { BuiltProject } from './build-project.js';
 import { readProjectInputs } from './project-files.js';
@@ -38,6 +39,7 @@ export interface DiskStateBuilder {
     mapId: string,
     revision: number,
     cached: BuiltProject,
+    options?: GeometryCheckOptions,
   ): Promise<BuiltProject>;
 }
 interface Checkpoint {
@@ -318,7 +320,13 @@ export class DiskState extends EventEmitter implements StateStore {
         ...applySourceEdit(cached.parsed, mapId, normalized),
       };
       const parsed = parseProject(files);
-      const candidate = await this.builder.preview(parsed, mapId, this.revision, cached);
+      // The moved Structure is compared with exact shapes, so an estimate never blocks it.
+      const moved = parseObjectRef(edit.ref);
+      const candidate = await this.builder.preview(parsed, mapId, this.revision, cached, {
+        ...(moved?.kind === 'structure'
+          ? { exact: (instance) => instance.structureId === moved.structureId }
+          : {}),
+      });
       const before = new Set(cached.scene.violations.map((v) => v.id));
       const target = candidate.scene.structures.find((s) => s.ref === edit.ref);
       const marker = candidate.scene.markers.find((m) => m.ref === edit.ref);

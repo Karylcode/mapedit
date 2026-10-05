@@ -377,3 +377,83 @@ describe('physical geometry rules', () => {
     expect(checked.generated[0]!.geometry.volume).toBeCloseTo(0.5);
   });
 });
+
+describe('F38 estimates start after 200 Boolean overlaps and never give Support', () => {
+  interface Placed {
+    id: string;
+    module: string;
+    position: Vec3;
+  }
+  const compileStructures = (modules: Record<string, Vec3>, structures: Placed[]) =>
+    compileMap(
+      parseProject({
+        'project.yaml': 'name: F38\n',
+        ...Object.fromEntries(
+          Object.entries(modules).map(([id, size]) => [
+            `modules/${id}/module.yaml`,
+            `id: ${id}\nsize: [${size.join(', ')}]\n`,
+          ]),
+        ),
+        'maps/test/map.yaml': 'name: Test\nsize: { x: 100, z: 100 }\n',
+        'maps/test/structures/test.yaml': `structures:\n${structures
+          .map(
+            ({ id, module, position }) =>
+              `  - id: ${id}\n    position: [${position[0]}, ${position[2]}]\n    height: ${position[1]}\n    modules:\n      - id: base\n        module: ${module}\n        at: [0, 0, 0]`,
+          )
+          .join('\n')}\n`,
+      }),
+      'test',
+    );
+  /** Rows 4 m apart of Modules 1.5 m apart, so each overlaps its row neighbours only. */
+  const rows = (prefix: string, module: string, count: number, columns: number): Placed[] =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `${prefix}${String(index).padStart(3, '0')}`,
+      module,
+      position: [2 + (index % columns) * 1.5, 0, 2 + Math.floor(index / columns) * 4],
+    }));
+  const overlapsOf = (violations: { kind: string; refs: string[] }[], ref: string) =>
+    violations.filter((item) => item.kind === 'overlap' && item.refs.includes(ref));
+
+  it('checks round towers exactly even after 207 box overlaps', async () => {
+    // The towers stand diagonally 2.1 m apart: their square bounds overlap at a corner,
+    // the cylinders do not touch.
+    const compiled = compileStructures({ box: [2, 2, 2], tower: [2, 4, 2] }, [
+      ...rows('b', 'box', 212, 50),
+      { id: 'z1', module: 'tower', position: [80, 0, 80] },
+      { id: 'z2', module: 'tower', position: [81.5, 0, 81.5] },
+    ]);
+    const models = new Map([
+      ['box', await buildModel(box([2, 2, 2]))],
+      ['tower', await buildModel(translate(cylinder(1, 4), [1, 0, 1]))],
+    ]);
+    const { violations } = await checkGeometry(compiled, models);
+    expect(violations.filter((item) => item.kind === 'overlap')).toHaveLength(207);
+    expect(violations.some((item) => item.params.estimated)).toBe(false);
+    expect(overlapsOf(violations, 'module:z1/base')).toEqual([]);
+  });
+
+  it('says an estimate may overlap, and gives Support only through exact contact', async () => {
+    // 250 overlapping discs make later pairs estimates. One disc floats diagonally above
+    // another, touching only their square bounds; one sits exactly on another.
+    const compiled = compileStructures({ disc: [2, 2, 2] }, [
+      ...rows('c', 'disc', 255, 51),
+      { id: 'zz_base', module: 'disc', position: [85, 0, 90] },
+      { id: 'zz_float', module: 'disc', position: [86.5, 2, 91.5] },
+      { id: 'zz_stack', module: 'disc', position: [85, 0, 80] },
+      { id: 'zz_top', module: 'disc', position: [85, 2, 80] },
+    ]);
+    const models = new Map([['disc', await buildModel(translate(cylinder(1, 2), [1, 0, 1]))]]);
+    const { violations } = await checkGeometry(compiled, models);
+    const estimated = violations.filter((item) => item.params.estimated);
+    expect(estimated.length).toBeGreaterThan(0);
+    for (const item of estimated) {
+      expect(item.message).toMatch(/ may overlap /);
+      expect(item.message).not.toMatch(/probably/);
+    }
+    const unsupported = violations
+      .filter((item) => item.kind === 'unsupported')
+      .flatMap((item) => item.refs);
+    expect(unsupported).toContain('module:zz_float/base');
+    expect(unsupported).not.toContain('module:zz_top/base');
+  });
+});

@@ -1,6 +1,6 @@
 import type { Manifold, ManifoldToplevel, Mat4 as ManifoldMat4 } from 'manifold-3d';
 import type { Vec3, ViolationView } from '@mapedit/protocol';
-import type { Bounds, Compilation } from './domain.js';
+import type { Bounds, Compilation, CompiledInstance } from './domain.js';
 import { transformPoint } from './math.js';
 import { geometryMesh, getManifold, meshGeometry, type ModelGeometry } from './model.js';
 import { createViolation } from './violation.js';
@@ -9,7 +9,6 @@ import { supportedFrom } from './support.js';
 import {
   axisAlignedBox,
   estimatedOverlap,
-  estimatedRest,
   fillsBounds,
   GEOMETRY_TOLERANCE,
   intersectsBounds,
@@ -27,10 +26,14 @@ export { GEOMETRY_TOLERANCE } from './solid.js';
 export const SEARCHED_ADVICE_LIMIT = 50;
 const RECHECK_FOR_ADVICE = `Specific suggestions are searched for the first ${SEARCHED_ADVICE_LIMIT} geometry violations only, within a fixed amount of geometry work; fix those, then run check again.`;
 /**
- * Module overlaps compared with exact shapes in one check. Later non-box pairs are
+ * Overlaps that needed exact shapes (a Boolean) in one check. Later non-box pairs are
  * estimated from oriented bounding boxes, so a badly broken map still checks quickly.
  */
 export const EXACT_OVERLAP_LIMIT = 200;
+export interface GeometryCheckOptions {
+  /** Modules whose pairs are never estimated, such as the Structure a human is moving. */
+  exact?: (instance: CompiledInstance) => boolean;
+}
 /** Boolean operations that suggestion searches may use in one check. */
 const ADVICE_BOOLEAN_LIMIT = 1_000;
 class AdviceBudgetSpent extends Error {}
@@ -197,6 +200,7 @@ export async function checkGeometry(
   compilation: Compilation,
   models: ReadonlyMap<string, ModelGeometry>,
   terrain: GeometryTerrain = { heightAt: () => 0 },
+  options: GeometryCheckOptions = {},
 ): Promise<GeometryCheck> {
   const library = await getManifold();
   const handles: Manifold[] = [];
@@ -284,7 +288,9 @@ export async function checkGeometry(
         buckets.set(key, occupants);
       }
     }
-    let exactOverlaps = 0;
+    let booleanOverlaps = 0;
+    /** Upper and lower Modules of estimated pairs; their contact is probed only if needed. */
+    const deferred: [PlacedSolid, PlacedSolid][] = [];
     for (const pair of pairs) {
       const [ai, bi] = pair.split(',').map(Number),
         a = entries[ai!]!,
@@ -292,26 +298,40 @@ export async function checkGeometry(
       if (!intersectsBounds(a.bounds, b.bounds, GEOMETRY_TOLERANCE * 3)) continue;
       const aOnB = a.bounds.min[1] >= b.bounds.min[1] - GEOMETRY_TOLERANCE,
         bOnA = b.bounds.min[1] >= a.bounds.min[1] - GEOMETRY_TOLERANCE;
-      // Box pairs are always exact and cheap; other pairs are estimated past the limit.
-      const estimate = exactOverlaps >= EXACT_OVERLAP_LIMIT && !(a.box && b.box);
+      // Box pairs need no Boolean and stay exact, as do pairs with a Module the caller
+      // names; other pairs are estimated once the limit of Boolean overlaps is reached.
+      const boxes = a.box === true && b.box === true;
+      const estimate =
+        booleanOverlaps >= EXACT_OVERLAP_LIMIT &&
+        !boxes &&
+        !options.exact?.(a.instance) &&
+        !options.exact?.(b.instance);
       const location = estimate ? estimatedOverlap(a, b) : overlapLocation(a, b);
       if (location) {
-        if (!estimate) exactOverlaps++;
+        if (!estimate && !boxes) booleanOverlaps++;
         result.violations.push(
           createViolation({
             kind: 'overlap',
             refs: [a.instance.ref, b.instance.ref],
             source: a.instance.source,
             message: estimate
-              ? `${a.instance.ref} probably overlaps ${b.instance.ref}; estimated from bounding boxes after ${EXACT_OVERLAP_LIMIT} exact overlaps.`
+              ? `${a.instance.ref} may overlap ${b.instance.ref}; estimated from bounding boxes after ${EXACT_OVERLAP_LIMIT} overlaps that needed exact shapes.`
               : `${a.instance.ref} overlaps ${b.instance.ref}.`,
             suggestion: estimate
-              ? `Fix the first ${EXACT_OVERLAP_LIMIT} overlaps, then run check again to compare exact shapes here.`
+              ? `Fix overlaps until fewer than ${EXACT_OVERLAP_LIMIT} need exact shapes, then run check again to compare exact shapes here.`
               : `Move one of the overlapping Structures or change a Module shape. ${RECHECK_FOR_ADVICE}`,
             params: estimate ? { target: 'module', estimated: true } : { target: 'module' },
             location,
           }),
         );
+      }
+      // An estimate may not touch at all, so its contact gives Support only once probed.
+      if (estimate) {
+        if (aOnB) deferred.push([a, b]);
+        if (bOnA) deferred.push([b, a]);
+        continue;
+      }
+      if (location) {
         // Overlapping Modules also touch, which is what the downward probes below detect,
         // so link them directly and save two Boolean operations per overlapping pair.
         if (aOnB) link(b.instance.ref, a.instance.ref);
@@ -319,9 +339,8 @@ export async function checkGeometry(
         continue;
       }
       // A tiny downward probe detects physical bottom contact, including sloped surfaces.
-      const rests = estimate ? estimatedRest : restsOn;
-      if (aOnB && rests(a, b)) link(b.instance.ref, a.instance.ref);
-      if (bOnA && rests(b, a)) link(a.instance.ref, b.instance.ref);
+      if (aOnB && restsOn(a, b)) link(b.instance.ref, a.instance.ref);
+      if (bOnA && restsOn(b, a)) link(a.instance.ref, b.instance.ref);
     }
     for (const connection of compilation.socketConnections) {
       link(connection.a, connection.b);
@@ -334,6 +353,26 @@ export async function checkGeometry(
       }
     }
     const supportedModules = supportedFrom(supportSeeds, supportLinks);
+    // Estimated pairs are probed exactly, and only where a supported lower Module could
+    // give Support to a Module that has none yet, until no more Support is found.
+    const probed = new Set<number>();
+    for (let found = deferred.length > 0; found;) {
+      found = false;
+      for (const [index, [upper, lower]] of deferred.entries()) {
+        if (
+          probed.has(index) ||
+          supportedModules.has(upper.instance.ref) ||
+          !supportedModules.has(lower.instance.ref)
+        )
+          continue;
+        probed.add(index);
+        if (!restsOn(upper, lower)) continue;
+        link(lower.instance.ref, upper.instance.ref);
+        for (const ref of supportedFrom([upper.instance.ref], supportLinks))
+          supportedModules.add(ref);
+        found = true;
+      }
+    }
     for (const entry of entries)
       if (!supportedModules.has(entry.instance.ref))
         result.violations.push(

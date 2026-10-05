@@ -14,6 +14,7 @@ import {
   compareText,
   type ParsedProject,
   type Compilation,
+  type GeometryCheckOptions,
   type TerrainData,
   type ModelGeometry,
 } from '@mapedit/core';
@@ -67,6 +68,7 @@ export async function buildFromParsed(
   mapId: string | undefined,
   revision: number,
   cached: BuiltProject,
+  options: GeometryCheckOptions = {},
 ): Promise<BuiltProject> {
   const compilation = compileMap(parsed, mapId, {
     revision,
@@ -83,10 +85,15 @@ export async function buildFromParsed(
     )
       compilation.scene.fileErrors.push(error);
   }
-  const checked = await checkGeometry(compilation, cached.geometries, {
-    heightAt: (x, z) => terrainHeightAt(cached.terrain, x, z),
-    trianglesInBounds: (bounds) => terrainTriangles(cached.terrain, bounds),
-  });
+  const checked = await checkGeometry(
+    compilation,
+    cached.geometries,
+    {
+      heightAt: (x, z) => terrainHeightAt(cached.terrain, x, z),
+      trianglesInBounds: (bounds) => terrainTriangles(cached.terrain, bounds),
+    },
+    options,
+  );
   compilation.scene.violations.push(...checked.violations);
   compilation.scene.fileErrors.sort(
     (a, b) =>
