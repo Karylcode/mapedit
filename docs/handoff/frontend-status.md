@@ -4,15 +4,17 @@
 [claude-frontend.md](claude-frontend.md) and [protocol.md](../protocol.md); the backend
 is not modified here.
 
-**檢查入口：** W0–W6 和[第一輪修正](#第一輪修正)（FE1–FE23）全部完成，分支 `frontend`
-（從 `backend` 開出，已合併 `backend` 到 0c95048 為止的所有修正，含後端第三輪的 F27–F37）。
-這台 Windows 上整個 repo 的 `pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test`（86 個檔案、529 個測試，
-其中前端 26 個檔案、167 個測試，含 8 個用 headless Edge 實際操作的瀏覽器測試檔）全部通過，沒有略過。程式從
-`packages/web/src/main.ts` 開始：`editor/` 是編輯器（`editor.ts` 把連線、場景、輸入、編輯和介面接在一起），
+**檢查入口：**
+- W0–W6、[第一輪修正](#第一輪修正)（FE1–FE23）全部完成；[第二輪修正](#第二輪修正)完成 FE24–FE29，FE30 因使用者決定收尾而取消。
+- 分支 `frontend`，從 `backend` 開出，已合併 `backend` 到 0c95048 為止的所有修正，含後端第三輪的 F27–F37。第二輪沒有合併 `backend`。
+- 這台 Windows 上，整個 repo 的 `pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test` 全部通過，沒有略過：
+  86 個檔案、546 個測試，其中前端 26 個檔案、184 個測試，含 8 個用 headless Edge 實際操作的瀏覽器測試檔。
+
+程式從 `packages/web/src/main.ts` 開始：`editor/` 是編輯器（`editor.ts` 把連線、場景、輸入、編輯和介面接在一起），
 `render/` 是截圖頁，`scene/` 是兩者共用的 three.js 畫面（`map-view.ts` 管地形和整體，模組、標記、違規標示
 各有一個類別），`net/connection.ts` 是 WebSocket 客戶端，`i18n/` 是兩種語言的文字。
 W6 時 [PR #2](https://github.com/Karylcode/mapedit/pull/2) 的 CI（[run 37237237682](https://github.com/Karylcode/mapedit/actions/runs/37237237682)）
-在 Windows／Ubuntu × Node 22／24 四個組合全部通過；第一輪修正推上去之後的 CI 結果看 PR #2。
+在 Windows／Ubuntu × Node 22／24 四個組合全部通過；最新的 CI 結果看 PR #2。
 CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一定會實際執行。
 
 ## 目前進度
@@ -396,6 +398,14 @@ CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一�
 ## 第二輪修正
 
 依 [frontend-fixes-2.md](frontend-fixes-2.md)（FE24–FE30）逐項修正，一項一個 commit；程式錯誤先寫會失敗的測試。
+
+**結果：FE24–FE29 完成，FE30 取消。** 取消的原因是使用者決定收尾合併，這一輪到此為止。
+- FE29 在收到收尾通知之前已經做完、測過並提交，所以保留。
+- 這次不合併 `backend`。後端的 F38–F40 還沒推上 GitHub，不能經由這個分支帶上去。FE30 需要 F39 的欄位，所以一起拿掉。
+- 已經做好的這幾樣都留在本機分支 `frontend-round2-backend-merge`（63877a0），沒有推送，之後要用可以直接拿回來：
+  - 合併 backend（F38–F40）；
+  - FE30；
+  - 配合後端 F40 的處理：畫面上的地圖被 Agent 刪掉時，提示改開其他地圖，並讓那張地圖不能再操作。
 
 - **FE24 完成**（FE9 的後續）：放下之後、回覆之前按的 Ctrl+Z／Ctrl+Y，改成存在那一次拖動上，等於綁定那次放下的
   request id。
