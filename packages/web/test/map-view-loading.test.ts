@@ -1,0 +1,163 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { InstancedMesh } from 'three';
+import { createServer, mockScene, type MapeditServer } from '@mapedit/server';
+import type { SceneSnapshot } from '@mapedit/protocol';
+import { AssetCache } from '../src/scene/assets.js';
+import { MapView } from '../src/scene/map-view.js';
+import { installFakeCanvas } from './fake-canvas.js';
+
+installFakeCanvas();
+
+let server: MapeditServer;
+let glb: ArrayBuffer;
+
+beforeAll(async () => {
+  server = await createServer({ mock: true, port: 0 });
+  glb = await (await fetch(`${server.url}/assets/mock/block.glb`)).arrayBuffer();
+});
+afterAll(() => server.close());
+
+/** A snapshot with `types` module types, each used by `count` instances. */
+function snapshot(types: string[], count = 1, revision = 0): SceneSnapshot {
+  const scene = mockScene();
+  scene.revision = revision;
+  scene.terrain.chunks = [];
+  scene.generated = [];
+  scene.markers = [];
+  scene.violations = [];
+  const base = scene.structures[0]!;
+  scene.moduleTypes = types.map((url, i) => ({
+    id: `type${i}`,
+    name: `Type ${i}`,
+    url,
+    size: [2, 2, 2],
+    isFoundation: false,
+    canFloat: false,
+  }));
+  scene.structures = types.flatMap((_, i) =>
+    Array.from({ length: count }, (__, j) => ({
+      ...base,
+      ref: `structure:s${i}_${j}`,
+      instances: [{ ...base.instances[0]!, ref: `module:s${i}_${j}/base`, moduleType: `type${i}` }],
+    })),
+  );
+  return scene;
+}
+
+/** A fetcher whose requests finish only when the test releases them. */
+function controlledFetcher() {
+  const waiting = new Map<
+    string,
+    { resolve: (data: ArrayBuffer) => void; reject: (error: Error) => void }
+  >();
+  const fetcher = (url: string) =>
+    new Promise<ArrayBuffer>((resolve, reject) => waiting.set(url, { resolve, reject }));
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  return {
+    fetcher,
+    async release(url: string) {
+      waiting.get(url)!.resolve(glb.slice(0));
+      waiting.delete(url);
+      await settle();
+    },
+    async fail(url: string) {
+      waiting.get(url)!.reject(new Error('HTTP 503'));
+      waiting.delete(url);
+      await settle();
+    },
+  };
+}
+
+const batches = (view: MapView) =>
+  view.root.getObjectByName('modules')!.children as InstancedMesh[];
+
+describe('MapView while module models load', () => {
+  it('redraws at most once per module type as their models arrive one by one (FE1)', async () => {
+    const types = Array.from({ length: 20 }, (_, i) => `/assets/fe1/type${i}.glb`);
+    const network = controlledFetcher();
+    const view = new MapView(new AssetCache(network.fetcher));
+    let refreshes = 0;
+    // A full refresh or the modules alone (FE23): either counts as one redraw.
+    for (const method of ['refresh', 'updateModules'] as const) {
+      const target = view as unknown as Record<typeof method, () => void>;
+      const original = target[method].bind(view);
+      // Stop runaway cascades early so a regression fails fast instead of hanging.
+      vi.spyOn(target, method).mockImplementation(() => {
+        if (++refreshes <= 500) original();
+      });
+    }
+    view.apply(snapshot(types));
+    refreshes = 0;
+    for (const url of types) await network.release(url);
+    await view.settled();
+    expect(refreshes).toBeLessThanOrEqual(types.length);
+    expect(batches(view).filter((mesh) => mesh.count > 0)).toHaveLength(20);
+  });
+
+  it('keeps the instance buffer size when a type swaps its model (FE2)', async () => {
+    const network = controlledFetcher();
+    const view = new MapView(new AssetCache(network.fetcher));
+    view.apply(snapshot(['/assets/fe2/wall-0.glb'], 40));
+    await network.release('/assets/fe2/wall-0.glb');
+    await view.settled();
+    const capacity = batches(view)[0]!.instanceMatrix.count;
+    expect(capacity).toBeGreaterThanOrEqual(40);
+    // The Agent keeps adjusting the wall model; the number of walls stays the same.
+    for (let i = 1; i <= 20; i++) {
+      const url = `/assets/fe2/wall-${i}.glb`;
+      view.apply(snapshot([url], 40, i));
+      await network.release(url);
+      await view.settled();
+    }
+    const meshes = batches(view);
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0]!.count).toBe(40);
+    expect(meshes[0]!.instanceMatrix.count).toBe(capacity);
+  });
+
+  it('redraws once per arrival when the Agent replaces every model while they load (FE29)', async () => {
+    // Eighteen module types, all replaced by new models before the first ones arrive.
+    const first = Array.from({ length: 18 }, (_, i) => `/assets/fe29/v1/type${i}.glb`);
+    const second = first.map((url) => url.replace('/v1/', '/v2/'));
+    const network = controlledFetcher();
+    const view = new MapView(new AssetCache(network.fetcher));
+    let redraws = 0;
+    for (const method of ['refresh', 'updateModules'] as const) {
+      const target = view as unknown as Record<typeof method, () => void>;
+      const original = target[method].bind(view);
+      vi.spyOn(target, method).mockImplementation(() => {
+        if (++redraws <= 500) original();
+      });
+    }
+    view.apply(snapshot(first));
+    view.apply(snapshot(second, 1, 1));
+    redraws = 0;
+    for (let i = 0; i < first.length; i++) {
+      await network.release(first[i]!);
+      await network.release(second[i]!);
+    }
+    await view.settled();
+    expect(redraws).toBeLessThanOrEqual(first.length + second.length);
+    const drawn = batches(view).map(
+      (mesh) => (mesh.userData.batch as { asset?: { url: string } }).asset?.url,
+    );
+    expect(drawn.sort()).toEqual([...second].sort());
+  });
+
+  it('retries a model that failed to load when the next snapshot arrives (FE20)', async () => {
+    const network = controlledFetcher();
+    const view = new MapView(new AssetCache(network.fetcher));
+    const url = '/assets/fe20/flaky.glb';
+    view.apply(snapshot([url]));
+    // The backend restarted while the model was on its way.
+    await network.fail(url);
+    await view.settled();
+    expect(batches(view)[0]!.userData.placeholder).toBe(true);
+    view.apply(snapshot([url], 1, 1));
+    // The failure box stays while the model is asked for again.
+    expect(batches(view)[0]!.userData.placeholder).toBe(true);
+    await network.release(url);
+    await view.settled();
+    expect(batches(view)[0]!.userData.placeholder).toBe(false);
+  });
+});

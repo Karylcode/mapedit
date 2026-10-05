@@ -4,7 +4,7 @@ An agent-first 3D game map editor. AI coding agents (Claude Code, Codex) build m
 
 主要給 Agent 用、其次給人用的 3D 遊戲地圖編輯器。Agent（Claude Code、Codex）直接改地圖檔和建模，編輯器負責算出精確位置，並擋下穿模、浮空等違規；人在瀏覽器裡用像玩 Minecraft 一樣的操作做簡單修正；成果匯出到 Unity、Unreal、Godot、Blender。
 
-> 狀態：M0–M7 後端已實作；前端由 Claude 接續。完整驗收紀錄見 [backend-status.md](docs/handoff/backend-status.md)。
+> 狀態：後端（M0–M7）與瀏覽器編輯器（W0–W6）都已實作。驗收紀錄見 [backend-status.md](docs/handoff/backend-status.md) 和 [frontend-status.md](docs/handoff/frontend-status.md)。
 
 ## 開發與執行
 
@@ -21,10 +21,41 @@ node ../packages/cli/dist/index.js check --json
 node ../packages/cli/dist/index.js dev
 ```
 
-伺服器只接受本機連線，預設 `http://127.0.0.1:4790`。建置好的前端放在
-`packages/web/dist` 時會自動提供靜態檔。目前沒有前端時會顯示後端狀態頁；
-正式截圖仍需要前端實作 `/render`，測試使用獨立的假頁面驗證完整流程。
-前端開發可直接從 repo 執行 `pnpm mapedit dev --mock`，操作只改記憶體。
+伺服器只接受本機連線，預設 `http://127.0.0.1:4790`。`pnpm build` 會一起建出
+`packages/web/dist`，`dev` 就直接在這個網址提供編輯器，以及 MCP `screenshot` 用的
+`/render` 截圖頁面；網址加上 `?map=<id>` 可以直接打開某一張地圖。Agent 改檔案時畫面會即時更新，
+人在網頁上的修改會寫回 YAML 並保留註解。
+
+### 編輯器操作
+
+| 操作 | 做法 |
+|---|---|
+| 轉動鏡頭 | 右鍵拖曳 |
+| 移動鏡頭 | 中鍵拖曳、在空地上左鍵拖曳，或 WASD／方向鍵 |
+| 縮放 | 滾輪（往游標的位置） |
+| 對焦 | F：飛到選取的東西；沒有選取時看整張地圖 |
+| 選取 | 點一下選整個結構，再點一次同一個結構裡的模組就只選那個模組；Esc 取消 |
+| 移動 | 拖曳結構或標記；預覽變紅就是放不下去，放開時不會套用 |
+| 旋轉 | R 轉 15 度（Shift+R 反方向），拖曳中也可以按 |
+| 刪除 | Delete 或 Backspace |
+| 復原、重做 | Ctrl+Z；Ctrl+Y 或 Ctrl+Shift+Z |
+
+左邊列出違規（編號和地圖上的旗子一致，點一下就飛過去）和檔案錯誤，右邊是修改紀錄；
+介面語言可以在左上角切換繁體中文或英文。
+
+### 前端開發
+
+```sh
+pnpm build
+pnpm mapedit dev --mock
+pnpm dev:web
+```
+
+打開 `http://127.0.0.1:5173`。Vite 開發伺服器把 `/api`、`/assets`、`/ws` 轉給
+`http://127.0.0.1:4790`；後端在別的連接埠時設定 `MAPEDIT_BACKEND`，例如
+`MAPEDIT_BACKEND=http://127.0.0.1:4791`。`--mock` 用固定的測試場景，操作只改記憶體，
+`POST /api/mock/trigger`（body `{"notice":"agent_changed"}` 等）可以觸發每一種提示。
+瀏覽器測試會用系統的 Edge 或 Chrome（無頭模式）實際操作編輯器和 `/render`，找不到瀏覽器時跳過。
 
 在地圖專案目錄中執行 CLI：
 
@@ -91,6 +122,7 @@ Windows PowerShell 5.1 或 PowerShell 7 可使用 `scripts/test-unity.ps1 -GlbPa
 - [前後端介面契約](docs/protocol.md)
 - [後端實作說明（給 Codex）](docs/handoff/codex-backend.md)
 - [後端完成紀錄與前端交接](docs/handoff/backend-status.md)
+- [前端實作說明](docs/handoff/claude-frontend.md)與[前端完成紀錄](docs/handoff/frontend-status.md)
 - [地圖檔格式](docs/map-format.md)
 - [建模 API 與隔離執行](docs/model-api.md)
 - [GLB 匯出格式](docs/export-format.md)
