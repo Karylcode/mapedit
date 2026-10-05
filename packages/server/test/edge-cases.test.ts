@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import type { EventEmitter } from 'node:events';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { WebSocket } from 'ws';
@@ -18,8 +20,30 @@ afterEach(async () => {
 
 const structure = (id: string, x: number) =>
   `structures:\n  - id: ${id}\n    position: [${x}, 10]\n    modules:\n      - {id: base, module: block, at: [0, 0, 0]}\n`;
-async function project(options: Partial<ServerOptions> = {}) {
+/** A link to `root`: a junction on Windows, a symbolic link elsewhere. */
+async function throughLink(root: string): Promise<string> {
+  const link = `${root}-link`;
+  await symlink(root, link, 'junction');
+  cleanup.push(() => rm(link, { force: true }));
+  return link;
+}
+/**
+ * `root` with each name in its short 8.3 form, as GitHub's Windows runners spell their temp
+ * folder (C:\Users\RUNNER~1\...). A volume that keeps no short names returns it unchanged.
+ */
+function shortName(root: string): string {
+  return execFileSync('cmd.exe', ['/d', '/c', `for %I in ("${root}") do @echo %~sI`], {
+    encoding: 'utf8',
+    windowsVerbatimArguments: true,
+  }).trim();
+}
+/** A project whose server gets its root as `spell` writes it. */
+async function project(
+  options: Partial<ServerOptions> = {},
+  spell: (root: string) => string | Promise<string> = (root) => root,
+) {
   const root = await mkdtemp(join(tmpdir(), 'mapedit-edges-'));
+  cleanup.push(() => rm(root, { recursive: true, force: true }));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
   const files: Record<string, string> = {
     'project.yaml': 'name: Edge cases\n',
@@ -34,9 +58,10 @@ async function project(options: Partial<ServerOptions> = {}) {
     await mkdir(dirname(join(root, file)), { recursive: true });
     await writeFile(join(root, file), text);
   }
-  const server = await createServer({ root, port: 0, webRoot: null, ...options });
+  const given = await spell(root);
+  const server = await createServer({ root: given, port: 0, webRoot: null, ...options });
   cleanup.push(() => server.close());
-  return { root, server, state: server.state as DiskState };
+  return { root: given, server, state: server.state as DiskState };
 }
 async function editor(server: MapeditServer, mapId: string) {
   const socket = new WebSocket(server.url.replace('http:', 'ws:') + '/ws');
@@ -140,6 +165,37 @@ describe('F40 error handling edge cases', () => {
     });
   });
 
+  it('reports file paths relative to the project however its root is spelled', async () => {
+    // A link and, on Windows, a short 8.3 name both spell the root differently from the real
+    // path the server resolves; GitHub's runners give temp folders such a short name.
+    for (const spell of process.platform === 'win32' ? [shortName, throughLink] : [throughLink]) {
+      const { root, server, state } = await project({}, spell);
+      const village = await editor(server, 'village');
+      const file = join(root, 'maps', 'village', 'structures', 'a.yaml');
+      vi.spyOn(state, 'apply').mockRejectedValue(
+        new Error(`EBUSY: resource busy or locked, open '${file}'`),
+      );
+      village.send({
+        type: 'applyEdit',
+        requestId: 1,
+        baseRevision: state.scene.revision,
+        edit: { kind: 'move', ref: 'structure:a', position: [30, 0, 30], rotation: 0 },
+      });
+      expect(await village.find('editResult', (m) => m.requestId === 1)).toMatchObject({
+        ok: false,
+        reason: "EBUSY: resource busy or locked, open 'maps/village/structures/a.yaml'",
+      });
+      // The file watcher's errors are written the same way.
+      (state as unknown as { watcher: EventEmitter }).watcher.emit(
+        'error',
+        new Error(`EPERM: operation not permitted, watch '${join(root, 'maps')}'`),
+      );
+      expect(await village.find('notice', (m) => m.code === 'file_error')).toMatchObject({
+        message: "EPERM: operation not permitted, watch 'maps'",
+      });
+    }
+  });
+
   it('finds an editor build made after the server started', async () => {
     const web = await mkdtemp(join(tmpdir(), 'mapedit-late-web-'));
     cleanup.push(() => rm(web, { recursive: true, force: true }));
@@ -185,5 +241,16 @@ describe('F40 project-relative paths', () => {
     expect(projectRelativePaths("open 'C:/work/proj/maps/a.yaml'", 'C:\\work\\proj')).toBe(
       "open 'maps/a.yaml'",
     );
+  });
+
+  it('rewrites paths under every spelling of the root, the longest first', async () => {
+    const { projectRelativePaths } = await import('../src/paths.js');
+    // On macOS /tmp is a link to /private/tmp, so one spelling of the root holds the other.
+    expect(
+      projectRelativePaths("open '/private/tmp/proj/a.yaml', then '/tmp/proj/b.yaml'", [
+        '/tmp/proj',
+        '/private/tmp/proj',
+      ]),
+    ).toBe("open 'a.yaml', then 'b.yaml'");
   });
 });

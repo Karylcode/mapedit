@@ -67,8 +67,10 @@ frontend exists. GitHub publication and CI status are recorded below.
 Fourth round: F38–F42 and F44 are complete on `backend`, one numbered commit per
 item, each with a test that failed before the change. F43 was cancelled when the
 user decided to wrap up. On this Windows machine `pnpm build`, `pnpm lint`,
-`pnpm typecheck` and `pnpm e2e` pass. `pnpm test` passes all 378 tests in 63
+`pnpm typecheck` and `pnpm e2e` pass. `pnpm test` passes all 380 tests in 63
 files; one earlier run hit the known Node 24 worker abort and passed when rerun.
+PR #1's first Windows CI run failed because the runner's temp folder has a short
+8.3 name; the F40 entry below describes the fix.
 The fresh no-AI village still has zero violations and file errors and exports a
 5,062,564-byte GLB.
 
@@ -1078,7 +1080,12 @@ F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` br
   - **Paths:** `internal_error` reasons, request `file_error` notices and the
     watcher's error notices pass through `projectRelativePaths`, which writes
     paths inside the project relative to it with `/`. It stops at a separator,
-    quote, space or the end, so `C:\proj2` is not taken for `C:\proj`.
+    quote, space or the end, so `C:\proj2` is not taken for `C:\proj`. It
+    looks for every spelling of the root (`rootSpellings`): as given, through
+    `realpathSync` and through `realpathSync.native`, longest first, without
+    regard to case on Windows. GitHub's Windows runners spell their temp
+    folder with a short 8.3 name (`RUNNER~1`) that only the given spelling
+    has; PR #1's first Windows CI run failed on it before this was added.
   - **Editor build:** `ServerOptions.webRoot` also accepts a list of
     candidates. The server looks them up on every request and screenshot
     (`ScreenshotService` asks through `editorBuilt`). The CLI passes
@@ -1092,8 +1099,11 @@ F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` br
     - `history` and the village scene still arrive when the town scene throws;
     - an EBUSY error with an absolute path is answered with
       `maps/village/structures/a.yaml`;
+    - the same holds, for request errors and watcher errors, when the server
+      gets the root through a link or, on Windows, by its short 8.3 name;
     - a build made after start is served and no longer reported missing;
-    - `projectRelativePaths` cases, including a sibling directory.
+    - `projectRelativePaths` cases, including a sibling directory and two
+      spellings of the root where one holds the other.
 
   Deviation: none.
 - **F41 complete:** one whole screenshot shares a single time limit,

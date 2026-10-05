@@ -27,7 +27,7 @@ import { markerPosition, parseObjectRef } from '@mapedit/protocol';
 import type { Preview, StateStore } from './state.js';
 import type { BuiltProject } from './build-project.js';
 import { readProjectInputs } from './project-files.js';
-import { containsPath, projectRelativePaths } from './paths.js';
+import { containsPath, projectRelativePaths, rootSpellings } from './paths.js';
 import { ProjectHistory, type EditRefusal, type RecordedChange } from './history.js';
 import { UnknownMapError, noticeMessage } from './notice.js';
 import { createAgentServices } from './services.js';
@@ -113,6 +113,8 @@ export class DiskState extends EventEmitter implements StateStore {
     readonly root: string,
     private readonly builder: DiskStateBuilder,
     private readonly files: ProjectFileOperations,
+    /** Every spelling of the root an error may use (rootSpellings). */
+    private readonly spellings: readonly string[],
   ) {
     super();
   }
@@ -121,7 +123,7 @@ export class DiskState extends EventEmitter implements StateStore {
     builder: DiskStateBuilder,
     files: ProjectFileOperations = nodeFiles,
   ): Promise<DiskState> {
-    const state = new DiskState(await realpath(root), builder, files);
+    const state = new DiskState(await realpath(root), builder, files, rootSpellings(root));
     state.baseline = await state.readInputs();
     state.history = new ProjectHistory({ files: new Map(state.baseline) });
     const build = await builder.build(undefined, 0);
@@ -197,7 +199,10 @@ export class DiskState extends EventEmitter implements StateStore {
   }
   /** An error's text, with paths in the project written relative to it. */
   private message(error: unknown): string {
-    return projectRelativePaths(error instanceof Error ? error.message : String(error), this.root);
+    return projectRelativePaths(
+      error instanceof Error ? error.message : String(error),
+      this.spellings,
+    );
   }
   private notice(
     code: Extract<ServerMessage, { type: 'notice' }>['code'],

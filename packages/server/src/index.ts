@@ -16,7 +16,7 @@ import { ScreenshotService } from './screenshot.js';
 import { createMcpHttpHandler, type AgentServices } from './mcp.js';
 import { parseMockNotice } from './mock-services.js';
 import { projectIdentity } from './project-identity.js';
-import { containsPath, findWebRoot, projectRelativePaths } from './paths.js';
+import { containsPath, findWebRoot, projectRelativePaths, rootSpellings } from './paths.js';
 import { UnknownMapError, noticeMessage } from './notice.js';
 export { projectIdentity } from './project-identity.js';
 export { MemoryState } from './state.js';
@@ -147,9 +147,11 @@ export async function createServer(options: ServerOptions = {}): Promise<Mapedit
         : [...(options.webRoot ?? [SERVER_WEB_ROOT])];
   /** Looked up on each use, so an editor built after the server started is found. */
   const currentWebRoot = () => findWebRoot(...webRoots);
+  /** Every spelling of the root an error may use, such as a short 8.3 name on Windows. */
+  const spellings = rootSpellings(root);
   /** An error's text, with paths in the project written relative to it as elsewhere. */
   const projectMessage = (error: unknown): string =>
-    projectRelativePaths(error instanceof Error ? error.message : String(error), canonicalRoot);
+    projectRelativePaths(error instanceof Error ? error.message : String(error), spellings);
   /** A map's scene, or the error for an id that is not a project map (protocol section 4, flow 2). */
   const sceneOrUnknown = (mapId?: string): Promise<SceneSnapshot | UnknownMapError> =>
     state.getScene(mapId).catch((error: unknown) => {
