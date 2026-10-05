@@ -1,0 +1,6 @@
+markers:
+  # In front of the tower door, facing east into the church.
+  - id: player_spawn
+    type: spawn
+    shape: { kind: point, position: [16, 0, 49], rotation: 90 }
+    properties: { team: player }

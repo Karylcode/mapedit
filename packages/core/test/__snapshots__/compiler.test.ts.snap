@@ -143,6 +143,7 @@ exports[`project format and deterministic compilation > compiles a stable golden
       ],
     },
   ],
+  "style": "standard",
   "terrain": {
     "chunks": [],
     "revision": 0,

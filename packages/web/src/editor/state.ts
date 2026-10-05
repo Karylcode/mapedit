@@ -28,6 +28,8 @@ export interface EditorState {
   hover?: { ref: ObjectRef; x: number; y: number };
   /** The violation picked in the list, outlined on the map. */
   focusedViolation?: string;
+  /** True while flying around in first-person mode instead of the overview. */
+  firstPerson: boolean;
 }
 
 export const initialState = (lang: Lang): EditorState => ({
@@ -36,6 +38,7 @@ export const initialState = (lang: Lang): EditorState => ({
   history: { entries: [], cursor: 0 },
   progress: { loaded: 0, total: 0 },
   loadingMap: false,
+  firstPerson: false,
 });
 
 /** Prefer the map named in the page address, then the first map of the project. */

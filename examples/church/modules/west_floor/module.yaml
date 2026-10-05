@@ -1,0 +1,4 @@
+id: west_floor
+name: West Bay Floor
+size: [7, 0.5, 10]
+material: white

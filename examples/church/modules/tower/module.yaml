@@ -1,0 +1,4 @@
+id: tower
+name: West Tower
+size: [9, 32, 9]
+material: white

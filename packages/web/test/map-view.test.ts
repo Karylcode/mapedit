@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { InstancedMesh, Mesh, Raycaster, Vector3 } from 'three';
+import { InstancedMesh, Mesh, MeshToonMaterial, Raycaster, Vector3 } from 'three';
 import { createServer, mockScene, type MapeditServer } from '@mapedit/server';
 import type { SceneSnapshot } from '@mapedit/protocol';
 import { AssetCache } from '../src/scene/assets.js';
 import { MapView } from '../src/scene/map-view.js';
+import { outlineMaterial } from '../src/scene/toon.js';
 import { installFakeCanvas } from './fake-canvas.js';
 
 installFakeCanvas();
@@ -115,6 +116,50 @@ describe('MapView with the mock snapshot', () => {
     expect(bounds.max.toArray()).toEqual([12, 2, 12]);
     expect(view.boundsOf('marker:zone')!.getSize(new Vector3()).toArray()).toEqual([4, 2, 4]);
     expect(view.boxesFor('structure:nowhere')).toEqual([]);
+  });
+
+  it('switches every loaded model to cel shading with ink outlines and back without refetching', async () => {
+    const view = new MapView(new AssetCache(fetcher));
+    view.apply(mockScene());
+    await view.settled();
+    const ink = outlineMaterial();
+    const drawn = () => {
+      const { instanced, plain } = meshes(view);
+      return [
+        ...instanced.filter((m) => m.name && !m.userData.placeholder),
+        ...plain.filter((m) => m.parent?.name === 'terrain' || m.parent?.name === 'generated'),
+      ];
+    };
+    const models = () => drawn().filter((m) => m.material !== ink);
+    const outlines = () => drawn().filter((m) => m.material === ink);
+    const toon = () => models().map((m) => m.material instanceof MeshToonMaterial);
+    expect(toon().length).toBeGreaterThan(2);
+    expect(toon().every((t) => !t)).toBe(true);
+    expect(outlines()).toEqual([]);
+
+    fetched.length = 0;
+    view.apply({ ...mockScene(), revision: 1, style: 'toon' });
+    expect(fetched).toEqual([]);
+    expect(toon().every((t) => t)).toBe(true);
+    const placeholder = meshes(view).instanced.find((m) => m.userData.placeholder)!;
+    expect(placeholder.material).not.toBeInstanceOf(MeshToonMaterial);
+    // Modules and generated meshes get an outline each; terrain and placeholders do not.
+    const outlined = outlines();
+    expect(outlined.some((m) => m instanceof InstancedMesh)).toBe(true);
+    expect(outlined.some((m) => m.parent?.name === 'generated')).toBe(true);
+    expect(outlined.some((m) => m.parent?.name === 'terrain')).toBe(false);
+    const block = meshes(view).instanced.find((m) => m.name === 'block')!;
+    const blockOutline = outlined.find((m) => m.name === 'block:outline') as InstancedMesh;
+    expect(blockOutline.instanceMatrix).toBe(block.instanceMatrix);
+    expect(blockOutline.count).toBe(block.count);
+    // Outlines are never what a click hits.
+    view.root.updateMatrixWorld(true);
+    expect(view.pick(ray([11, 10, 11], [11, 0, 11]))?.ref).toBe('module:house/base');
+    expect(view.pick(ray([10, 0.5, 21], [30, 0.5, 21]))?.ref).toBe('module:raised_foundation/base');
+
+    view.apply({ ...mockScene(), revision: 2 });
+    expect(toon().every((t) => !t)).toBe(true);
+    expect(outlines()).toEqual([]);
   });
 
   it('clears the previous map when a different map arrives', async () => {

@@ -3,9 +3,11 @@ import {
   isObjectId,
   markerPosition,
   parseObjectRef,
+  RENDER_STYLES,
   type Edit,
   type EditFailure,
   type FileErrorView,
+  type RenderStyle,
   type Vec3,
 } from '@mapedit/protocol';
 import {
@@ -72,6 +74,12 @@ const string = (value: unknown, path: Path, fallback?: string): string => {
   if (typeof value !== 'string' || !value.trim())
     throw new InvalidFormat('Expected a non-empty string.', path);
   return value;
+};
+const renderStyle = (value: unknown): RenderStyle => {
+  const style = string(value, ['style'], 'standard');
+  if (!(RENDER_STYLES as readonly string[]).includes(style))
+    throw new InvalidFormat(`style must be ${RENDER_STYLES.join(' or ')}.`, ['style']);
+  return style as RenderStyle;
 };
 const id = (value: unknown, path: Path, fallback?: string): string => {
   const result = string(value, path, fallback);
@@ -208,6 +216,7 @@ export function parseProject(inputFiles: Record<string, string>): ParsedProject 
   const projectFile = 'project.yaml';
   const defaultProject: Project = {
     name: 'Untitled project',
+    style: 'standard',
     socketTypes: Object.assign(
       Object.create(null) as Record<string, SocketType>,
       structuredClone(BUILTIN_SOCKET_TYPES),
@@ -226,12 +235,13 @@ export function parseProject(inputFiles: Record<string, string>): ParsedProject 
           'Version 1 only supports built-in materials; remove project materials.',
           ['materials'],
         );
-      fields(value, ['version', 'name', 'socketTypes', 'markerTypes'], []);
+      fields(value, ['version', 'name', 'style', 'socketTypes', 'markerTypes'], []);
       if (number(value.version, ['version'], 1) !== 1)
         throw new InvalidFormat('Unsupported format version. Use version: 1.', ['version']);
       const result = {
         ...defaultProject,
         name: string(value.name, ['name']),
+        style: renderStyle(value.style),
         source: source(projectFile, []),
       };
       for (const [key, item] of Object.entries(object(value.socketTypes ?? {}, ['socketTypes']))) {

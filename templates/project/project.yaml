@@ -1,4 +1,5 @@
 name: My Mapedit Project
+# style: toon  # cel shading with ink outlines in the editor and screenshots; default is standard
 # Built-in socket types: foundation, floor, wall, roof, stair.
 # Extend compatibleWith symmetrically when adding custom socket types.
 socketTypes: {}

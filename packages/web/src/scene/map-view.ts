@@ -16,6 +16,7 @@ import {
   type GeneratedMeshView,
   type InstanceView,
   type ObjectRef,
+  type RenderStyle,
   type SceneSnapshot,
   type TerrainView,
   type ViolationView,
@@ -28,6 +29,7 @@ import { ViolationMarks } from './violation-marks.js';
 import { palette } from './palette.js';
 import { sunDirection } from './sun.js';
 import { BoxOutlines, type OrientedBox } from './outline.js';
+import { outlineGeometry, outlineMaterial, setOutlineResolution, toonMaterial } from './toon.js';
 
 export type OutlineLayer = 'selection' | 'hover' | 'focus' | 'flash';
 
@@ -64,7 +66,10 @@ export class MapView {
 
   private readonly terrainGroup = new Group();
   private readonly generatedGroup = new Group();
-  private readonly modules = new ModuleBatches();
+  private readonly modules = new ModuleBatches(
+    (material) => this.look(material),
+    () => this.style === 'toon',
+  );
   private readonly markers = new MarkerLayer();
   private readonly terrain = new Map<string, { url: string; meshes: Mesh[] }>();
   private readonly terrainMaterials = new Map<string, Material>();
@@ -76,6 +81,7 @@ export class MapView {
   private focusedViolation?: string;
   private generation = 0;
   private mapId?: string;
+  private style: RenderStyle = 'standard';
   private readonly changeListeners = new Set<() => void>();
 
   constructor(private readonly assets: AssetCache) {
@@ -112,6 +118,7 @@ export class MapView {
   /** Line widths are in pixels, so outlines need the drawing buffer size. */
   setResolution(width: number, height: number): void {
     this.violationMarks.setResolution(width, height);
+    setOutlineResolution(width, height);
     for (const layer of Object.values(this.outlines)) layer.lines.setResolution(width, height);
   }
 
@@ -130,8 +137,11 @@ export class MapView {
   }
 
   apply(scene: SceneSnapshot): void {
-    if (scene.map.id !== this.mapId) this.clear();
+    const style = scene.style ?? 'standard';
+    // A new style rebuilds every mesh from the cached assets with the other materials.
+    if (scene.map.id !== this.mapId || style !== this.style) this.clear();
     this.mapId = scene.map.id;
+    this.style = style;
     this.generation++;
     // Each snapshot asks again for models that failed, such as during a backend restart.
     this.failed.clear();
@@ -407,7 +417,7 @@ export class MapView {
         const previous = this.terrain.get(key);
         if (previous) this.terrainGroup.remove(...previous.meshes);
         const meshes = asset.parts.map((part) => {
-          const mesh = new Mesh(part.geometry, this.terrainMaterial(part.material));
+          const mesh = new Mesh(part.geometry, this.look(this.terrainMaterial(part.material)));
           mesh.matrixAutoUpdate = false;
           mesh.matrix.copy(part.matrix);
           mesh.receiveShadow = mesh.castShadow = true;
@@ -441,6 +451,11 @@ export class MapView {
     return shared;
   }
 
+  /** The material a loaded part is drawn with in the current style. */
+  private look(material: Material): Material {
+    return this.style === 'toon' ? toonMaterial(material) : material;
+  }
+
   private applyGenerated(views: readonly GeneratedMeshView[]): void {
     const keep = new Set<string>();
     for (const view of views) {
@@ -450,13 +465,21 @@ export class MapView {
       const install = (asset: Asset) => {
         if (this.generated.has(key)) return;
         const meshes = asset.parts.map((part) => {
-          const mesh = new Mesh(part.geometry, part.material);
+          const mesh = new Mesh(part.geometry, this.look(part.material));
           mesh.matrixAutoUpdate = false;
           mesh.matrix.copy(part.matrix);
           mesh.castShadow = mesh.receiveShadow = true;
           mesh.userData.ref = view.owner;
           return mesh;
         });
+        if (this.style === 'toon')
+          for (const part of asset.parts) {
+            const outline = new Mesh(outlineGeometry(part.geometry), outlineMaterial());
+            outline.matrixAutoUpdate = false;
+            outline.matrix.copy(part.matrix);
+            outline.raycast = () => {};
+            meshes.push(outline);
+          }
         if (meshes.length) this.generatedGroup.add(...meshes);
         this.generated.set(key, meshes);
       };

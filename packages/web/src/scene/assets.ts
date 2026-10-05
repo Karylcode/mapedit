@@ -1,5 +1,6 @@
 import { Box3, Matrix4, Mesh, type BufferGeometry, type Material, type Texture } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { disposeOutlineGeometry, disposeToonMaterial } from './toon.js';
 
 /** One drawable primitive of a glb, with its matrix relative to the glb root. */
 export interface AssetPart {
@@ -95,10 +96,12 @@ export function disposeAsset(asset: Asset): void {
   const textures = new Set<Texture>();
   for (const part of asset.parts) {
     part.geometry.dispose();
+    disposeOutlineGeometry(part.geometry);
     for (const value of Object.values(part.material))
       if (value && typeof value === 'object' && (value as Texture).isTexture)
         textures.add(value as Texture);
     part.material.dispose();
+    disposeToonMaterial(part.material);
   }
   for (const texture of textures) texture.dispose();
 }

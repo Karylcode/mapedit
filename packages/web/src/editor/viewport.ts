@@ -10,6 +10,7 @@ import {
 } from 'three';
 import { MapView } from '../scene/map-view.js';
 import { OverviewCamera } from '../scene/overview-camera.js';
+import { FirstPersonCamera } from '../scene/first-person-camera.js';
 import { palette } from '../scene/palette.js';
 import { fitScreenSprites } from '../scene/screen-sprite.js';
 
@@ -24,6 +25,9 @@ export class Viewport {
   readonly camera = new PerspectiveCamera(40, 1, 0.5, 5000);
   readonly scene = new Scene();
   readonly overview = new OverviewCamera();
+  readonly firstPerson = new FirstPersonCamera();
+  /** Which camera draws the map: the overview, or the eye of first-person mode. */
+  mode: 'overview' | 'firstPerson' = 'overview';
   readonly size = new Vector2(1, 1);
   private readonly tasks = new Set<FrameTask>();
   private frame?: number;
@@ -98,12 +102,21 @@ export class Viewport {
     let animating = false;
     for (const task of [...this.tasks]) if (task(seconds)) animating = true;
     this.last = animating ? time : 0;
-    const overview = this.overview;
-    overview.apply(this.camera);
     const fog = this.scene.fog as Fog;
-    fog.near = overview.distance * 2.2;
-    fog.far = overview.distance * 7 + 400;
-    this.map.fitShadow(overview.target, Math.min(overview.distance * 1.1, 600));
+    if (this.mode === 'firstPerson') {
+      const eye = this.firstPerson;
+      eye.apply(this.camera);
+      fog.near = 250;
+      fog.far = 1500;
+      // Shadows around the eye, reaching a little ahead of it.
+      this.map.fitShadow(eye.position.clone().addScaledVector(eye.direction().setY(0), 30), 90);
+    } else {
+      const overview = this.overview;
+      overview.apply(this.camera);
+      fog.near = overview.distance * 2.2;
+      fog.far = overview.distance * 7 + 400;
+      this.map.fitShadow(overview.target, Math.min(overview.distance * 1.1, 600));
+    }
     fitScreenSprites(this.map.screenSprites(), this.size.y, this.camera);
     this.renderer.render(this.scene, this.camera);
     if (animating) this.invalidate();

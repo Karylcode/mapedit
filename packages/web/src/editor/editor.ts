@@ -63,6 +63,7 @@ export function start(root: HTMLElement = document.body): void {
     if (store.state.mapId === mapId && connection.currentMap === mapId) return;
     edits.cancelDrag();
     input.cancelGesture();
+    input.leaveFirstPerson();
     store.set({
       mapId,
       scene: undefined,
@@ -101,6 +102,7 @@ export function start(root: HTMLElement = document.body): void {
     if (store.state.mapId !== mapId) return;
     edits.cancelDrag();
     input.cancelGesture();
+    input.leaveFirstPerson();
     store.set({
       mapId: undefined,
       loadingMap: false,
@@ -180,6 +182,14 @@ export function start(root: HTMLElement = document.body): void {
     key(event) {
       const shortcut = shortcutFor(event, edits.dragging);
       if (!shortcut) return false;
+      if (input.firstPerson) {
+        // First-person mode only looks around: V or Escape returns, undo and redo still work.
+        if (shortcut.action === 'firstPerson' || shortcut.action === 'escape')
+          input.leaveFirstPerson();
+        else if (shortcut.action === 'undo') edits.undo();
+        else if (shortcut.action === 'redo') edits.redo();
+        return true;
+      }
       switch (shortcut.action) {
         case 'undo':
           edits.undo();
@@ -196,6 +206,14 @@ export function start(root: HTMLElement = document.body): void {
         case 'focus':
           focus();
           break;
+        case 'firstPerson':
+          if (!ready()) break;
+          if (edits.dragging) {
+            edits.cancelDrag();
+            input.cancelGesture();
+          }
+          input.enterFirstPerson();
+          break;
         case 'escape':
           // Escape steps back one thing: the drag, then the picked violation, then the selection.
           if (edits.dragging) {
@@ -206,6 +224,9 @@ export function start(root: HTMLElement = document.body): void {
           break;
       }
       return true;
+    },
+    modeChanged(firstPerson) {
+      store.set({ firstPerson, hover: undefined });
     },
   });
 
@@ -317,9 +338,12 @@ export function start(root: HTMLElement = document.body): void {
     new StatusCard(store).element,
     new Tooltip(store, index).element,
     note.element,
+    h('div', { class: 'crosshair', 'aria-hidden': 'true' }),
   );
 
+  const editor = root.querySelector<HTMLElement>('.editor')!;
   const syncDocument = (state: EditorState) => {
+    editor.dataset.mode = state.firstPerson ? 'first-person' : 'overview';
     document.documentElement.lang = state.lang;
     document.title = state.project ? `${state.project.name} · mapedit` : 'mapedit';
   };

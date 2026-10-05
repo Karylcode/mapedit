@@ -1,0 +1,4 @@
+id: nave_wall
+name: Nave Wall Bay
+size: [6, 20, 1]
+material: white

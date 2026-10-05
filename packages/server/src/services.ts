@@ -76,6 +76,7 @@ export function createAgentServices(
           sun: build.scene.map.sun,
           kind: 'module_preview',
         },
+        style: build.scene.style,
         terrain: { revision: 0, chunks: [] },
         moduleTypes: build.scene.moduleTypes.filter((module) => module.id === id),
         structures: [
