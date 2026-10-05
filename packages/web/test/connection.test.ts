@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { createServer as createHttpServer, type IncomingMessage } from 'node:http';
+import { connect, type AddressInfo, type Socket } from 'node:net';
 import { createServer, mockScene, type MapeditServer } from '@mapedit/server';
 import type { ClientMessage, ServerMessage } from '@mapedit/protocol';
 import {
@@ -251,20 +253,67 @@ describe('parseServerMessage and socketUrl', () => {
   });
 });
 
+/**
+ * A fixed WebSocket address in front of a backend that restarts on a new port,
+ * so no test reuses a port another worker may have taken meanwhile. The Host
+ * header is rewritten to the backend's own, which the backend checks.
+ */
+async function stableAddress() {
+  let target: number | undefined;
+  const sockets = new Set<Socket>();
+  const proxy = createHttpServer((_, response) => response.writeHead(502).end());
+  proxy.on('upgrade', (request: IncomingMessage, client: Socket, head: Buffer) => {
+    const port = target;
+    if (port === undefined) return client.destroy();
+    const upstream = connect(port, '127.0.0.1', () => {
+      const lines = [`${request.method} ${request.url} HTTP/1.1`];
+      for (let i = 0; i < request.rawHeaders.length; i += 2) {
+        const name = request.rawHeaders[i]!;
+        const value =
+          name.toLowerCase() === 'host' ? `127.0.0.1:${port}` : request.rawHeaders[i + 1];
+        lines.push(`${name}: ${value}`);
+      }
+      upstream.write(`${lines.join('\r\n')}\r\n\r\n`);
+      upstream.write(head);
+      client.pipe(upstream).pipe(client);
+    });
+    for (const socket of [client, upstream]) {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
+      socket.on('error', () => (client.destroy(), upstream.destroy()));
+    }
+  });
+  await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+  return {
+    port: (proxy.address() as AddressInfo).port,
+    /** Forward new connections to this backend port. */
+    forwardTo(port: number) {
+      target = port;
+    },
+    close() {
+      for (const socket of sockets) socket.destroy();
+      return new Promise<void>((resolve) => proxy.close(() => resolve()));
+    },
+  };
+}
+
 describe('Connection against the mock server', () => {
   let server: MapeditServer | undefined;
   let connection: Connection | undefined;
+  let address: Awaited<ReturnType<typeof stableAddress>> | undefined;
   afterEach(async () => {
     connection?.stop();
     await server?.close();
-    server = connection = undefined;
+    await address?.close();
+    server = connection = address = undefined;
   });
 
   it('receives the project, scene and history, then survives a server restart', async () => {
     server = await createServer({ mock: true, port: 0 });
-    const port = server.port;
+    address = await stableAddress();
+    address.forwardTo(server.port);
     connection = new Connection({
-      url: `ws://127.0.0.1:${port}/ws`,
+      url: `ws://127.0.0.1:${address.port}/ws`,
       client: 'editor',
       retryDelays: [50],
     });
@@ -280,7 +329,9 @@ describe('Connection against the mock server', () => {
 
     await server.close();
     await waitFor(() => connection!.status === 'reconnecting');
-    server = await createServer({ mock: true, port });
+    // The backend comes back on a port of its own; the page's address stays the same.
+    server = await createServer({ mock: true, port: 0 });
+    address.forwardTo(server.port);
     received.length = 0;
     await waitFor(() => received.some((m) => m.type === 'scene'));
     expect(connection.status).toBe('open');

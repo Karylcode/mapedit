@@ -108,6 +108,7 @@ describe.skipIf(!executable)('switching maps in a real two-map project', () => {
     await page.mouse.down();
     await page.mouse.move(house.x + 60, house.y + 40, { steps: 6 });
     await page.mouse.up();
+    // Nothing may be sent: give a wrongly sent edit time to show up, then check.
     await page.waitForTimeout(300);
     const edits = sent.slice(switchedAt).filter((m) => /Edit$/.test(m.type));
     expect(edits).toEqual([]);
@@ -157,9 +158,8 @@ describe.skipIf(!executable)('switching maps in a real two-map project', () => {
     for (const key of ['KeyW', 'ArrowDown']) {
       const before: number[] = await target();
       await page.keyboard.down(key);
-      await page.waitForTimeout(250);
+      await poll(target, { timeout: 3000 }).not.toEqual(before);
       await page.keyboard.up(key);
-      expect(await target(), key).not.toEqual(before);
       expect(await editorState(page, (e) => e.store.state.mapId)).toBe(other);
       expect(await select.inputValue()).toBe(other);
     }

@@ -333,6 +333,32 @@ is not modified here.
     `OVERLAP_TARGETS`），每個值都要有翻譯。
   - 換地圖已由 FE3、FE13、FE14 的 `maps-browser.test.ts` 涵蓋。
   - 這份文件開頭 W6 時寫的「6 個瀏覽器測試檔」改正為 5 個；現在共有 7 個。
+- **FE22 完成**：
+  - 找瀏覽器和啟動參數改用 `@mapedit/server` 匯出的 `findBrowser`、`SCREENSHOT_BROWSER_ARGS`，和截圖服務同一份。
+    這樣也補上了使用者自己安裝的 Chrome、macOS 的 Edge 和 `--disable-dev-shm-usage`。
+  - 有 `CI` 環境變數時找不到瀏覽器會直接報錯，不再默默略過。
+  - Vite 每次測試只建置一次：
+    - 根目錄 `vitest.config.ts` 加了 `globalSetup`（`test/browser/global-setup.ts`），只建立一個暫存資料夾，結束時刪除。
+    - 第一個呼叫 `buildWeb()` 的瀏覽器測試負責建置，其他 worker 等它完成後共用。
+    - 只跑後端測試時完全不建置。原本每個瀏覽器測試檔各建置一次，共 8 次。
+  - 固定等待後只讀一次的地方改成輪詢到條件成立：
+    - 拖動預覽變成 `ok`；
+    - 按住 WASD、方向鍵時鏡頭移動；
+    - FE14 換地圖後按鍵。
+    - 另外拿掉拖動中按 R、調整視窗大小之後不需要的等待。
+    - 留下的固定等待只用在確認「某件事沒有發生」（不送修改、不重連），旁邊都有說明。
+  - `connection.test.ts` 不再把伺服器重開在剛關掉的連接埠上：
+    - 頁面連到一個固定位址的小代理，伺服器每次重開都用新的連接埠，代理跟著轉過去。
+    - 代理會把 `Host` 改寫成後端自己的位址，因為後端會檢查它。
+  - 新增 `test/dev-command-browser.test.ts`：
+    - 確認 Vite 的輸出資料夾就是 `mapedit dev` 預設會找的 `SERVER_WEB_ROOT`（`packages/web/dist`）。
+    - 用編譯好的 CLI 在暫存專案執行 `mapedit dev --port 0`，瀏覽器打開 `/`，編輯器畫出範本村莊，沒有錯誤；
+      打開 `/render?map=village`，能截出 PNG。
+    - `packages/web/dist` 已經是這份原始碼的建置時（Vite 的檔名由內容決定，比較 `index.html` 就知道），直接用。
+    - 不是的話，在 CI 上先換上新的建置。換的時候先複製到旁邊再一次改名，伺服器不會讀到寫到一半的資料夾。
+    - 本機則略過並提示先跑 `pnpm build`，因為打包 CLI 會複製 `packages/web/dist`，
+      同時替換它可能干擾旁邊正在跑的 packed-CLI 測試；CI 是一個檔案接一個檔案跑。
+  - W0 的 Vite 代理已在 FE4 補上自動測試。
 
 ## 自行決定的事
 

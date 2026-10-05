@@ -13,6 +13,8 @@ export default defineConfig({
   },
   test: {
     include: ['packages/**/test/**/*.test.ts'],
+    // The browser tests share one production build of packages/web per run.
+    globalSetup: ['packages/web/test/browser/global-setup.ts'],
     testTimeout: 30000,
     hookTimeout: 30000,
     // Performance acceptance should not compete with the million-tile mesh test

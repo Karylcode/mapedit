@@ -149,10 +149,8 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
 
     const beforeKeys = (await camera()).target;
     await page.keyboard.down('KeyW');
-    await page.waitForTimeout(250);
+    await poll(async () => (await camera()).target).not.toEqual(beforeKeys);
     await page.keyboard.up('KeyW');
-    const afterKeys = (await camera()).target;
-    expect(afterKeys).not.toEqual(beforeKeys);
     expect(await camera()).toMatchObject({ bearing: orbited.bearing });
   });
 
@@ -163,10 +161,15 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
       e.viewport.invalidate();
     });
     const target = () => editorState(page, (e) => e.viewport.overview.target.toArray() as number[]);
+    /** Hold a key until the camera has moved half a meter, and say which way it went. */
     const hold = async (key: string) => {
       const before = await target();
+      const moved = async () => {
+        const now = await target();
+        return Math.hypot(now[0]! - before[0]!, now[2]! - before[2]!);
+      };
       await page.keyboard.down(key);
-      await page.waitForTimeout(200);
+      await poll(moved).toBeGreaterThan(0.5);
       await page.keyboard.up(key);
       const after = await target();
       return [after[0]! - before[0]!, after[2]! - before[2]!] as const;
@@ -179,7 +182,6 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     ] as const) {
       const [ax, az] = await hold(arrow);
       const [lx, lz] = await hold(letter);
-      expect(Math.hypot(ax, az), `${arrow} moves the camera`).toBeGreaterThan(0.1);
       expect(ax * lx + az * lz, `${arrow} moves like ${letter}`).toBeGreaterThan(0);
     }
   });
@@ -243,7 +245,6 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
       { width: 700, height: 600 },
     ]) {
       await narrow.setViewportSize(size);
-      await narrow.waitForTimeout(100);
       const boxes = await narrow.evaluate(() =>
         ['.title-block', '.issues', '.history', '.action-bar', '.toast'].flatMap((selector) =>
           [...document.querySelectorAll(selector)].map((element, i) => {

@@ -75,14 +75,15 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     const before = (await placement(page, 'structure:house'))!;
     const from = await screenPoint(page, 'module:house/base');
     const to = await projectPoint(page, [before.x + 1 + 10, 0, before.z + 1 + 6]);
-    let ghost: { state: string; visible: boolean } | undefined;
     await dragTo(page, from, to, async () => {
-      ghost = await editorState(page, (e) => {
-        const object = e.viewport.scene.getObjectByName('ghost');
-        return object && { state: object.state, visible: object.visible };
-      });
+      // The backend answers the previews; wait for the one where the pointer stopped.
+      await poll(() =>
+        editorState(page, (e) => {
+          const object = e.viewport.scene.getObjectByName('ghost');
+          return object && { state: object.state, visible: object.visible };
+        }),
+      ).toEqual({ state: 'ok', visible: true });
     });
-    expect(ghost).toEqual({ state: 'ok', visible: true });
     expect((await messages()).filter((type) => type === 'previewResult').length).toBeGreaterThan(0);
     // Snapped by the backend to the 0.5 m grid near the pointer.
     await poll(async () =>
@@ -148,7 +149,6 @@ describe.skipIf(!executable)('editing in a real browser (mock server)', () => {
     await dragTo(page, from, to, async () => {
       await page.keyboard.press('r');
       await page.keyboard.press('r');
-      await page.waitForTimeout(200);
     });
     await poll(async () => Math.round((await placement(page, 'structure:overlap_b'))!.yaw)).toBe(
       30,

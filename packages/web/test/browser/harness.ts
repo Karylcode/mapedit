@@ -1,46 +1,38 @@
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect } from 'vitest';
+import { expect, inject } from 'vitest';
 import { build } from 'vite';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import type { ObjectRef } from '@mapedit/protocol';
+import { findBrowser as findSystemBrowser, SCREENSHOT_BROWSER_ARGS } from '@mapedit/server';
 
-const webRoot = fileURLToPath(new URL('../../', import.meta.url));
+export const webRoot = fileURLToPath(new URL('../../', import.meta.url));
 
-/** The same system browsers the backend's screenshot service uses. */
-export async function findBrowser(): Promise<string | undefined> {
-  const candidates =
-    process.platform === 'win32'
-      ? [
-          join(
-            process.env['PROGRAMFILES(X86)'] ?? 'C:/Program Files (x86)',
-            'Microsoft/Edge/Application/msedge.exe',
-          ),
-          join(
-            process.env['PROGRAMFILES'] ?? 'C:/Program Files',
-            'Google/Chrome/Application/chrome.exe',
-          ),
-        ]
-      : process.platform === 'darwin'
-        ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-        : [
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium',
-            '/usr/bin/chromium-browser',
-            '/usr/bin/microsoft-edge',
-          ];
-  for (const path of candidates)
-    if (
-      await access(path).then(
-        () => true,
-        () => false,
-      )
-    )
-      return path;
-  return undefined;
+declare module 'vitest' {
+  export interface ProvidedContext {
+    /** Where `buildWeb` puts the production build shared by one test run (global-setup.ts). */
+    webBuild: string;
+  }
 }
+
+/**
+ * The system browser the backend's screenshot service would use. Without one
+ * the browser tests are skipped, except on CI (`CI` set), where they must run.
+ */
+export async function findBrowser(): Promise<string | undefined> {
+  const found = await findSystemBrowser();
+  if (!found && process.env.CI)
+    throw new Error('No Edge or Chrome was found; on CI the browser tests must run.');
+  return found;
+}
+
+const exists = (path: string) =>
+  access(path).then(
+    () => true,
+    () => false,
+  );
 
 /**
  * `expect.poll` with room for slow machines: CI runners draw WebGL in
@@ -50,21 +42,49 @@ export function poll<T>(read: () => T | Promise<T>, options: { timeout?: number 
   return expect.poll(read, { interval: 50, ...options, timeout: options.timeout ?? 15_000 });
 }
 
-/** Build the production bundle into a temporary folder the backend can serve. */
+/**
+ * The production bundle, in a folder the backend can serve. It is built once
+ * per test run into the folder the global setup provides: the first test to
+ * ask builds it, and tests in other workers wait for it. The global teardown
+ * removes it, so `dispose` has nothing left to do.
+ */
 export async function buildWeb(): Promise<{ dir: string; dispose(): Promise<void> }> {
-  const dir = await mkdtemp(join(tmpdir(), 'mapedit-web-'));
-  await build({
-    root: webRoot,
-    configFile: join(webRoot, 'vite.config.ts'),
-    logLevel: 'error',
-    build: { outDir: dir, emptyOutDir: true },
-  });
-  return { dir, dispose: () => rm(dir, { recursive: true, force: true }) };
+  const shared = inject('webBuild') ?? (await mkdtemp(join(tmpdir(), 'mapedit-web-')));
+  const site = join(shared, 'site');
+  const done = join(shared, 'done');
+  const failed = join(shared, 'failed');
+  let builder = false;
+  if (!(await exists(done)))
+    builder = await mkdir(join(shared, 'lock')).then(
+      () => true,
+      () => false,
+    );
+  if (builder) {
+    try {
+      await build({
+        root: webRoot,
+        configFile: join(webRoot, 'vite.config.ts'),
+        logLevel: 'error',
+        build: { outDir: site, emptyOutDir: true },
+      });
+      await writeFile(done, '');
+    } catch (error) {
+      await writeFile(failed, String(error));
+      throw error;
+    }
+  }
+  for (const deadline = Date.now() + 120_000; !(await exists(done));) {
+    if (await exists(failed))
+      throw new Error(`The shared web build failed: ${await readFile(failed, 'utf8')}`);
+    if (Date.now() > deadline) throw new Error('Timed out waiting for the shared web build.');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return { dir: site, dispose: async () => {} };
 }
 
 export function launch(executablePath: string): Promise<Browser> {
-  // Machines without a GPU (CI) need the software WebGL fallback.
-  return chromium.launch({ executablePath, headless: true, args: ['--enable-unsafe-swiftshader'] });
+  // The backend's flags, including the software WebGL fallback for machines without a GPU.
+  return chromium.launch({ executablePath, headless: true, args: [...SCREENSHOT_BROWSER_ARGS] });
 }
 
 const errorsOf = new WeakMap<Page, string[]>();
