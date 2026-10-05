@@ -1,0 +1,7 @@
+id: wall_window
+name: Plaster Window Wall 4m
+size: [4, 3, 0.5]
+material: plaster
+sockets:
+  - { id: bottom, type: wall, position: [0, 0, 0], direction: down }
+  - { id: top, type: roof, position: [0, 3, 0], direction: up }

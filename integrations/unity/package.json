@@ -1,0 +1,13 @@
+{
+  "name": "com.mapedit.unity",
+  "version": "0.1.0",
+  "displayName": "Mapedit Importer",
+  "description": "Import Mapedit glTF game metadata as colliders, triggers, and mapped marker prefabs.",
+  "unity": "6000.0",
+  "license": "MIT",
+  "dependencies": {
+    "org.khronos.unitygltf": "2.21.0",
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "com.unity.modules.physics": "1.0.0"
+  }
+}

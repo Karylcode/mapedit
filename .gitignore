@@ -7,6 +7,8 @@ dist/
 build/
 *.tsbuildinfo
 coverage/
+packages/cli/templates/
+packages/cli/web/
 
 # Test artifacts
 test-results/
@@ -15,6 +17,9 @@ playwright-report/
 # Logs and caches
 *.log
 .cache/
+
+# Running mapedit server address, written by `mapedit dev`
+.mapedit/
 
 # Environment
 .env

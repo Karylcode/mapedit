@@ -1,0 +1,7 @@
+id: wall
+name: Wood Side Wall 3m
+size: [3, 3, 0.5]
+material: dark_wood
+sockets:
+  - { id: bottom, type: wall, position: [0, 0, 0], direction: down }
+  - { id: top, type: roof, position: [0, 3, 0], direction: up }

@@ -1,0 +1,6 @@
+{
+  "name": "Mapedit.Runtime",
+  "rootNamespace": "Mapedit",
+  "references": [],
+  "autoReferenced": true
+}

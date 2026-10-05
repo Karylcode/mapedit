@@ -1,0 +1,9 @@
+{
+  "name": "Mapedit.Editor",
+  "rootNamespace": "Mapedit.Editor",
+  "references": ["Mapedit.Runtime", "UnityGLTFScripts", "GLTFSerialization"],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["Newtonsoft.Json.dll"],
+  "autoReferenced": true
+}

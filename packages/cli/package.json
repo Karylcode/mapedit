@@ -1,0 +1,28 @@
+{
+  "exports": {
+    ".": {
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "mapedit": "./dist/index.js"
+  },
+  "private": true,
+  "files": [
+    "dist",
+    "templates",
+    "web"
+  ],
+  "scripts": {
+    "prepack": "node ../../scripts/prepare-cli.mjs"
+  },
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@mapedit/server": "workspace:*",
+    "@mapedit/core": "workspace:*"
+  },
+  "name": "mapedit",
+  "version": "0.1.0"
+}

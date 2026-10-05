@@ -1,0 +1,15 @@
+# A walkable room: the door and window are genuine cutouts in the collision mesh.
+structures:
+  - id: house
+    name: Starter House
+    position: [20, 20]
+    rotation: 0
+    modules:
+      - { id: foundation, module: foundation, at: [0, 0, 0] }
+      - { id: floor, module: floor, attach: { socket: bottom, to: foundation.top } }
+      - { id: wall_n, module: wall_window, attach: { socket: bottom, to: floor.north } }
+      - { id: wall_s, module: wall_door, attach: { socket: bottom, to: floor.south } }
+      - { id: wall_w, module: wall, attach: { socket: bottom, to: floor.west } }
+      - { id: wall_e, module: wall, attach: { socket: bottom, to: floor.east } }
+      - { id: roof, module: roof, attach: { socket: bottom, to: wall_n.top } }
+      - { id: stairs, module: stairs, at: [1, 0, 4] }
