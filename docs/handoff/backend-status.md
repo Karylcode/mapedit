@@ -1024,3 +1024,15 @@ F38–F43 from `docs/handoff/backend-fixes-4.md`, fixed on the same `backend` br
       `preview` and `apply`. Before, the estimate rejected it.
 
   Deviation: none.
+- **F39 complete:** protocol.md section 4 adds two optional fields to
+  `HistoryEntry`. `mapId` is the map of a human move or delete. `maps` lists
+  an Agent change's affected objects by map, as `[{ mapId, refs }]`, and is
+  empty when no object changed. `refs` stays, with all maps merged. The
+  protocol package exports `MapRefs`. `ProjectHistory.record` takes a
+  `RecordedChange` (an entry without id and time). `DiskState` groups the
+  refs keyed `<mapId>\0<ref>` with the same helper as the per-map notices
+  (`refsByMap`), and the mock state fills both fields. Tests:
+  `server/test/structured-fields.test.ts` "F39": two maps both have
+  `structure:house`, and one Agent change moves both. The entry's `maps`
+  separates them, and a human move on `town` carries `mapId: 'town'`; mock
+  mode too. Both failed before. Deviation: none.

@@ -12,7 +12,7 @@ import type {
   NoticeCode,
 } from '@mapedit/protocol';
 import { mockScene, mockAsset } from './mock.js';
-import { ProjectHistory, type EditRefusal } from './history.js';
+import { ProjectHistory, type EditRefusal, type RecordedChange } from './history.js';
 import { UnknownMapError, noticeMessage } from './notice.js';
 import { createMockServices, triggerMockNotice } from './mock-services.js';
 import type { AgentServices } from './mcp.js';
@@ -156,9 +156,7 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
       ...(violations.length ? { failure: 'violations' as const } : {}),
     };
   }
-  protected record(
-    entry: Pick<HistoryEntry, 'author' | 'summary' | 'files' | 'action' | 'refs'>,
-  ): void {
+  protected record(entry: RecordedChange): void {
     this.history.record(entry, structuredClone(this.scene));
   }
   async apply(edit: Edit, baseRevision: number): Promise<EditRefusal | undefined> {
@@ -212,6 +210,7 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
       files: [structure?.file ?? `maps/${this.scene.map.id}/markers.yaml`],
       action: edit.kind,
       refs: [edit.ref],
+      mapId: this.scene.map.id,
     });
     if ((this.lastAgent.get(edit.ref) ?? -1) > baseRevision)
       this.notice(
@@ -245,6 +244,7 @@ export class MemoryState extends EventEmitter implements StateStore, MockNoticeT
       files,
       action: 'agent_change',
       refs,
+      maps: refs.length ? [{ mapId: this.scene.map.id, refs }] : [],
     });
     for (const ref of refs) this.lastAgent.set(ref, revision);
     const overwritten = refs.filter((ref) => this.lastHuman.has(ref));

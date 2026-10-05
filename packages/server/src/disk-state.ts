@@ -16,6 +16,7 @@ import type {
   Edit,
   EditFailure,
   HistoryEntry,
+  MapRefs,
   ProjectInfo,
   SceneSnapshot,
   ServerMessage,
@@ -26,7 +27,7 @@ import type { Preview, StateStore } from './state.js';
 import type { BuiltProject } from './build-project.js';
 import { readProjectInputs } from './project-files.js';
 import { containsPath } from './paths.js';
-import { ProjectHistory, type EditRefusal } from './history.js';
+import { ProjectHistory, type EditRefusal, type RecordedChange } from './history.js';
 import { UnknownMapError, noticeMessage } from './notice.js';
 import { createAgentServices } from './services.js';
 import type { AgentServices } from './mcp.js';
@@ -44,6 +45,16 @@ export interface DiskStateBuilder {
 }
 interface Checkpoint {
   files: Map<string, Buffer>;
+}
+
+/** Refs keyed by `<mapId>\0<ref>`, grouped by map in first-seen order. */
+function refsByMap(refs: Iterable<[string, string]>): MapRefs[] {
+  const byMap = new Map<string, string[]>();
+  for (const [key, ref] of refs) {
+    const mapId = key.split('\0')[0]!;
+    byMap.set(mapId, [...(byMap.get(mapId) ?? []), ref]);
+  }
+  return [...byMap].map(([mapId, mapRefs]) => ({ mapId, refs: mapRefs }));
 }
 
 /** Project-wide source history. Immutable Buffer references make checkpoints cheap. */
@@ -166,13 +177,9 @@ export class DiskState extends EventEmitter implements StateStore {
     message: string,
     refs: Iterable<[string, string]>,
   ): void {
-    const byMap = new Map<string, string[]>();
-    for (const [key, ref] of refs) {
-      const mapId = key.split('\0')[0]!;
-      byMap.set(mapId, [...(byMap.get(mapId) ?? []), ref]);
-    }
-    if (!byMap.size) this.notice(code, message, []);
-    for (const [mapId, mapRefs] of byMap) this.notice(code, message, mapRefs, mapId);
+    const byMap = refsByMap(refs);
+    if (!byMap.length) this.notice(code, message, []);
+    for (const { mapId, refs: mapRefs } of byMap) this.notice(code, message, mapRefs, mapId);
   }
   private noticeFileErrors(): void {
     for (const error of this.scene.fileErrors)
@@ -190,9 +197,7 @@ export class DiskState extends EventEmitter implements StateStore {
       cursor: this.cursor,
     } satisfies ServerMessage);
   }
-  private record(
-    entry: Pick<HistoryEntry, 'author' | 'summary' | 'files' | 'action' | 'refs'>,
-  ): void {
+  private record(entry: RecordedChange): void {
     this.history.record(entry, { files: new Map(this.baseline) });
   }
   private serial<T>(operation: () => Promise<T>): Promise<T> {
@@ -230,6 +235,7 @@ export class DiskState extends EventEmitter implements StateStore {
       files: changed,
       action: 'agent_change',
       refs: [...refs.values()],
+      maps: refsByMap(refs),
     });
     for (const key of refs.keys()) this.lastAgent.set(key, this.revision);
     const overwritten = [...refs].filter(([key]) => this.lastHuman.has(key));
@@ -440,6 +446,7 @@ export class DiskState extends EventEmitter implements StateStore {
         files: Object.keys(changed),
         action: edit.kind,
         refs: [edit.ref],
+        mapId,
       });
       if ((this.lastAgent.get(`${mapId}\0${edit.ref}`) ?? -1) > baseRevision)
         this.notice(

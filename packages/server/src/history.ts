@@ -6,6 +6,9 @@ export interface EditRefusal {
   failure: EditFailure;
 }
 
+/** What a state store records; id and time are added by the history. */
+export type RecordedChange = Omit<HistoryEntry, 'id' | 'time'>;
+
 /** Shared linear history; each state store supplies its own immutable checkpoint. */
 export class ProjectHistory<Snapshot> {
   readonly entries: HistoryEntry[] = [];
@@ -22,16 +25,16 @@ export class ProjectHistory<Snapshot> {
     return this.position;
   }
 
-  record(
-    entry: Pick<HistoryEntry, 'author' | 'summary' | 'files' | 'action' | 'refs'>,
-    snapshot: Snapshot,
-  ): void {
+  record(entry: RecordedChange, snapshot: Snapshot): void {
     this.entries.splice(this.position);
     this.snapshots.splice(this.position + 1);
     this.entries.push({
       ...entry,
       files: [...entry.files],
       ...(entry.refs ? { refs: [...entry.refs] } : {}),
+      ...(entry.maps
+        ? { maps: entry.maps.map(({ mapId, refs }) => ({ mapId, refs: [...refs] })) }
+        : {}),
       id: this.nextId++,
       time: new Date().toISOString(),
     });

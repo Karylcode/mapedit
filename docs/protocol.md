@@ -241,7 +241,9 @@ interface HistoryEntry {
   summary: string; // 英文；前端可以只顯示作者和時間
   files: string[];
   action?: HistoryAction; // 新增：修改的種類，前端用它顯示，不必解析 summary
-  refs?: ObjectRef[];     // 新增：相關的物件；Agent 改檔時是受影響的物件，可能是空的
+  refs?: ObjectRef[];     // 新增：相關的物件；Agent 改檔時是受影響的物件，可能是空的（所有地圖合在一起，要分地圖請看 maps）
+  mapId?: string;         // 新增：人的移動或刪除是在哪張地圖上做的
+  maps?: { mapId: string; refs: ObjectRef[] }[]; // 新增：Agent 改檔時，依地圖分組的受影響物件；沒有影響任何物件時是空陣列
 }
 
 // 新增

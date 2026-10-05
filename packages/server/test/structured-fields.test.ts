@@ -104,3 +104,64 @@ describe('F34 module previews are marked in MapInfo', () => {
     expect(preview?.structures).toHaveLength(1);
   });
 });
+
+describe('F39 history entries name their maps', () => {
+  it('separates the objects of each map in one Agent change, and names the map of human edits', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mapedit-history-maps-'));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    // Both maps have a Structure called house.
+    const files: Record<string, string> = {
+      'project.yaml': 'name: History maps\n',
+      'modules/block/module.yaml': 'size: [2, 2, 2]\n',
+      'modules/block/model.ts': "import {box} from '@mapedit/model'; export default box([2,2,2]);",
+      'maps/village/map.yaml': 'size: {x: 100, z: 100}\n',
+      'maps/village/structures/house.yaml': structure('house', 10),
+      'maps/town/map.yaml': 'size: {x: 100, z: 100}\n',
+      'maps/town/structures/house.yaml': structure('house', 10),
+    };
+    for (const [file, text] of Object.entries(files)) {
+      await mkdir(dirname(join(root, file)), { recursive: true });
+      await writeFile(join(root, file), text);
+    }
+    const server = await createServer({ root, port: 0, webRoot: null });
+    cleanup.push(() => server.close());
+    const state = server.state as DiskState;
+    // Both maps are built, as when editors have them open.
+    await state.getScene('town');
+    await state.getScene('village');
+    await writeFile(join(root, 'maps/village/structures/house.yaml'), structure('house', 30));
+    await writeFile(join(root, 'maps/town/structures/house.yaml'), structure('house', 40));
+    await state.flush();
+    const move = {
+      kind: 'move',
+      ref: 'structure:house',
+      position: [60, 0, 60],
+      rotation: 0,
+    } as const;
+    expect(await state.apply(move, state.scene.revision, 'town')).toBeUndefined();
+    const [agent, human] = state.entries;
+    const byMap = Object.fromEntries(
+      (agent?.maps ?? []).map((group) => [group.mapId, [...group.refs].sort()]),
+    );
+    expect(byMap).toEqual({
+      village: ['module:house/base', 'structure:house'],
+      town: ['module:house/base', 'structure:house'],
+    });
+    expect(agent?.mapId).toBeUndefined();
+    expect(human).toMatchObject({ action: 'move', mapId: 'town', refs: ['structure:house'] });
+    expect(human?.maps).toBeUndefined();
+  });
+
+  it('names the map in mock mode too', async () => {
+    const state = new MemoryState();
+    await state.apply(
+      { kind: 'move', ref: structureRef('house'), position: [12, 0, 12], rotation: 0 },
+      state.scene.revision,
+    );
+    await state.triggerMockNotice('agent_changed');
+    expect(state.entries[0]).toMatchObject({ mapId: 'village' });
+    expect(state.entries[1]).toMatchObject({
+      maps: [{ mapId: 'village', refs: [structureRef('house')] }],
+    });
+  });
+});

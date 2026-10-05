@@ -153,8 +153,17 @@ export interface HistoryEntry {
   summary: string;
   files: string[];
   action?: HistoryAction;
-  /** The moved or deleted object, or the objects an Agent change affected. */
+  /** The moved or deleted object, or the objects an Agent change affected on all maps. */
   refs?: ObjectRef[];
+  /** The map of a human move or delete. */
+  mapId?: string;
+  /** The objects an Agent change affected, by map. */
+  maps?: MapRefs[];
+}
+/** Objects on one map. */
+export interface MapRefs {
+  mapId: string;
+  refs: ObjectRef[];
 }
 /** Every notice code, in protocol section 4 order. */
 export const NOTICE_CODES = [
