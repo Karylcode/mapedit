@@ -4,15 +4,16 @@
 [claude-frontend.md](claude-frontend.md) and [protocol.md](../protocol.md); the backend
 is not modified here.
 
-**檢查入口：** W0–W6 全部完成，分支 `frontend`（從 `backend` 開出，已合併 `backend` 到 bf99ebf 為止的所有修正）。
-這台 Windows 上整個 repo 的 `pnpm typecheck`、`pnpm lint`、`pnpm test`（68 個檔案、407 個測試，其中前端
-15 個檔案、94 個測試，含 5 個用 headless Edge 實際操作的瀏覽器測試檔）全部通過。程式從
+**檢查入口：** W0–W6 和[第一輪修正](#第一輪修正)（FE1–FE23）全部完成，分支 `frontend`
+（從 `backend` 開出，已合併 `backend` 到 0c95048 為止的所有修正，含後端第三輪的 F27–F37）。
+這台 Windows 上整個 repo 的 `pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test`（86 個檔案、529 個測試，
+其中前端 26 個檔案、167 個測試，含 8 個用 headless Edge 實際操作的瀏覽器測試檔）全部通過，沒有略過。程式從
 `packages/web/src/main.ts` 開始：`editor/` 是編輯器（`editor.ts` 把連線、場景、輸入、編輯和介面接在一起），
-`render/` 是截圖頁，`scene/` 是兩者共用的 three.js 畫面，`net/connection.ts` 是 WebSocket 客戶端，
-`i18n/` 是兩種語言的文字。
-[PR #2](https://github.com/Karylcode/mapedit/pull/2) 的 CI（[run 37237237682](https://github.com/Karylcode/mapedit/actions/runs/37237237682)）
-在 Windows／Ubuntu × Node 22／24 四個組合全部通過：Windows 68 個檔案全過；Ubuntu 只略過 Windows PowerShell 的
-測試，沒有 GPU 的 runner 上 5 個瀏覽器測試檔（含真的 MCP `screenshot`、`build_module`）都實際執行並通過。
+`render/` 是截圖頁，`scene/` 是兩者共用的 three.js 畫面（`map-view.ts` 管地形和整體，模組、標記、違規標示
+各有一個類別），`net/connection.ts` 是 WebSocket 客戶端，`i18n/` 是兩種語言的文字。
+W6 時 [PR #2](https://github.com/Karylcode/mapedit/pull/2) 的 CI（[run 37237237682](https://github.com/Karylcode/mapedit/actions/runs/37237237682)）
+在 Windows／Ubuntu × Node 22／24 四個組合全部通過；第一輪修正推上去之後的 CI 結果看 PR #2。
+CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一定會實際執行。
 
 ## 目前進度
 
@@ -158,7 +159,12 @@ is not modified here.
 
 ## 第一輪修正
 
-依 [frontend-fixes.md](frontend-fixes.md)（FE1–FE23）逐項修正，每項先寫能重現問題的測試，再修到通過。
+依 [frontend-fixes.md](frontend-fixes.md)（FE1–FE23）逐項修正，一項一個 commit。
+- 程式錯誤（FE1–FE17、FE19、FE20）：先寫能重現問題的測試，確認它失敗，再修到通過。
+- FE18：只改文件。
+- FE21、FE22：修的是測試本身。新的斷言盡量確認過「功能壞掉時會失敗」，各項的說明有寫怎麼確認的。
+- FE23：重構，靠既有和新增的測試確認行為不變。
+- FE17 要等後端的 F34、F35，所以先做 FE18、FE19，再回來做 FE17。
 
 - **FE1 完成**：模組類型的模型改成每個網址只註冊一次載入回呼，載完（或失敗）時重畫一次；
   其他快照到達時不會再替同一個網址加回呼。測試：`test/map-view-loading.test.ts`，20 種模組一個接一個載完，
