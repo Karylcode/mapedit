@@ -442,6 +442,19 @@ CI 上找不到瀏覽器會讓測試失敗（FE22），所以瀏覽器測試一�
     - 俄文 `я`／`KeyZ` 加 Ctrl 會復原，`н`／`KeyY` 會重做；希臘文、希伯來文也可以。
     - R、Shift+R、F 都能用；QWERTZ 仍然正確；`6`／`KeyZ` 不會復原。
   - `test/keys-browser.test.ts`：在瀏覽器裡送出俄文鍵盤的事件，會送出 `undo`、`redo`。
+- **FE28 完成**（FE19 的後續）：提示超過 4 則時，改依「去留順序」決定先移掉哪一則，同一順序裡移掉最舊的。順序是：
+  1. 一般資訊；
+  2. 檔案錯誤（違規面板裡本來就列著）；
+  3. 其他警告；
+  4. 其他錯誤；
+  5. 最後才是「你剛才的修改被 Agent 蓋掉了」。
+
+  做法是 `ToastInput` 新增 `standing`，沒有寫時用 `level`；`file_error` 是 `listed`，`overwritten_by_agent` 是 `lostEdit`。
+  測試，修正前都失敗：
+  - `test/toasts.test.ts`：去留順序。
+  - `test/notices.test.ts`：兩種提示的 `standing`。
+  - `test/editor-browser.test.ts`：用獨立的 mock 伺服器，真的先觸發 `overwritten_by_agent`，再觸發四次 `file_error`。
+    畫面上的 4 則提示裡，那則警告還在。修正前它被檔案錯誤擠掉。
 
 ## 自行決定的事
 

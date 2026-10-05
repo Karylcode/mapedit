@@ -58,8 +58,10 @@ export function noticeToast(
         seconds: 3,
       };
     case 'overwritten_by_agent':
+      // The human's own edit is gone: the last toast to give way to others.
       return {
         level: 'warning',
+        standing: 'lostEdit',
         key: `overwritten:${about}`,
         text: (t) => t('notice.overwritten_by_agent', { objects: objects(t) }),
       };
@@ -77,8 +79,10 @@ export function noticeToast(
         detail: notice.message,
       };
     case 'file_error':
+      // The issues panel lists file errors too, so their toasts give way early.
       return {
         level: 'error',
+        standing: 'listed',
         key: `file_error:${notice.message}`,
         text: (t) => t('notice.file_error'),
         detail: notice.message,

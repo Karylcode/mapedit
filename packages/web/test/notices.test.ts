@@ -60,6 +60,15 @@ describe('notice toasts', () => {
     expect(file.detail).toBe('a.yaml:2: bad');
   });
 
+  it('lets file errors give way before news of a lost edit (FE28)', () => {
+    expect(noticeToast(notice('file_error', undefined, 'a.yaml:2: bad'), index).standing).toBe(
+      'listed',
+    );
+    expect(noticeToast(notice('overwritten_by_agent', ['structure:house']), index).standing).toBe(
+      'lostEdit',
+    );
+  });
+
   it('shows a repeated file error once until it is fixed', () => {
     const filter = new FileErrorFilter();
     const scene: SceneSnapshot = mockScene();

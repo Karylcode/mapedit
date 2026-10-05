@@ -13,6 +13,14 @@ export const editToastKey = (ref: ObjectRef): string => `edit:${ref}`;
 /** Text in the interface language, recomputed when the language changes. */
 export type Localized = string | ((t: Translator) => string);
 
+/**
+ * When too many toasts are shown, which give way first, earliest here first:
+ * plain information; problems the issues panel lists anyway, such as file
+ * errors; warnings; errors; and last, news that the human's own edit was lost.
+ */
+const GIVES_WAY = ['info', 'listed', 'warning', 'error', 'lostEdit'] as const;
+export type Standing = (typeof GIVES_WAY)[number];
+
 export interface ToastInput {
   level: ToastLevel;
   text: Localized;
@@ -22,21 +30,23 @@ export interface ToastInput {
   key?: string;
   /** Seconds before it disappears; errors stay longer by default. */
   seconds?: number;
+  /** How long it holds its place when too many are shown; its level by default. */
+  standing?: Standing;
 }
 
 const DEFAULT_SECONDS: Record<ToastLevel, number> = { info: 4, warning: 7, error: 14 };
 const LIMIT = 4;
-const URGENCY: Record<ToastLevel, number> = { info: 0, warning: 1, error: 2 };
 
 /**
- * Which toast to drop when too many are shown, given their levels newest
- * first: the oldest of the least urgent level. A warning that a human edit was
- * lost must outlast any number of info toasts.
+ * Which toast to drop when too many are shown, given their standings newest
+ * first: the oldest of those that give way first. A warning that a human edit
+ * was lost outlasts any number of others.
  */
-export function overflowVictim(levels: readonly ToastLevel[]): number {
-  const least = Math.min(...levels.map((level) => URGENCY[level]));
-  let oldest = levels.length - 1;
-  while (oldest > 0 && URGENCY[levels[oldest]!] !== least) oldest--;
+export function overflowVictim(standings: readonly Standing[]): number {
+  const rank = (standing: Standing) => GIVES_WAY.indexOf(standing);
+  const first = Math.min(...standings.map(rank));
+  let oldest = standings.length - 1;
+  while (oldest > 0 && rank(standings[oldest]!) !== first) oldest--;
   return oldest;
 }
 
@@ -94,8 +104,11 @@ export class Toasts {
     this.element.prepend(toast);
     while (this.element.children.length > LIMIT) {
       const stacked = [...this.element.children] as HTMLElement[];
-      const levels = stacked.map((element) => this.shown.get(element)!.input.level);
-      this.remove(stacked[overflowVictim(levels)]!);
+      const standings = stacked.map((element) => {
+        const { standing, level } = this.shown.get(element)!.input;
+        return standing ?? level;
+      });
+      this.remove(stacked[overflowVictim(standings)]!);
     }
     return toast;
   }

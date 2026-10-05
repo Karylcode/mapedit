@@ -296,6 +296,36 @@ describe.skipIf(!executable)('editor in a real browser (mock server)', () => {
     await fresh.close();
   });
 
+  it('keeps news of a lost edit when the Agent then breaks four files (FE28)', async () => {
+    // A server of its own: the broken files stay in its mock project.
+    const own = await createServer({ mock: true, port: 0, webRoot: web.dir });
+    try {
+      const fresh = await openEditor(browser, own.url);
+      const trigger = async (notice: string) =>
+        expect(
+          (
+            await fetch(`${own.url}/api/mock/trigger`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ notice }),
+            })
+          ).status,
+        ).toBe(200);
+      const lost = "The Agent's later change replaced your edit to House";
+      await trigger('overwritten_by_agent');
+      await poll(() => fresh.locator('.toast-text').allInnerTexts()).toContain(lost);
+      for (let i = 0; i < 4; i++) await trigger('file_error');
+      await poll(() => editorState(fresh, (e) => e.store.state.scene.fileErrors.length)).toBe(5);
+      const texts = await fresh.locator('.toast-text').allInnerTexts();
+      expect(texts).toHaveLength(4);
+      expect(texts).toContain(lost);
+      expect(pageErrors(fresh)).toEqual([]);
+      await fresh.close();
+    } finally {
+      await own.close();
+    }
+  });
+
   it('follows the screen pixel density after it changes (FE20)', async () => {
     const fresh = await openEditor(browser, server.url);
     const pixels = () =>
