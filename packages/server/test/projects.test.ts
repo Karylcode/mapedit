@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { WebSocket } from 'ws';
@@ -121,8 +121,10 @@ describe('folder of projects', () => {
     await second.send({ type: 'openMap', mapId: 'cloister' });
     expect((await second.next('scene')).scene.map.id).toBe('cloister');
 
+    // The identity is of the real path: the temp folder may be a link or a short 8.3 name (RUNNER~1).
+    const identity = projectIdentity(await realpath(server.root));
     const head = await fetch(new URL('/api/project', server.url), { method: 'HEAD' });
-    expect(head.headers.get('X-Mapedit-Project')).toBe(projectIdentity(server.root));
+    expect(head.headers.get('X-Mapedit-Project')).toBe(identity);
     const info = (await (await fetch(new URL('/api/project', server.url))).json()) as ProjectInfo;
     expect(info.id).toBe('abbey');
   });
