@@ -1,151 +1,99 @@
-# mapedit
+**English** | [繁體中文](README.zh-TW.md)
 
-An agent-first 3D game map editor. AI coding agents (Claude Code, Codex) build maps by editing text files, humans make quick fixes in the browser, and maps export to Unity, Unreal, Godot and Blender.
+# Mapedit
 
-主要給 Agent 用、其次給人用的 3D 遊戲地圖編輯器。Agent（Claude Code、Codex）直接改地圖檔和建模，編輯器負責算出精確位置，並擋下穿模、浮空等違規；人在瀏覽器裡用像玩 Minecraft 一樣的操作做簡單修正；成果匯出到 Unity、Unreal、Godot、Blender。
+[![CI](https://github.com/Karylcode/mapedit/actions/workflows/ci.yml/badge.svg)](https://github.com/Karylcode/mapedit/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node 22.13+](https://img.shields.io/badge/node-22.13%2B-blue.svg)](https://nodejs.org/)
+[![Unity 6](https://img.shields.io/badge/Unity-6-orange.svg)](integrations/unity/README.md)
 
-> 狀態：後端（M0–M7）與瀏覽器編輯器（W0–W6）都已實作。驗收紀錄見 [backend-status.md](docs/handoff/backend-status.md) 和 [frontend-status.md](docs/handoff/frontend-status.md)。
+Mapedit is an agent-first 3D game map editor. AI coding agents such as Claude Code and Codex build maps by
+editing text files and calling MCP tools. The editor works like a compiler: it works out the exact position
+of every piece, flags overlaps, floating pieces and other violations, and shows the map live in the browser,
+where people make quick fixes with Minecraft-like controls. Maps export as glTF, and an import package turns
+them into playable Unity 6 levels. Built with TypeScript, three.js and manifold-3d; it runs only on your computer.
 
-## 開發與執行
+## What it does
 
-需要 Node.js 22.13 以上與 pnpm 11.19。Windows、Linux 均在 CI 驗證。
+- **Maps are text files.** Projects, modules, maps, structures and markers are YAML, and terrain is two
+  PNG images. Git keeps the history, and comments survive edits made in the browser.
+- **Agents build, the editor checks.** `init` writes an `AGENTS.md`, a Claude Code skill and MCP settings
+  for Claude Code and Codex. The MCP server has 10 fixed tools, from `check` and `screenshot` to `terrain`.
+- **Strict rules.** Pieces snap to a 0.5 m grid and to compatible sockets. `check` reports overlaps,
+  missing support, off-grid positions and angles, out-of-bounds objects, missing references and incompatible
+  sockets, each with a suggested fix. A map with violations does not export.
+- **A browser editor for quick fixes.** Orbit, pan and zoom; select, drag, turn in 15° steps, delete, undo
+  and redo. A drop that would cause a violation is refused. Press V to fly through the map in first person.
+  The interface is in Traditional Chinese or English.
+- **Modules written as code.** Each module's shape is a `model.ts` that uses a small modelling API on
+  manifold-3d. It runs isolated in QuickJS. Built-in materials are textured at real-world size.
+- **Terrain.** 1 m tiles, each with a height and a surface. The `terrain` tool raises, lowers, flattens,
+  paints and piles up mountains. Foundations reach down to sloped ground by themselves.
+- **glTF export.** One self-contained `.glb` per map with the hierarchy, materials, mesh colliders and
+  marker data. The Unity 6 package turns that data into colliders, trigger boxes and your own prefabs.
+- **Local only.** The server listens on `127.0.0.1` and calls no AI or other online service while it runs.
+
+## Requirements
+
+- Node.js 22.13 or later
+- pnpm 11.19. The Windows launcher runs it through Corepack, so that route needs no separate install.
+- Windows or Linux. CI tests both, with Node.js 22 and 24.
+- Edge or Chrome, for the MCP `screenshot` tool
+- Git, for `git clone` and `更新.bat`
+- Optional: Unity 6 with UnityGLTF 2.21.0, to import maps into Unity
+
+Details: [Installation](docs/installation.md).
+
+## Quick start
+
+**Windows:** download the repository (Git clone or ZIP) and double-click `啟動地圖編輯器.bat`. The first
+run installs and builds the editor, which takes a few minutes, adds the example church project, and opens
+`http://127.0.0.1:4790` in your browser.
+
+**Any system:**
 
 ```sh
+git clone https://github.com/Karylcode/mapedit.git
+cd mapedit
 pnpm install
 pnpm build
-pnpm test
-pnpm lint
-pnpm mapedit init ./my-maps
-cd my-maps
-node ../packages/cli/dist/index.js check --json
-node ../packages/cli/dist/index.js dev
+pnpm mapedit init projects/my-maps
+pnpm mapedit dev --open --projects projects --project my-maps
 ```
 
-伺服器只接受本機連線，預設 `http://127.0.0.1:4790`。`pnpm build` 會一起建出
-`packages/web/dist`，`dev` 就直接在這個網址提供編輯器，以及 MCP `screenshot` 用的
-`/render` 截圖頁面；網址加上 `?map=<id>` 可以直接打開某一張地圖。Agent 改檔案時畫面會即時更新，
-人在網頁上的修改會寫回 YAML 並保留註解。
+Then start Claude Code or Codex in `projects/my-maps` and ask, for example: "Build a small village with
+three houses, a road and a spawn point." The agent edits the files, runs `check` and `screenshot`, and
+fixes what they report while you watch in the browser.
 
-Windows 上雙擊 `啟動地圖編輯器.bat` 就會安裝、建置並打開編輯器；雙擊 `更新.bat` 會從 GitHub
-下載最新版本（需要安裝 Git；用 ZIP 下載的資料夾第一次會詢問是否接上 GitHub），下次啟動時自動重新建置。
+Next: [Usage](docs/usage.md).
 
-### 地圖專案
+## Troubleshooting
 
-所有地圖專案都放在 `projects/` 裡，一個資料夾就是一個專案：有自己的 `project.yaml`、模組（`modules/`）
-和地圖（`maps/`，一個專案可以有很多張）。專案之間的模組和地圖互不相通；材質目前是編輯器內建的一套，
-所有專案共用。
+- **A `.bat` file says `Node.js was not found`**: install Node.js 22.13 or later from https://nodejs.org.
+- **The agent edits a different project**: HTTP MCP works on the project open in the editor. Pick the
+  right one in the **Project** menu at the top left, or use the stdio settings that `init` wrote.
+- **`screenshot` fails**: install Edge or Chrome, and run `pnpm build` so the editor page exists.
+- **`更新.bat` stops without updating**: it never overwrites files you changed in the repository, and it
+  lists them. Keep your maps in `projects/`, which updates leave alone.
 
-- 在編輯器左上角的「專案」選單可以切換專案，Agent 透過 MCP 操作的也是目前開著的專案。
-- 新增專案：`node packages/cli/dist/index.js init projects/<名稱>`，或請 Agent 在 `projects/` 裡建立資料夾；
-  游標移到「專案」選單上時會重新讀取清單。
-- `projects/` 不受 Git 管理，`更新.bat` 不會動到它。
-- 第一次啟動時，`templates/church`（哥德式教堂的灰白模型，使用卡通渲染 `style: toon`）會複製成
-  `projects/church`；刪掉後再啟動就會拿到最新版。舊版放在旁邊的 `mapedit-maps` 會自動搬成 `projects/my-maps`。
-- 指令列：`mapedit dev --projects <資料夾> [--project <名稱>]`；沒指定時打開上次開的專案。
+More: [Troubleshooting](docs/troubleshooting.md).
 
-### 編輯器操作
+## Documentation
 
-| 操作       | 做法                                                                                                                   |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 轉動鏡頭   | 右鍵拖曳                                                                                                               |
-| 移動鏡頭   | 中鍵拖曳、在空地上左鍵拖曳，或 WASD／方向鍵                                                                            |
-| 縮放       | 滾輪（往游標的位置）                                                                                                   |
-| 對焦       | F：飛到選取的東西；沒有選取時看整張地圖                                                                                |
-| 選取       | 點一下選整個結構，再點一次同一個結構裡的模組就只選那個模組；Esc 取消                                                   |
-| 移動       | 拖曳結構或標記；預覽變紅就是放不下去，放開時不會套用                                                                   |
-| 旋轉       | R 轉 15 度（Shift+R 反方向），拖曳中也可以按                                                                           |
-| 刪除       | Delete 或 Backspace                                                                                                    |
-| 復原、重做 | Ctrl+Z；Ctrl+Y 或 Ctrl+Shift+Z                                                                                         |
-| 切換專案   | 左上角「專案」選單                                                                                                     |
-| 第一人稱   | V 進入：滑鼠看四周，WASD 飛行，空白鍵上升、Shift 下降，滾輪調飛行速度；Esc 或 V 回到俯瞰。可以穿過建築，只能看不能編輯 |
+- [Documentation index](docs/README.md): every page, plus the design and handoff notes
+- [Installation](docs/installation.md): requirements, the Windows launcher, manual setup, updating
+- [Usage](docs/usage.md): starting the editor, the projects folder, editor controls, CLI commands
+- [Map files](docs/map-files.md): project layout, modules, structures, markers, terrain, violations
+- [Agent workflow](docs/agent-workflow.md): agent setup, the 10 MCP tools, the edit-check-screenshot loop
+- [Exporting](docs/exporting.md): GLB export, the Unity 6 package, other engines
+- [Troubleshooting](docs/troubleshooting.md): common problems and error messages
+- [Development](docs/development.md): repository layout, tests, CI, frontend work, packaging the CLI
+- [Backend status](docs/handoff/backend-status.md): backend milestones M0–M7 are implemented; acceptance records
+- [Frontend status](docs/handoff/frontend-status.md): browser editor milestones W0–W6 are implemented; acceptance records
 
-左邊列出違規（編號和地圖上的旗子一致，點一下就飛過去）和檔案錯誤，右邊是修改紀錄；
-介面語言可以在左上角切換繁體中文或英文。
+## License
 
-### 前端開發
+MIT. See [LICENSE](LICENSE).
 
-```sh
-pnpm build
-pnpm mapedit dev --mock
-pnpm dev:web
-```
-
-打開 `http://127.0.0.1:5173`。Vite 開發伺服器把 `/api`、`/assets`、`/ws` 轉給
-`http://127.0.0.1:4790`；後端在別的連接埠時設定 `MAPEDIT_BACKEND`，例如
-`MAPEDIT_BACKEND=http://127.0.0.1:4791`。`--mock` 用固定的測試場景，操作只改記憶體，
-`POST /api/mock/trigger`（body `{"notice":"agent_changed"}` 等）可以觸發每一種提示。
-瀏覽器測試會用系統的 Edge 或 Chrome（無頭模式）實際操作編輯器和 `/render`，找不到瀏覽器時跳過。
-
-在地圖專案目錄中執行 CLI：
-
-```sh
-node ../packages/cli/dist/index.js check --map village --json
-node ../packages/cli/dist/index.js export --map village --out ./export
-node ../packages/cli/dist/index.js mcp
-```
-
-`check` 與 `export` 沒加 `--map` 時會處理全部地圖。任何一張有違規或檔案錯誤，
-檢查就以非零代碼結束；匯出會在寫入任何檔案前全部拒絕，並列出問題地圖。
-`check --json` 固定回傳 `{ "maps": [{ "map": "village", "violations": [],
-"fileErrors": [], "floating": [] }] }`，指定地圖時陣列只有一項。
-`floating` 列出所有 `canFloat` 模組的 ref、模組類型與世界座標，包含目前貼地的實例；
-這是提示資訊，不算違規。MCP `check` 和 `overview` 同樣預設檢查全部地圖。
-
-`mcp` 以 stdio 連接此專案正在運行的伺服器，或自行啟動一個。HTTP MCP 位於
-`/mcp`，提供固定的 10 個工具。`init` 會產生 Claude Code 與 Codex 的 HTTP 設定
-和使用絕對 Node/CLI 路徑的 stdio 備用設定。執行期間不呼叫 AI 或外部服務；
-材質與貼圖均已包含在 repo。初次安裝相依套件和 UnityGLTF 需要網路。
-
-## CLI 封裝驗收
-
-封裝或安裝本機 tarball 前先執行 `pnpm build`，產生四個套件的 `dist` 與
-CLI 自己的範本。CLI 的 `prepack` 會更新範本；core/server/protocol 的
-`pack` 不會自動重新編譯 TypeScript。
-
-```sh
-pnpm build
-pnpm --dir packages/cli pack --pack-destination ../../.cache/packages
-node scripts/test-packed-cli.mjs --keep
-```
-
-最後一行會另行把四個 workspace 套件執行 `pnpm pack`，在 repo 外的暫存目錄
-以本機 tarball overrides 和 repo 鎖定的完整相依版本圖離線安裝，再用封裝 CLI
-執行 `init` 與 `check`。先前的 `pnpm install --frozen-lockfile` 需已填入相依套件
-快取；驗收安裝同樣使用 frozen lockfile，並明確沿用 repo 安裝時的套件快取，
-避免 Windows 跨磁碟時選到空快取。輸出會列出保留的暫存路徑。
-測試驗證套件及相依解析沒有連回 repo，並檢查模型、材質、WASM 與範本都能使用。
-
-目前所有套件仍保留 `private: true`。發佈到 npm 前，需要人決定正式套件名稱、
-`@mapedit` 相依套件的 scope，以及使用的 npm 帳號；這一輪未發佈。
-
-## 驗證與 Unity
-
-```sh
-pnpm typecheck
-pnpm test
-pnpm e2e
-```
-
-`pnpm e2e` 不使用 AI：從 init 建立專案，寫出三間房子、地形、道路和標記，
-通過零違規檢查後匯出 GLB。輸出列出專案和 GLB 路徑。
-
-Unity 6 套件與安裝步驟見 [integrations/unity](integrations/unity/README.md)。
-Windows PowerShell 5.1 或 PowerShell 7 可使用 `scripts/test-unity.ps1 -GlbPath <village.glb>` 實際驗證 UnityGLTF
-匯入、MeshCollider、Trigger 和出生點 prefab。`.cache` 中的測試專案與結果不提交。
-
-## 文件
-
-- [設計文件](docs/design.md)
-- [用語表](CONTEXT.md)
-- [決策紀錄](docs/adr/)
-- [前後端介面契約](docs/protocol.md)
-- [後端實作說明（給 Codex）](docs/handoff/codex-backend.md)
-- [後端完成紀錄與前端交接](docs/handoff/backend-status.md)
-- [前端實作說明](docs/handoff/claude-frontend.md)與[前端完成紀錄](docs/handoff/frontend-status.md)
-- [地圖檔格式](docs/map-format.md)
-- [建模 API 與隔離執行](docs/model-api.md)
-- [GLB 匯出格式](docs/export-format.md)
-
-## 授權
-
-[MIT](LICENSE)
+- The built-in material images are CC0 textures from Poly Haven. Sources and checksums are in
+  [SOURCES.md](packages/core/materials/SOURCES.md).
