@@ -107,8 +107,8 @@ Claude 審查了 [PR #1](https://github.com/Karylcode/mapedit/pull/1)，從兩�
 ### F10. 改掉「錨點」這個命名
 
 - **位置**：`packages/core/src/compiler.ts:53,336,372`。
-- **規範**：CONTEXT.md 的 Socket 把「錨點」列為不要用的詞；codex-backend.md 第 0 節：「不要另外發明同義詞」。
-- **要求**：`SocketAnchor` 改成 `PlacedSocket`，`targetAnchor`、`localAnchor` 改成 `targetSocket`、`localSocket`。順便掃一遍所有識別字，CONTEXT.md 列在 _Avoid_ 的詞都改掉。HTTP 的 `/assets` 這種跟用語表無關的不用改。
+- **規範**：GLOSSARY.md 的 Socket 把「錨點」列為不要用的詞；codex-backend.md 第 0 節：「不要另外發明同義詞」。
+- **要求**：`SocketAnchor` 改成 `PlacedSocket`，`targetAnchor`、`localAnchor` 改成 `targetSocket`、`localSocket`。順便掃一遍所有識別字，GLOSSARY.md 列在 _Avoid_ 的詞都改掉。HTTP 的 `/assets` 這種跟用語表無關的不用改。
 
 ### F11. MCP 回傳大小要有統一上限
 

@@ -10,7 +10,7 @@
 
 1. [docs/design.md](../design.md)：整體設計，特別是第 10 節「人的介面」和第 12 節「技術架構」。
 2. [docs/protocol.md](../protocol.md)：前後端之間的約定。前端照這份實作，型別在 `packages/protocol`。
-3. [CONTEXT.md](../../CONTEXT.md)：用語表。程式裡的命名用這裡的英文詞，不要另外發明同義詞。
+3. [GLOSSARY.md](../../GLOSSARY.md)：用語表。程式裡的命名用這裡的英文詞，不要另外發明同義詞。
 4. [docs/adr/0003-agent-first-simple-ui.md](../adr/0003-agent-first-simple-ui.md)：人的操作要像玩 Minecraft 一樣簡單。
 5. [docs/handoff/backend-status.md](backend-status.md) 的「需要前端配合」段落。
 

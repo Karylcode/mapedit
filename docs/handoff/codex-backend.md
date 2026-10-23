@@ -7,7 +7,7 @@
 ## 0. 開工前先讀
 
 1. [docs/design.md](../design.md)：整體設計，必讀。
-2. [CONTEXT.md](../../CONTEXT.md)：用語表。程式裡的命名一律用這裡的英文詞（`Module`、`Socket`、`SocketType`、`Structure`、`Grid`、`Snap`、`Foundation`、`Support`、`Terrain`、`Tile`、`Surface`、`WaterLevel`、`Marker`、`Violation`、`Project`、`Map`、`Material`），不要另外發明同義詞。
+2. [GLOSSARY.md](../../GLOSSARY.md)：用語表。程式裡的命名一律用這裡的英文詞（`Module`、`Socket`、`SocketType`、`Structure`、`Grid`、`Snap`、`Foundation`、`Support`、`Terrain`、`Tile`、`Surface`、`WaterLevel`、`Marker`、`Violation`、`Project`、`Map`、`Material`），不要另外發明同義詞。
 3. [docs/adr/](../adr/)：每個重要決定的理由。不要推翻其中任何一項；如果某一項真的做不到，選最接近的可行做法繼續做，並在 `backend-status.md` 的「偏離設計」段落寫清楚原因。
 4. [docs/protocol.md](../protocol.md)：你和前端之間的契約。
 

@@ -24,7 +24,7 @@ records are [backend-status.md](handoff/backend-status.md) and [frontend-status.
 
 | Note                                   | What it covers                                                                  |
 | -------------------------------------- | ------------------------------------------------------------------------------- |
-| [Glossary](../CONTEXT.md)              | The project's terms and the words to avoid (Chinese)                            |
+| [Glossary](../GLOSSARY.md)              | The project's terms and the words to avoid (Chinese)                            |
 | [Design](design.md)                    | First-version design: goals, spatial rules, agent and human interfaces, scope (Chinese) |
 | [Frontend–backend protocol](protocol.md) | Messages between the browser editor and the server (Chinese)                  |
 | [Map format](map-format.md)            | Full reference for map files, version 1 (English)                               |

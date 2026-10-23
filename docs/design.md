@@ -2,7 +2,7 @@
 
 > 暫定名稱：`mapedit`（之後可以改）
 > 狀態：第一版設計定案（2026-10-05）
-> 用語見 [CONTEXT.md](../CONTEXT.md)；重要決定的理由見 [docs/adr/](adr/)；前後端之間的介面見 [protocol.md](protocol.md)。
+> 用語見 [GLOSSARY.md](../GLOSSARY.md)；重要決定的理由見 [docs/adr/](adr/)；前後端之間的介面見 [protocol.md](protocol.md)。
 
 ## 1. 這是什麼
 
